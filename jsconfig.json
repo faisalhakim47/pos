@@ -6,17 +6,20 @@
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "module": "NodeNext",
+    "noImplicitAny": true,
     "outDir": "dist",
     "target": "ESNext",
     "lib": [
       "DOM",
-      "ES2024"
+      "ES2024",
+      "webworker"
     ],
-    "paths": {
-    }
+    "paths": {}
   },
   "include": [
-    "scripts/**/*.js",
-    "webapp/**/*.js"
+    "**/*.js"
+  ],
+  "exclude": [
+    "vendor/**/*"
   ]
 }
