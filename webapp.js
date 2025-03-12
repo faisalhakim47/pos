@@ -1,10 +1,10 @@
 // @ts-check
 
-// ===========================================
-// ===== POINT OF SALES WEB APPLICATION ======
-// ===========================================
+// =============================================
+// ====== POINT OF SALES WEB APPLICATION ======
+// ==========================================
 
-// ===== @AboutWebApp =====
+// ====== @AboutWebApp ======
 
 /**
  * This is single-file web application for point of sales system.
@@ -21,19 +21,25 @@
 
 const webappVersion = 2025_03_11_05_10;
 
-// ===== @TableOfContent ======
+// ====== @TableOfContent ======
 
 /**
  * @AboutWebApp
  * @TableOfContent
  * @AppDependencies The import is always the first
+ * @PlatformFeatureSupportCheck Check if the platform support required features
+ * @Initialization
  * @TheDatabase Schema, Migration, and More
  * @DataSerde Data serialization and deserialization for communication between workers
- * @ServiceWorkerMechanism Service worker registration and initialization
- * @GeneralAssertionFunctions Types checking and stuff
+ * @ServiceWorker Service worker registration and initialization
+ * @WebRouter
+ * @UiOfRootRoute
+ * @UiOfUnsupportedPlatformNoticeRoute
+ * @UiOfNotFoundRoute
+ * @GeneralTypeAssertionFunctions Types checking and stuff
  */
 
-// ===== @AppDependencies =====
+// ====== @AppDependencies ======
 
 /**
  * You said it is sigle-file app? what is this then?
@@ -48,7 +54,26 @@ async function importSqlite3InitModule() {
   return importedSqlean.default.default;
 }
 
-// ===== @TheDatabase =====
+// ====== @PlatformFeatureSupportCheck ======
+
+if (isWindow(self)) {
+  if ('serviceWorker' in self.navigator) {
+    navigateTo(self, '/unsupported-platform');
+  }
+}
+
+// ====== @Initialization ======
+
+if (isWindow(self)) {
+  initRouter(self);
+  registerServiceWorker(self);
+}
+
+else if (isServiceWorkerGlobalScope(self)) {
+  initServiceWorker(self);
+}
+
+// ====== @TheDatabase ======
 
 /**
  * The database will handle the main bussiness logic of the application.
@@ -76,7 +101,7 @@ async function initializeDatabase() {
   return sqlite3;
 }
 
-// ===== @DataSerde =====
+// ====== @DataSerde ======
 
 /**
  * @param {unknown} data
@@ -93,77 +118,169 @@ function deserialize(data) {
   return JSON.parse(data);
 }
 
-// ===== #ServiceWorkerMechanism =====
+// ====== @ServiceWorker ======
 
-if (self.ServiceWorkerGlobalScope && self instanceof ServiceWorkerGlobalScope) {
-  const serviceWorker = self;
+/**
+ * @param {Window} window
+ */
+async function registerServiceWorker(window) {
+  window.navigator.serviceWorker.register('./webapp.js');
 
-  serviceWorker.addEventListener('install', async function (event) {
-    assertInstanceOf(ExtendableEvent, event);
-    await serviceWorker.skipWaiting();
+  window.navigator.serviceWorker.addEventListener('message', async function (event) {
+    console.debug('ServiceWorkerContainer', 'message', event);
   });
 
-  serviceWorker.addEventListener('activate', async function (event) {
-    assertInstanceOf(ExtendableEvent, event);
-    await serviceWorker.clients.claim();
+  window.navigator.serviceWorker.addEventListener('messageerror', async function (event) {
+    console.debug('ServiceWorkerContainer', 'messageerror', event);
   });
 
-  serviceWorker.addEventListener('message', async function (event) {
+  window.navigator.serviceWorker.addEventListener('controllerchange', async function (event) {
+    console.debug('ServiceWorkerContainer', 'controllerchange', event);
+    // window.location.reload();
+  });
+
+  const { active: serviceWorker } = await window.navigator.serviceWorker.register('./webapp.js', {
+    scope: '/',
+    type: 'module',
+    updateViaCache: 'all',
+  });
+
+  console.debug('Window', 'load', serviceWorker);
+
+  serviceWorker.addEventListener('statechange', async function (event) {
+    console.debug('ServiceWorker', 'statechange', event);
+  });
+
+  serviceWorker.postMessage({ method: 'version' });
+}
+
+/**
+ * @param {ServiceWorkerGlobalScope} self
+ */
+async function initServiceWorker(self) {
+  self.addEventListener('install', async function (event) {
+    assertInstanceOf(ExtendableEvent, event);
+    await self.skipWaiting();
+  });
+
+  self.addEventListener('activate', async function (event) {
+    assertInstanceOf(ExtendableEvent, event);
+    await self.clients.claim();
+  });
+
+  self.addEventListener('message', async function (event) {
     assertInstanceOf(ExtendableMessageEvent, event);
     console.debug('ServiceWorkerGlobalScope', 'message', event);
   });
 
-  serviceWorker.addEventListener('messageerror', async function (event) {
+  self.addEventListener('messageerror', async function (event) {
     console.debug('ServiceWorkerGlobalScope', 'messageerror', event);
   });
 
-  serviceWorker.addEventListener('sync', async function (event) {
+  self.addEventListener('sync', async function (event) {
     console.debug('ServiceWorkerGlobalScope', 'sync', event);
   });
 }
 
-else if (self.Window && self instanceof Window) {
-  window.addEventListener('load', async function () {
-    if (!('serviceWorker' in navigator)) {
-      alert('This app reqire service workers');
-      throw new Error('Service workers are required for this app');
-    }
+// ====== @WebRouter ======
 
-    navigator.serviceWorker.addEventListener('message', async function (event) {
-      console.debug('ServiceWorkerContainer', 'message', event);
-    });
+/**
+ * @param {Window} window
+ * @param {string} path
+ */
+function navigateTo(window, path) {
+  window.history.pushState({}, '', path);
+}
 
-    navigator.serviceWorker.addEventListener('messageerror', async function (event) {
-      console.debug('ServiceWorkerContainer', 'messageerror', event);
-    });
-
-    navigator.serviceWorker.addEventListener('controllerchange', async function (event) {
-      console.debug('ServiceWorkerContainer', 'controllerchange', event);
-      // window.location.reload();
-    });
-
-    const { active: serviceWorker } = await navigator.serviceWorker.register('./webapp.js', {
-      scope: '/',
-      type: 'module',
-      updateViaCache: 'all',
-    });
-
-    console.debug('Window', 'load', serviceWorker);
-
-    serviceWorker.addEventListener('statechange', async function (event) {
-      console.debug('ServiceWorker', 'statechange', event);
-    });
-
-    serviceWorker.postMessage({ method: 'version' });
-
+/**
+ * @param {Window} window
+ */
+function initRouter(window) {
+  window.addEventListener('popstate', async function (event) {
+    evaluateRoute(window);
   });
 }
 
-else {
-  throw new Error('Unknown context');
+/**
+ * @param {Window} window
+ */
+function evaluateRoute(window) {
+  const path = window.location.pathname;
+  if (path === '/') {
+    renderRootRoute(window);
+  }
+  else if (path === '/unsupported-platform') {
+    renderUnsupportedPlatformNoticeRoute(window);
+  }
+  else {
+    renderNotFoundRoute(window);
+  }
 }
 
-// ===== #GeneralAssertionFunctions =====
+// ====== @UiOfRootRoute ======
+
+/**
+ * @param {Window} window
+ * @returns {void}
+ */
+function renderRootRoute(window) {
+  const rootElement = window.document.createElement('div');
+  rootElement.textContent = 'Hello, World!';
+  window.document.body.appendChild(rootElement);
+}
+
+// ====== @UiOfUnsupportedPlatformNoticeRoute ======
+
+/**
+ * @param {Window} window
+ * @returns {void}
+ */
+function renderUnsupportedPlatformNoticeRoute(window) {
+
+}
+
+// ====== @UiOfNotFoundRoute ======
+
+/**
+ * @param {Window} window
+ * @returns {void}
+ */
+function renderNotFoundRoute(window) {
+
+}
+
+// ====== @GeneralTypeAssertionFunctions ======
+
+/**
+ * Check Window instance without referencing Window object.
+ *
+ * @param {unknown} maybeWindow
+ * @returns {value is Window}
+ */
+function isWindow(maybeWindow) {
+  return typeof maybeWindow === 'object'
+    && maybeWindow !== null
+    && 'window' in maybeWindow
+    && maybeWindow.window === maybeWindow
+    && 'document' in maybeWindow
+    && typeof maybeWindow.document === 'object'
+    && 'Document' in maybeWindow
+    && typeof maybeWindow.Document === 'function'
+    && maybeWindow.document instanceof maybeWindow.Document;
+}
+
+/**
+ * Check ServiceWorkerGlobalScope instance without referencing ServiceWorkerGlobalScope object.
+ * 
+ * @param {unknown} maybeServiceWorkerGlobalScope
+ * @returns {maybeServiceWorkerGlobalScope is ServiceWorkerGlobalScope}
+ */
+function isServiceWorkerGlobalScope(maybeServiceWorkerGlobalScope) {
+  return typeof maybeServiceWorkerGlobalScope === 'object'
+    && maybeServiceWorkerGlobalScope !== null
+    && 'ServiceWorkerGlobalScope' in maybeServiceWorkerGlobalScope
+    && maybeServiceWorkerGlobalScope.ServiceWorkerGlobalScope === maybeServiceWorkerGlobalScope;
+}
 
 /**
  * @template T
