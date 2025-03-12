@@ -1,0 +1,17 @@
+{
+  "name": "pos",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/faisalhakim47/pos#readme",
+  "bugs": {
+    "url": "https://github.com/faisalhakim47/pos/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/faisalhakim47/pos.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "webapp.js"
+}
