@@ -60,9 +60,10 @@ http {
   server {
     listen $HTTP_PORT;
     location / {
-      add_header Cache-Control 'public,must-revalidate,max-age=5,s-maxage=5';
       etag on;
+      add_header Cache-Control 'public,must-revalidate,max-age=5,s-maxage=5';
       root $WORKING_DIR;
+      try_files \$uri \$uri/ /index.html;
     }
   }
 }

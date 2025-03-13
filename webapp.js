@@ -34,6 +34,10 @@ const webappVersion = 2025_03_11_05_10;
  * @ServiceWorker Service worker registration and initialization
  * @WebRouter
  * @UiLibrary The UI library for the application
+ * @UiRouter
+ * @UiOfTypography
+ * @UiOfTheme
+ * @UiOfBasicLayout
  * @UiOfRootRoute
  * @UiOfUnsupportedPlatformNoticeRoute
  * @UiOfNotFoundRoute
@@ -58,7 +62,7 @@ async function importSqlite3InitModule() {
 // ====== @PlatformFeatureSupportCheck ======
 
 if (isWindow(self)) {
-  if ('serviceWorker' in self.navigator) {
+  if (!('serviceWorker' in self.navigator)) {
     navigateTo(self, '/unsupported-platform');
   }
 }
@@ -197,7 +201,7 @@ function navigateTo(window, path) {
  * @param {Window} window
  */
 function initRouter(window) {
-  const outlet = document.createComment('');
+  const outlet = document.createComment(''); 
   const handleRoute = function () {
     applyRoute(window, outlet);
   };
@@ -214,21 +218,22 @@ function initRouter(window) {
  */
 function applyRoute(window, outlet) {
   const pathname = window.location.pathname;
+  console.info('applyRoute', pathname);
   if (pathname === '/') {
-    outlet = replaceChild(outlet, renderRootRoute(window));
+    outlet = replaceNode(outlet, renderRootRoute());
   }
   else if (pathname === '/unsupported-platform') {
-    outlet = replaceChild(outlet, renderUnsupportedPlatformNoticeRoute(window));
+    outlet = replaceNode(outlet, renderUnsupportedPlatformNoticeRoute());
   }
   else {
-    outlet = replaceChild(outlet, renderNotFoundRoute(window));
+    outlet = replaceNode(outlet, renderNotFoundRoute());
   }
 }
 
 // ====== @UiLibrary ======
 
 /**
- * @typedef {undefined|null|string|number|Node} HtmlStaticValue
+ * @typedef {undefined|null|void|string|number|Node} HtmlStaticValue
  */
 
 /**
@@ -249,31 +254,28 @@ function html(strings, ...values) {
     ?? (function () {
       const template = document.createElement('template');
       template.innerHTML = strings.join(htmlPlaceholder);
-      const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-          return node.nodeValue.includes(htmlPlaceholder)
-            ? NodeFilter.FILTER_ACCEPT
-            : NodeFilter.FILTER_REJECT;
-        },
-      });
+      const unpreparedWalker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
       /** @type {Map<Node, Array<Text>>} */
-      const replaces = new Map();
-      while (walker.nextNode()) {
-        const node = walker.currentNode;
-        const contents = node.nodeValue.split(htmlPlaceholder);
-        const lastContextIndex = contents.length - 1;
+      const nodeReplaces = new Map();
+      while (unpreparedWalker.nextNode()) {
+        const node = unpreparedWalker.currentNode;
+        const strings = node.nodeValue.split(htmlPlaceholder);
+        const lastStringIndex = strings.length - 1;
         const preparedTexts = [];
-        for (const [index, text] of contents.entries()) {
-          const staticText = document.createTextNode(text);
-          preparedTexts.push(staticText);
-          if (index < lastContextIndex) {
+        for (const [index, staticString] of strings.entries()) {
+          const trimmedStaticString = staticString.trim();
+          if (trimmedStaticString.length) {
+            const trimmedStaticText = document.createTextNode(trimmedStaticString);
+            preparedTexts.push(trimmedStaticText);
+          }
+          if (index < lastStringIndex) {
             const dynamicText = document.createTextNode(htmlPlaceholder);
             preparedTexts.push(dynamicText);
           }
         }
-        replaces.set(node, preparedTexts);
+        nodeReplaces.set(node, preparedTexts);
       }
-      for (const [node, texts] of replaces) {
+      for (const [node, texts] of nodeReplaces) {
         const parentNode = node.parentNode;
         for (const text of texts) {
           parentNode.insertBefore(text, node);
@@ -286,9 +288,9 @@ function html(strings, ...values) {
 
   const content = document.importNode(preparedTemplate.content, true);
 
-  const contentWalker = document.createTreeWalker(content, NodeFilter.SHOW_ATTRIBUTE | NodeFilter.SHOW_TEXT, {
+  const contentWalker = document.createTreeWalker(content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      return node.nodeValue === htmlPlaceholder
+      return ((node instanceof Text && node.nodeValue === htmlPlaceholder) || node instanceof Element)
         ? NodeFilter.FILTER_ACCEPT
         : NodeFilter.FILTER_REJECT;
     },
@@ -299,10 +301,23 @@ function html(strings, ...values) {
   while (contentWalker.nextNode() instanceof Node) {
     const node = contentWalker.currentNode;
     const value = values[index];
-    nodeMutations.push(function () {
-      replaceChild(node, applyHtmlInterpolation(node, value));
-    });
-    index++;
+    if (node instanceof Text) {
+      nodeMutations.push(function () {
+        replaceNode(node, applyHtmlNodeInterpolation(node, value));
+      });
+      index++;
+    }
+    else if (node instanceof Element) {
+      for (let attrIndex = 0; attrIndex < node.attributes.length; attrIndex++) {
+        const attr = node.attributes.item(attrIndex);
+        if (attr.value === htmlPlaceholder) {
+          nodeMutations.push(function () {
+            replaceAttr(attr, applyHtmlAttrInterpolation(attr, value));
+          });
+          index++;
+        }
+      }
+    }
   }
 
   for (const mutateNode of nodeMutations) {
@@ -317,7 +332,7 @@ function html(strings, ...values) {
  * @param {Node} newChild
  * @returns {Node}
  */
-function replaceChild(oldChild, newChild) {
+function replaceNode(oldChild, newChild) {
   const parentNode = oldChild.parentNode;
   if (parentNode instanceof Node && oldChild !== newChild) {
     parentNode.replaceChild(newChild, oldChild);
@@ -330,62 +345,229 @@ function replaceChild(oldChild, newChild) {
  * @param {HtmlValue} value
  * @returns {Node}
  */
-function applyHtmlInterpolation(node, value) {
+function applyHtmlNodeInterpolation(node, value) {
   if (typeof value === 'string') {
     node.nodeValue = value;
     return node;
   }
   if (typeof value === 'undefined' || value === null) {
-    return applyHtmlInterpolation(node, '');
+    return applyHtmlNodeInterpolation(node, '');
   }
   if (typeof value === 'number') {
-    return applyHtmlInterpolation(node, value.toString());
+    return applyHtmlNodeInterpolation(node, value.toString());
   }
   if (typeof value === 'function') {
-    return applyHtmlInterpolation(node, value(node));
+    return applyHtmlNodeInterpolation(node, value(node));
   }
   if (value instanceof Node) {
     return value;
   }
-  throw new Error('Invalid HtmlSyncValue', {
+  throw new Error('Invalid HtmlNodeInterpolation value', {
     cause: value,
   });
+}
+
+/**
+ * @param {Attr} oldAttr
+ * @param {Attr} newAttr
+ * @returns {Attr}
+ */
+function replaceAttr(oldAttr, newAttr) {
+  const ownerElement = oldAttr.ownerElement;
+  if (ownerElement instanceof Element && oldAttr !== newAttr) {
+    ownerElement.setAttributeNode(newAttr);
+    ownerElement.removeAttributeNode(oldAttr);
+  }
+  return newAttr;
+}
+
+/**
+ * @param {Attr} attr
+ * @param {HtmlValue} value
+ */
+function applyHtmlAttrInterpolation(attr, value) {
+  if (typeof value === 'string') {
+    attr.value = value;
+    return attr;
+  }
+  if (typeof value === 'undefined' || value === null) {
+    return applyHtmlAttrInterpolation(attr, '');
+  }
+  if (typeof value === 'function') {
+    return applyHtmlAttrInterpolation(attr, value(attr));
+  }
+  throw new Error('Invalid HtmlAttrInterpolation value', {
+    cause: value,
+  });
+}
+
+/**
+ * @template T
+ * @param {Array<T>} items
+ * @param {(item: T, index: number, items: Array<T>) => Node} contentMapper
+ * @returns {(node: Node) => Node}
+ */
+function staticList(items, contentMapper) {
+  return function () {
+    const fragment = document.createDocumentFragment();
+    for (const [index, item] of items.entries()) {
+      const content = contentMapper(item, index, items);
+      fragment.appendChild(content);
+    }
+    return fragment;
+  };
+}
+
+// ====== @UiRouter ======
+
+/**
+ * @param {string} path
+ */
+function anchorTo(path) {
+  /** @param {Node} attr */
+  return function (attr) {
+    if (attr instanceof Attr && attr.name === 'href') {
+      attr.value = path;
+      const ownerElement = attr.ownerElement;
+      if (ownerElement instanceof Element) {
+        console.dir(ownerElement);
+        ownerElement.addEventListener('click', function (event) {
+          event.preventDefault();
+          history.pushState({}, '', path);
+        });
+      }
+    }
+  };
+}
+
+// ====== @UiOfTypography ======
+
+/**
+ * @param {Node} content 
+ */
+function renderTypography(content) {
+  return html`
+    <style>
+      html {
+        font-size: 16px;
+        font-family: sans-serif;
+      }
+      h1 {
+        font-size: 1.5em;
+        margin: 1.5em 0px 1em;
+      }
+      p {
+        line-height: 1.4;
+        margin: 0.75em 0px;
+      }
+      ul > li {
+        margin: 0.5em 0px;
+      }
+    </style>
+    ${content}
+  `;
+}
+
+// ====== @UiOfTheme ======
+
+/**
+ * @param {Node} content
+ */
+function renderTheme(content) {
+  return html`
+    <style>
+      @media (prefers-color-scheme: light) {
+        html, body {
+          background-color: azure;
+          color: black;
+        }
+        a {
+          color: royalblue;
+        }
+        a:visited {
+          color: slateblue;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        html, body {
+          background-color: #111111;
+          color: linen;
+        }
+        a {
+          color: lightblue;
+        }
+        a:visited {
+          color: thistle;
+        }
+      }
+    </style>
+    ${content}
+  `;
+}
+
+// ====== @UiOfBasicLayout ======
+
+/**
+ * @param {Node} content
+ * @returns {Node}
+ */
+function renderBasicLayout(content) {
+  return renderTypography(renderTheme(html`
+    <style>
+      .basic-layout {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+    </style>
+    <div class="basic-layout">
+      ${content}
+    </div>
+  `));
 }
 
 // ====== @UiOfRootRoute ======
 
 /**
- * @param {Window} window
  * @returns {Node}
  */
-function renderRootRoute(window) {
-  return html`
-    <h1>Hello, World!</h1>
-  `;
+function renderRootRoute() {
+  return renderBasicLayout(html`
+    <h1>Point of Sales</h1>
+  `);
 }
 
 // ====== @UiOfUnsupportedPlatformNoticeRoute ======
 
 /**
- * @param {Window} window
  * @returns {Node}
  */
-function renderUnsupportedPlatformNoticeRoute(window) {
-  return html`
-    <h1>Your browser is not supported!</h1>
-  `;
+function renderUnsupportedPlatformNoticeRoute() {
+  const suggestedBrowsers = [
+    { name: 'Google Chrome', url: 'https://www.google.com/chrome/' },
+    { name: 'Mozilla Firefox', url: 'https://www.mozilla.org/firefox/' },
+  ];
+  return renderBasicLayout(html`
+    <h1>Browser anda tidak didukung</h1>
+    <p>Beberapa fitur pada browser anda tidak tersedia. Silahkan perbarui browser atau gunakan browser standard terbaru berikut:</p>
+    <ul>
+      ${staticList(suggestedBrowsers, (browser) => html`
+        <li><a href=${browser.url} target="_blank">${browser.name}</a></li>
+      `)}
+    </ul>
+  `);
 }
 
 // ====== @UiOfNotFoundRoute ======
 
 /**
- * @param {Window} window
  * @returns {Node}
  */
-function renderNotFoundRoute(window) {
-  return html`
-    <h1>Not Found!</h1>
-  `;
+function renderNotFoundRoute() {
+  return renderBasicLayout(html`
+    <h1>Halaman tidak ditemukan</h1>
+    <p>Alamat yang anda kunjungi tidak ditemukan.</p>
+    <p><a href="${anchorTo('/')}">Kembali ke halaman utama</a></p>
+  `);
 }
 
 // ====== @GeneralTypeAssertionFunctions ======
