@@ -63,15 +63,16 @@ async function importSqlite3InitModule() {
 
 if (isWindow(self)) {
   if (!('serviceWorker' in self.navigator)) {
-    navigateTo(self, '/unsupported-platform');
+    navigateTo('/unsupported-platform');
+    throw new Error('Service worker is not supported');
   }
 }
 
 // ====== @Initialization ======
 
 if (isWindow(self)) {
-  initRouter(self);
-  registerServiceWorker(self);
+  initRouter();
+  registerServiceWorker();
 }
 
 else if (isServiceWorkerGlobalScope(self)) {
@@ -125,10 +126,7 @@ function deserialize(data) {
 
 // ====== @ServiceWorker ======
 
-/**
- * @param {Window} window
- */
-async function registerServiceWorker(window) {
+async function registerServiceWorker() {
   window.navigator.serviceWorker.register('./webapp.js');
 
   window.navigator.serviceWorker.addEventListener('message', async function (event) {
@@ -190,20 +188,16 @@ async function initServiceWorker(self) {
 // ====== @WebRouter ======
 
 /**
- * @param {Window} window
  * @param {string} path
  */
-function navigateTo(window, path) {
+function navigateTo(path) {
   window.history.pushState({}, '', path);
 }
 
-/**
- * @param {Window} window
- */
-function initRouter(window) {
+function initRouter() {
   const outlet = document.createComment(''); 
   const handleRoute = function () {
-    applyRoute(window, outlet);
+    applyRoute(outlet);
   };
   window.addEventListener('popstate', handleRoute);
   window.addEventListener('load', function () {
@@ -213,11 +207,10 @@ function initRouter(window) {
 }
 
 /**
- * @param {Window} window
  * @param {Node} outlet
  */
-function applyRoute(window, outlet) {
-  const pathname = window.location.pathname;
+function applyRoute(outlet) {
+  const pathname = location.pathname;
   console.info('applyRoute', pathname);
   if (pathname === '/') {
     outlet = replaceNode(outlet, renderRootRoute());
@@ -433,7 +426,7 @@ function anchorTo(path) {
         console.dir(ownerElement);
         ownerElement.addEventListener('click', function (event) {
           event.preventDefault();
-          history.pushState({}, '', path);
+          navigateTo(path);
         });
       }
     }
