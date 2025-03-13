@@ -33,6 +33,7 @@ const webappVersion = 2025_03_11_05_10;
  * @DataSerde Data serialization and deserialization for communication between workers
  * @ServiceWorker Service worker registration and initialization
  * @WebRouter
+ * @UiLibrary The UI library for the application
  * @UiOfRootRoute
  * @UiOfUnsupportedPlatformNoticeRoute
  * @UiOfNotFoundRoute
@@ -51,7 +52,7 @@ const webappVersion = 2025_03_11_05_10;
 
 async function importSqlite3InitModule() {
   const importedSqlean = await import('./vendor/sqlean.js');
-  return importedSqlean.default.default;
+  return importedSqlean.default;
 }
 
 // ====== @PlatformFeatureSupportCheck ======
@@ -196,57 +197,195 @@ function navigateTo(window, path) {
  * @param {Window} window
  */
 function initRouter(window) {
-  window.addEventListener('popstate', async function (event) {
-    evaluateRoute(window);
+  const outlet = document.createComment('');
+  const handleRoute = function () {
+    applyRoute(window, outlet);
+  };
+  window.addEventListener('popstate', handleRoute);
+  window.addEventListener('load', function () {
+    document.body.appendChild(outlet);
+    handleRoute();
   });
 }
 
 /**
  * @param {Window} window
+ * @param {Node} outlet
  */
-function evaluateRoute(window) {
-  const path = window.location.pathname;
-  if (path === '/') {
-    renderRootRoute(window);
+function applyRoute(window, outlet) {
+  const pathname = window.location.pathname;
+  if (pathname === '/') {
+    outlet = replaceChild(outlet, renderRootRoute(window));
   }
-  else if (path === '/unsupported-platform') {
-    renderUnsupportedPlatformNoticeRoute(window);
+  else if (pathname === '/unsupported-platform') {
+    outlet = replaceChild(outlet, renderUnsupportedPlatformNoticeRoute(window));
   }
   else {
-    renderNotFoundRoute(window);
+    outlet = replaceChild(outlet, renderNotFoundRoute(window));
   }
+}
+
+// ====== @UiLibrary ======
+
+/**
+ * @typedef {undefined|null|string|number|Node} HtmlStaticValue
+ */
+
+/**
+ * @typedef {HtmlStaticValue|((node: Node) => HtmlStaticValue)} HtmlValue
+ */
+
+/** @type {Map<TemplateStringsArray, HTMLTemplateElement>} */
+var htmlCache = new Map();
+var htmlPlaceholder = '__placeholder__';
+
+/**
+ * @param {TemplateStringsArray} strings
+ * @param {Array<HtmlValue>} values
+ * @returns {Node}
+ */
+function html(strings, ...values) {
+  const preparedTemplate = htmlCache.get(strings)
+    ?? (function () {
+      const template = document.createElement('template');
+      template.innerHTML = strings.join(htmlPlaceholder);
+      const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          return node.nodeValue.includes(htmlPlaceholder)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        },
+      });
+      /** @type {Map<Node, Array<Text>>} */
+      const replaces = new Map();
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const contents = node.nodeValue.split(htmlPlaceholder);
+        const lastContextIndex = contents.length - 1;
+        const preparedTexts = [];
+        for (const [index, text] of contents.entries()) {
+          const staticText = document.createTextNode(text);
+          preparedTexts.push(staticText);
+          if (index < lastContextIndex) {
+            const dynamicText = document.createTextNode(htmlPlaceholder);
+            preparedTexts.push(dynamicText);
+          }
+        }
+        replaces.set(node, preparedTexts);
+      }
+      for (const [node, texts] of replaces) {
+        const parentNode = node.parentNode;
+        for (const text of texts) {
+          parentNode.insertBefore(text, node);
+        }
+        parentNode.removeChild(node);
+      }
+      htmlCache.set(strings, template);
+      return template;
+    })();
+
+  const content = document.importNode(preparedTemplate.content, true);
+
+  const contentWalker = document.createTreeWalker(content, NodeFilter.SHOW_ATTRIBUTE | NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.nodeValue === htmlPlaceholder
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  let index = 0;
+  const nodeMutations = [];
+  while (contentWalker.nextNode() instanceof Node) {
+    const node = contentWalker.currentNode;
+    const value = values[index];
+    nodeMutations.push(function () {
+      replaceChild(node, applyHtmlInterpolation(node, value));
+    });
+    index++;
+  }
+
+  for (const mutateNode of nodeMutations) {
+    mutateNode();
+  }
+
+  return content;
+}
+
+/**
+ * @param {Node} oldChild
+ * @param {Node} newChild
+ * @returns {Node}
+ */
+function replaceChild(oldChild, newChild) {
+  const parentNode = oldChild.parentNode;
+  if (parentNode instanceof Node && oldChild !== newChild) {
+    parentNode.replaceChild(newChild, oldChild);
+  }
+  return newChild;
+}
+
+/**
+ * @param {Node} node
+ * @param {HtmlValue} value
+ * @returns {Node}
+ */
+function applyHtmlInterpolation(node, value) {
+  if (typeof value === 'string') {
+    node.nodeValue = value;
+    return node;
+  }
+  if (typeof value === 'undefined' || value === null) {
+    return applyHtmlInterpolation(node, '');
+  }
+  if (typeof value === 'number') {
+    return applyHtmlInterpolation(node, value.toString());
+  }
+  if (typeof value === 'function') {
+    return applyHtmlInterpolation(node, value(node));
+  }
+  if (value instanceof Node) {
+    return value;
+  }
+  throw new Error('Invalid HtmlSyncValue', {
+    cause: value,
+  });
 }
 
 // ====== @UiOfRootRoute ======
 
 /**
  * @param {Window} window
- * @returns {void}
+ * @returns {Node}
  */
 function renderRootRoute(window) {
-  const rootElement = window.document.createElement('div');
-  rootElement.textContent = 'Hello, World!';
-  window.document.body.appendChild(rootElement);
+  return html`
+    <h1>Hello, World!</h1>
+  `;
 }
 
 // ====== @UiOfUnsupportedPlatformNoticeRoute ======
 
 /**
  * @param {Window} window
- * @returns {void}
+ * @returns {Node}
  */
 function renderUnsupportedPlatformNoticeRoute(window) {
-
+  return html`
+    <h1>Your browser is not supported!</h1>
+  `;
 }
 
 // ====== @UiOfNotFoundRoute ======
 
 /**
  * @param {Window} window
- * @returns {void}
+ * @returns {Node}
  */
 function renderNotFoundRoute(window) {
-
+  return html`
+    <h1>Not Found!</h1>
+  `;
 }
 
 // ====== @GeneralTypeAssertionFunctions ======
