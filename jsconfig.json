@@ -11,6 +11,8 @@
     "target": "ESNext",
     "lib": [
       "DOM",
+      "DOM.Iterable",
+      "DOM.AsyncIterable",
       "ES2024",
       "webworker"
     ],

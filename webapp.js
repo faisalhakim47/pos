@@ -32,6 +32,7 @@ const webappVersion = 2025_03_11_05_10;
  * @TheDatabase Schema, Migration, and More
  * @DataSerde Data serialization and deserialization for communication between workers
  * @ServiceWorker Service worker registration and initialization
+ * @ObservableData Pull-based state management
  * @WebRouter
  * @UiLibrary The UI library for the application
  * @UiRouter
@@ -63,16 +64,24 @@ async function importSqlite3InitModule() {
 
 if (isWindow(self)) {
   if (!('serviceWorker' in self.navigator)) {
-    navigateTo('/unsupported-platform');
-    throw new Error('Service worker is not supported');
+    (async function () {
+      for await (const _ of once(iterableEvents(self, 'load'))) {
+        navigateAction.push('/unsupported-platform');
+      }
+      throw new Error('Service worker is not supported');
+    })();
   }
 }
 
 // ====== @Initialization ======
 
 if (isWindow(self)) {
-  initRouter();
-  registerServiceWorker();
+  (async function () {
+    for await (const _ of once(iterableEvents(self, 'load'))) {
+      initRouter();
+      registerServiceWorker();
+    }
+  })();
 }
 
 else if (isServiceWorkerGlobalScope(self)) {
@@ -185,41 +194,239 @@ async function initServiceWorker(self) {
   });
 }
 
+// ====== @ObservableData ======
+
+/**
+ * @template T
+ * @typedef {AsyncGenerator<T, void, undefined>} DataIterable
+ */
+
+/**
+ * @param {unknown} instance
+ * @returns {instance is AsyncGenerator<unknown, unknown, unknown>}
+ */
+function isAsyncGenerator(instance) {
+  return typeof instance === 'object'
+    && instance !== null
+    && Symbol.asyncIterator in instance;
+}
+
+function createAction() {
+  return new ActionIterator();
+}
+
+/**
+ * @template T
+ */
+class ActionIterator {
+  /** @type {(value: T) => void} */
+  #resolve;
+
+  /**
+   * @param {T} value
+   */
+  push(value) {
+    this.#resolve(value);
+  }
+
+  /**
+   * @returns {DataIterable<T>}
+   */
+  async *iterate() {
+    while (true) {
+      /** @type {PromiseWithResolvers<T>} */
+      const { promise, resolve } = Promise.withResolvers();
+      this.#resolve = resolve;
+      yield await promise;
+    }
+  }
+}
+
+/**
+ * @param {EventTarget} eventTarget
+ * @param {string} eventName
+ * @returns {DataIterable<Event>}
+ */
+async function* iterableEvents(eventTarget, eventName) {
+  /** @type {PromiseWithResolvers<Event>} */
+  let { promise, resolve } = Promise.withResolvers();
+  /** @type {EventListenerOrEventListenerObject} */
+  const listener = function (event) {
+    resolve(event);
+  };
+  eventTarget.addEventListener(eventName, listener);
+  try {
+    while (true) {
+      yield await promise;
+      ({ promise, resolve } = Promise.withResolvers());
+    }
+  }
+  finally {
+    eventTarget.removeEventListener(eventName, listener);
+  }
+}
+
+/**
+ * @template T
+ * @typedef {T extends DataIterable<infer U> ? U : never} TypeOfDataIterable
+ */
+
+/**
+ * @template {Array<DataIterable<unknown>>} T
+ * @param {T} iterables
+ * @returns {DataIterable<{ [K in keyof T]: TypeOfDataIterable<T[K]> }>}
+ */
+async function* combineLatest(...iterables) {
+  const results = await Promise.all(iterables.map(function (iterable) {
+    return iterable.next();
+  }));
+  // @ts-ignore
+  yield results.map(function (result) {
+    return result.value;
+  });
+  /**
+   * @template T
+   * @param {DataIterable<T>} iterable
+   * @param {number} index
+   */
+  const next = async function (iterable, index) {
+    return {
+      index,
+      result: await iterable.next(),
+    };
+  };
+  const promises = iterables.map(next);
+  while (true) {
+    const first = await Promise.race(promises);
+    results[first.index] = first.result;
+    // @ts-ignore
+    yield results.map(function (result) {
+      return result.value;
+    });
+    promises[first.index] = next(iterables[first.index], first.index);
+  }
+}
+
+/**
+ * @template T
+ * @param {DataIterable<T>} iterable
+ * @param {(value: T) => boolean|Promise<boolean>} predicate
+ * @returns {DataIterable<T>}
+ */
+async function* filter(iterable, predicate) {
+  for await (const value of iterable) {
+    if (await predicate(value)) {
+      yield value;
+    }
+  }
+}
+
+/**
+ * @template TIn, TOut
+ * @param {DataIterable<TIn>} iterable
+ * @param {(value: TIn) => TOut|Promise<TOut>} mapper
+ * @returns {DataIterable<TOut>}
+ */
+async function* map(iterable, mapper) {
+  for await (const value of iterable) {
+    yield await mapper(value);
+  }
+}
+
+/**
+ * @template {Array<DataIterable<unknown>>} T
+ * @param {T} iterables
+ * @returns {DataIterable<TypeOfDataIterable<T[number]>>}
+ */
+async function* merge(...iterables) {
+  /**
+   * @template T
+   * @param {DataIterable<T>} iterable
+   * @param {number} index
+   */
+  const next = async function (iterable, index) {
+    return {
+      index,
+      result: await iterable.next(),
+    };
+  };
+  const promises = iterables.map(next);
+  while (true) {
+    console.debug('merge', promises);
+    if (promises.length === 0) {
+      break;
+    }
+    const first = await Promise.race(promises);
+    // @ts-ignore
+    yield first.result.value;
+    if (first.result.done) {
+      promises.splice(first.index, 1);
+    } else {
+      promises[first.index] = next(iterables[first.index], first.index);
+    }
+  }
+}
+
+/**
+ * @template T
+ * @param {DataIterable<T>} iterable
+ * @returns {DataIterable<T>}
+ */
+async function* once(iterable) {
+  for await (const value of iterable) {
+    yield value;
+    break;
+  }
+}
+
+/**
+ * @template T
+ * @param {DataIterable<T>} iterable
+ * @param {T} initialValue
+ * @returns {DataIterable<T>}
+ */
+async function* startWith(iterable, initialValue) {
+  yield initialValue;
+  for await (const value of iterable) {
+    yield value;
+  }
+}
+
 // ====== @WebRouter ======
 
-/**
- * @param {string} path
- */
-function navigateTo(path) {
-  window.history.pushState({}, '', path);
-}
+/** @type {ActionIterator<string>} */
+var navigateAction = createAction();
 
-function initRouter() {
-  const outlet = document.createComment(''); 
-  const handleRoute = function () {
-    applyRoute(outlet);
-  };
-  window.addEventListener('popstate', handleRoute);
-  window.addEventListener('load', function () {
-    document.body.appendChild(outlet);
-    handleRoute();
+async function initRouter() {
+  const navigationAction$ = map(navigateAction.iterate(), function (path) {
+    history.pushState(null, '', path);
   });
-}
 
-/**
- * @param {Node} outlet
- */
-function applyRoute(outlet) {
-  const pathname = location.pathname;
-  console.info('applyRoute', pathname);
-  if (pathname === '/') {
-    outlet = replaceNode(outlet, renderRootRoute());
-  }
-  else if (pathname === '/unsupported-platform') {
-    outlet = replaceNode(outlet, renderUnsupportedPlatformNoticeRoute());
-  }
-  else {
-    outlet = replaceNode(outlet, renderNotFoundRoute());
+  const navigationChange$ = merge(
+    navigationAction$,
+    iterableEvents(window, 'popstate'),
+  );
+
+  const location$ = startWith(map(navigationChange$, function () {
+    return location;
+  }), location);
+
+  /** @type {Node} */
+  let outlet = document.createComment('');
+  document.body.appendChild(outlet);
+
+  for await (const location of location$) {
+    console.debug('Location', location.pathname);
+    const pathname = location.pathname;
+    if (pathname === '/') {
+      outlet = replaceNode(outlet, renderRootRoute());
+    }
+    else if (pathname === '/unsupported-platform') {
+      outlet = replaceNode(outlet, renderUnsupportedPlatformNoticeRoute());
+    }
+    else {
+      outlet = replaceNode(outlet, renderNotFoundRoute());
+    }
   }
 }
 
@@ -240,7 +447,7 @@ var htmlPlaceholder = '__placeholder__';
 /**
  * @param {TemplateStringsArray} strings
  * @param {Array<HtmlValue>} values
- * @returns {Node}
+ * @returns {DocumentFragment}
  */
 function html(strings, ...values) {
   const preparedTemplate = htmlCache.get(strings)
@@ -274,6 +481,9 @@ function html(strings, ...values) {
           parentNode.insertBefore(text, node);
         }
         parentNode.removeChild(node);
+      }
+      if (template.content.childNodes.length !== 1) {
+        throw new Error;
       }
       htmlCache.set(strings, template);
       return template;
@@ -317,19 +527,17 @@ function html(strings, ...values) {
     mutateNode();
   }
 
-  return content;
+  return content.childNodes;
 }
 
 /**
  * @param {Node} oldChild
  * @param {Node} newChild
- * @returns {Node}
  */
 function replaceNode(oldChild, newChild) {
-  const parentNode = oldChild.parentNode;
-  if (parentNode instanceof Node && oldChild !== newChild) {
-    parentNode.replaceChild(newChild, oldChild);
-  }
+  const parentOfOldChild = oldChild.parentNode;
+  assertInstanceOf(Node, parentOfOldChild);
+  parentOfOldChild.replaceChild(newChild, oldChild);
   return newChild;
 }
 
@@ -423,10 +631,9 @@ function anchorTo(path) {
       attr.value = path;
       const ownerElement = attr.ownerElement;
       if (ownerElement instanceof Element) {
-        console.dir(ownerElement);
         ownerElement.addEventListener('click', function (event) {
           event.preventDefault();
-          navigateTo(path);
+          navigateAction.push(path);
         });
       }
     }
@@ -502,7 +709,6 @@ function renderTheme(content) {
 
 /**
  * @param {Node} content
- * @returns {Node}
  */
 function renderBasicLayout(content) {
   return renderTypography(renderTheme(html`
@@ -520,9 +726,6 @@ function renderBasicLayout(content) {
 
 // ====== @UiOfRootRoute ======
 
-/**
- * @returns {Node}
- */
 function renderRootRoute() {
   return renderBasicLayout(html`
     <h1>Point of Sales</h1>
@@ -531,9 +734,6 @@ function renderRootRoute() {
 
 // ====== @UiOfUnsupportedPlatformNoticeRoute ======
 
-/**
- * @returns {Node}
- */
 function renderUnsupportedPlatformNoticeRoute() {
   const suggestedBrowsers = [
     { name: 'Google Chrome', url: 'https://www.google.com/chrome/' },
@@ -552,9 +752,6 @@ function renderUnsupportedPlatformNoticeRoute() {
 
 // ====== @UiOfNotFoundRoute ======
 
-/**
- * @returns {Node}
- */
 function renderNotFoundRoute() {
   return renderBasicLayout(html`
     <h1>Halaman tidak ditemukan</h1>
@@ -597,13 +794,45 @@ function isServiceWorkerGlobalScope(maybeServiceWorkerGlobalScope) {
 }
 
 /**
+ * @param {unknown} a
+ * @param {unknown} b
+ * @param {string} [message]
+ * @returns {asserts a equal b}
+ */
+function assertEqual(a, b, message) {
+  if (a !== b) {
+    if (typeof message === 'string') {
+      throw new Error(message);
+    }
+    else {
+      throw new Error(`Expected ${a} to be equal to ${b}`);
+    }
+  }
+}
+
+/**
  * @template T
  * @param {new (...args: Array<unknown>) => T} constructor
  * @param {unknown} instance
+ * @param {string} [message]
  * @returns {asserts instance is T}
  */
-function assertInstanceOf(constructor, instance) {
+function assertInstanceOf(constructor, instance, message) {
   if (!(instance instanceof constructor)) {
-    throw new Error(`Expected instance of ${constructor.name}, got ${instance}`);
+    if (typeof message === 'string') {
+      throw new Error(message);
+    }
+    else {
+      throw new Error(`Expected instance of ${constructor.name}, got ${instance}`);
+    }
   }
 }
+
+function* test() {
+  yield 1;
+  yield '2';
+  yield true;
+  return Symbol();
+}
+
+const t = test();
