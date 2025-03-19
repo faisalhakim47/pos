@@ -211,10 +211,6 @@ function isAsyncGenerator(instance) {
     && Symbol.asyncIterator in instance;
 }
 
-function createAction() {
-  return new ActionIterator();
-}
-
 /**
  * @template T
  */
@@ -297,13 +293,21 @@ async function* combineLatest(...iterables) {
   };
   const promises = iterables.map(next);
   while (true) {
+    if (promises.length === 0) {
+      break;
+    }
     const first = await Promise.race(promises);
     results[first.index] = first.result;
     // @ts-ignore
     yield results.map(function (result) {
       return result.value;
     });
-    promises[first.index] = next(iterables[first.index], first.index);
+    if (first.result.done) {
+      promises.splice(first.index, 1);
+    }
+    else {
+      promises[first.index] = next(iterables[first.index], first.index);
+    }
   }
 }
 
@@ -392,10 +396,32 @@ async function* startWith(iterable, initialValue) {
   }
 }
 
+/**
+ * @template T
+ * @param {...T} args
+ * @returns {DataIterable<T>}
+ */
+async function* anyToAsyncGenerator(...args) {
+  for (const arg of args) {
+    if (isAsyncGenerator(arg)) {
+      for await (const value of arg) {
+        // @ts-ignore
+        yield value;
+      }
+    }
+    else if (arg instanceof Promise) {
+      yield await arg;
+    }
+    else {
+      yield arg;
+    }
+  }
+}
+
 // ====== @WebRouter ======
 
 /** @type {ActionIterator<string>} */
-var navigateAction = createAction();
+var navigateAction = new ActionIterator();
 
 async function initRouter() {
   const navigationAction$ = map(navigateAction.iterate(), function (path) {
@@ -416,7 +442,7 @@ async function initRouter() {
   document.body.appendChild(outlet);
 
   for await (const location of location$) {
-    console.debug('Location', location.pathname);
+    console.debug('Location', location.pathname, outlet, outlet.parentNode);
     const pathname = location.pathname;
     if (pathname === '/') {
       outlet = replaceNode(outlet, renderRootRoute());
@@ -432,44 +458,64 @@ async function initRouter() {
 
 // ====== @UiLibrary ======
 
-/**
- * @typedef {undefined|null|void|string|number|Node} HtmlStaticValue
- */
+/** @typedef {undefined|null|void|string|number|Node} HtmlStaticValue */
+/** @typedef {DataIterable<HtmlStaticValue>} HtmlIterableValue */
+/** @typedef {(node: Node) => HtmlStaticValue|HtmlIterableValue} HtmlOperatorValue */
+/** @typedef {HtmlStaticValue|HtmlIterableValue|HtmlOperatorValue} HtmlValue */
 
 /**
- * @typedef {HtmlStaticValue|((node: Node) => HtmlStaticValue)} HtmlValue
+ * @typedef {object} PreparedHtml
+ * @property {HTMLTemplateElement} template
+ * @property {Array<Array<Array<number>>>} nodeRoutes
  */
 
-/** @type {Map<TemplateStringsArray, HTMLTemplateElement>} */
+/** @type {Map<TemplateStringsArray, PreparedHtml>} */
 var htmlCache = new Map();
-var htmlPlaceholder = '__placeholder__';
+var htmlPlaceholder = '\u2753';
 
 /**
  * @param {TemplateStringsArray} strings
  * @param {Array<HtmlValue>} values
- * @returns {DocumentFragment}
+ * @returns {Node}
  */
 function html(strings, ...values) {
   const preparedTemplate = htmlCache.get(strings)
     ?? (function () {
       const template = document.createElement('template');
-      template.innerHTML = strings.join(htmlPlaceholder);
-      const unpreparedWalker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
-      /** @type {Map<Node, Array<Text>>} */
+      const stringsWithPlaceholders = strings
+        .map(function (string, index, strings) {
+          const lastIndex = strings.length - 1;
+          return `${string}${index === lastIndex ? '' : `${htmlPlaceholder}${index}`}`;
+        })
+        .join('')
+        .trim();
+      template.innerHTML = stringsWithPlaceholders;
+
+      if (template.content.childNodes.length !== 1) {
+        console.error('html', 'template', stringsWithPlaceholders);
+        throw new Error('html function supports only one root element');
+      }
+
+      const rootNode = template.content.childNodes[0];
+
+      const preparationWalker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+      /** @type {Map<Node, Array<Node>>} */
       const nodeReplaces = new Map();
-      while (unpreparedWalker.nextNode()) {
-        const node = unpreparedWalker.currentNode;
-        const strings = node.nodeValue.split(htmlPlaceholder);
-        const lastStringIndex = strings.length - 1;
+      while (preparationWalker.nextNode()) {
+        const node = preparationWalker.currentNode;
+        const htmlPlaceholderRegExp = new RegExp(`${htmlPlaceholder}\\d*`, 'g');
+        const textValues = node.nodeValue.split(htmlPlaceholderRegExp);
+        const lastStringIndex = textValues.length - 1;
+        /** @type {Array<Node>} */
         const preparedTexts = [];
-        for (const [index, staticString] of strings.entries()) {
-          const trimmedStaticString = staticString.trim();
-          if (trimmedStaticString.length) {
-            const trimmedStaticText = document.createTextNode(trimmedStaticString);
+        for (const [index, staticTextValue] of textValues.entries()) {
+          const trimmedStaticTextValue = staticTextValue.trim();
+          if (trimmedStaticTextValue.length) {
+            const trimmedStaticText = document.createTextNode(trimmedStaticTextValue);
             preparedTexts.push(trimmedStaticText);
           }
           if (index < lastStringIndex) {
-            const dynamicText = document.createTextNode(htmlPlaceholder);
+            const dynamicText = document.createComment(htmlPlaceholder);
             preparedTexts.push(dynamicText);
           }
         }
@@ -482,52 +528,140 @@ function html(strings, ...values) {
         }
         parentNode.removeChild(node);
       }
-      if (template.content.childNodes.length !== 1) {
-        throw new Error;
-      }
-      htmlCache.set(strings, template);
-      return template;
-    })();
 
-  const content = document.importNode(preparedTemplate.content, true);
-
-  const contentWalker = document.createTreeWalker(content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      return ((node instanceof Text && node.nodeValue === htmlPlaceholder) || node instanceof Element)
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT;
-    },
-  });
-
-  let index = 0;
-  const nodeMutations = [];
-  while (contentWalker.nextNode() instanceof Node) {
-    const node = contentWalker.currentNode;
-    const value = values[index];
-    if (node instanceof Text) {
-      nodeMutations.push(function () {
-        replaceNode(node, applyHtmlNodeInterpolation(node, value));
+      const traceWalker = document.createTreeWalker(rootNode, NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_ELEMENT, {
+        acceptNode(node) {
+          return ((node instanceof Element) || (node instanceof Text && node.nodeValue.startsWith(htmlPlaceholder)))
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        },
       });
-      index++;
-    }
-    else if (node instanceof Element) {
-      for (let attrIndex = 0; attrIndex < node.attributes.length; attrIndex++) {
-        const attr = node.attributes.item(attrIndex);
-        if (attr.value === htmlPlaceholder) {
-          nodeMutations.push(function () {
-            replaceAttr(attr, applyHtmlAttrInterpolation(attr, value));
-          });
-          index++;
+      /** @type {Array<Node>} */
+      const palceholderNodes = [];
+      while (traceWalker.nextNode()) {
+        const node = traceWalker.currentNode;
+        if (node instanceof Text) {
+          palceholderNodes.push(node);
+        }
+        else if (node instanceof Element) {
+          const attrLength = node.attributes.length;
+          for (let attrIndex = 0; attrIndex < attrLength; attrIndex++) {
+            const attr = node.attributes.item(attrIndex);
+            if (attr.value.startsWith(htmlPlaceholder)) {
+              palceholderNodes.push(attr);
+            }
+          }
         }
       }
+
+      /** @type {Array<Array<Array<number>>>} */
+      const nodeRoutes = [];
+      for (const palceholderNode of palceholderNodes) {
+        const nodeRoute = [];
+        let iNode = palceholderNode;
+        while (iNode !== rootNode) {
+          if (iNode instanceof Attr) {
+            const ownerElement = iNode.ownerElement;
+            assertInstanceOf(Element, ownerElement);
+            nodeRoute.push([
+              Node.ATTRIBUTE_NODE,
+              Array.prototype.indexOf.call(ownerElement.attributes, iNode),
+            ]);
+            iNode = ownerElement;
+          }
+          else if (iNode instanceof Node) {
+            const parentNode = iNode.parentNode;
+            nodeRoute.push([
+              Node.ELEMENT_NODE,
+              Array.prototype.indexOf.call(parentNode.childNodes, iNode),
+            ]);
+            iNode = parentNode;
+          }
+          else {
+            throw new Error('Invalid node type');
+          }
+        }
+        nodeRoutes.push(nodeRoute);
+      }
+
+      /** @type {PreparedHtml} */
+      const preparedHtmlTemplate = {
+        nodeRoutes,
+        template,
+      };
+
+      htmlCache.set(strings, preparedHtmlTemplate);
+
+      console.debug('html', 'template', preparedHtmlTemplate.template.innerHTML, preparedHtmlTemplate.nodeRoutes);
+
+      return preparedHtmlTemplate;
+    })();
+
+  const content = document.importNode(preparedTemplate.template.content, true);
+  const rootNode = content.childNodes[0];
+
+  let valueIndex = 0;
+  /** @type {Array<Array<Node|HtmlValue>>} */
+  const nodeInterpolations = [];
+  for (const nodeRoute of preparedTemplate.nodeRoutes) {
+    let node = rootNode;
+    for (const [nodeType, attrIndex] of nodeRoute) {
+      const value = values[valueIndex++];
+      if (nodeType === Node.ATTRIBUTE_NODE) {
+        assertInstanceOf(Element, node);
+        const placeholderAttr = node.attributes.item(attrIndex);
+        nodeInterpolations.push([placeholderAttr, value]);
+        break;
+      }
+      else if (nodeType === Node.ELEMENT_NODE) {
+        const childNode = node.childNodes.item(attrIndex);
+        if (childNode instanceof Comment) {
+          nodeInterpolations.push([childNode, value]);
+          break;
+        }
+        node = childNode;
+      }
+      else {
+        throw new Error('Invalid node type');
+      }
     }
   }
 
-  for (const mutateNode of nodeMutations) {
-    mutateNode();
+  for (const mutateNode of nodeInterpolations) {
   }
 
-  return content.childNodes;
+  // const contentWalker = document.createTreeWalker(content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+  //   acceptNode(node) {
+  //     return ((node instanceof Element) || (node instanceof Text && node.nodeValue === htmlPlaceholder))
+  //       ? NodeFilter.FILTER_ACCEPT
+  //       : NodeFilter.FILTER_REJECT;
+  //   },
+  // });
+
+  // let index = 0;
+  // while (contentWalker.nextNode() instanceof Node) {
+  //   const node = contentWalker.currentNode;
+  //   const value = values[index];
+  //   if (node instanceof Text) {
+  //     nodeMutations.push(function () {
+  //       replaceNode(node, applyHtmlNodeInterpolation(node, value));
+  //     });
+  //     index++;
+  //   }
+  //   else if (node instanceof Element) {
+  //     for (let attrIndex = 0; attrIndex < node.attributes.length; attrIndex++) {
+  //       const attr = node.attributes.item(attrIndex);
+  //       if (attr.value === htmlPlaceholder) {
+  //         nodeMutations.push(function () {
+  //           replaceAttr(attr, applyHtmlAttrInterpolation(attr, value));
+  //         });
+  //         index++;
+  //       }
+  //     }
+  //   }
+  // }
+
+  return content.childNodes[0];
 }
 
 /**
@@ -586,16 +720,16 @@ function replaceAttr(oldAttr, newAttr) {
  * @param {Attr} attr
  * @param {HtmlValue} value
  */
-function applyHtmlAttrInterpolation(attr, value) {
+function applyHtmlAttrOperation(attr, value) {
   if (typeof value === 'string') {
     attr.value = value;
     return attr;
   }
   if (typeof value === 'undefined' || value === null) {
-    return applyHtmlAttrInterpolation(attr, '');
+    return applyHtmlAttrOperation(attr, '');
   }
   if (typeof value === 'function') {
-    return applyHtmlAttrInterpolation(attr, value(attr));
+    return applyHtmlAttrOperation(attr, value(attr));
   }
   throw new Error('Invalid HtmlAttrInterpolation value', {
     cause: value,
@@ -637,6 +771,7 @@ function anchorTo(path) {
         });
       }
     }
+    return attr;
   };
 }
 
@@ -647,24 +782,26 @@ function anchorTo(path) {
  */
 function renderTypography(content) {
   return html`
-    <style>
-      html {
-        font-size: 16px;
-        font-family: sans-serif;
-      }
-      h1 {
-        font-size: 1.5em;
-        margin: 1.5em 0px 1em;
-      }
-      p {
-        line-height: 1.4;
-        margin: 0.75em 0px;
-      }
-      ul > li {
-        margin: 0.5em 0px;
-      }
-    </style>
-    ${content}
+    <div class="app-typography">
+      <style>
+        html {
+          font-size: 16px;
+          font-family: sans-serif;
+        }
+        h1 {
+          font-size: 1.5em;
+          margin: 1.5em 0px 1em;
+        }
+        p {
+          line-height: 1.4;
+          margin: 0.75em 0px;
+        }
+        ul > li {
+          margin: 0.5em 0px;
+        }
+      </style>
+      ${content}
+    </div>
   `;
 }
 
@@ -675,33 +812,35 @@ function renderTypography(content) {
  */
 function renderTheme(content) {
   return html`
-    <style>
-      @media (prefers-color-scheme: light) {
-        html, body {
-          background-color: azure;
-          color: black;
+    <div class="app-theme">
+      <style>
+        @media (prefers-color-scheme: light) {
+          html, body {
+            background-color: azure;
+            color: black;
+          }
+          a {
+            color: royalblue;
+          }
+          a:visited {
+            color: slateblue;
+          }
         }
-        a {
-          color: royalblue;
+        @media (prefers-color-scheme: dark) {
+          html, body {
+            background-color: #111111;
+            color: linen;
+          }
+          a {
+            color: lightblue;
+          }
+          a:visited {
+            color: thistle;
+          }
         }
-        a:visited {
-          color: slateblue;
-        }
-      }
-      @media (prefers-color-scheme: dark) {
-        html, body {
-          background-color: #111111;
-          color: linen;
-        }
-        a {
-          color: lightblue;
-        }
-        a:visited {
-          color: thistle;
-        }
-      }
-    </style>
-    ${content}
+      </style>
+      ${content}
+    </div>
   `;
 }
 
@@ -712,14 +851,16 @@ function renderTheme(content) {
  */
 function renderBasicLayout(content) {
   return renderTypography(renderTheme(html`
-    <style>
-      .basic-layout {
-        max-width: 720px;
-        margin: 0 auto;
-      }
-    </style>
-    <div class="basic-layout">
-      ${content}
+    <div class="app-basic-layout">
+      <style>
+        .basic-layout {
+          max-width: 720px;
+          margin: 0 auto;
+        }
+      </style>
+      <div class="basic-layout">
+        ${content}
+      </div>
     </div>
   `));
 }
@@ -728,7 +869,9 @@ function renderBasicLayout(content) {
 
 function renderRootRoute() {
   return renderBasicLayout(html`
-    <h1>Point of Sales</h1>
+    <div class="roor-route">
+      <h1>Point of Sales</h1>
+    </div>
   `);
 }
 
@@ -740,13 +883,15 @@ function renderUnsupportedPlatformNoticeRoute() {
     { name: 'Mozilla Firefox', url: 'https://www.mozilla.org/firefox/' },
   ];
   return renderBasicLayout(html`
-    <h1>Browser anda tidak didukung</h1>
-    <p>Beberapa fitur pada browser anda tidak tersedia. Silahkan perbarui browser atau gunakan browser standard terbaru berikut:</p>
-    <ul>
-      ${staticList(suggestedBrowsers, (browser) => html`
-        <li><a href=${browser.url} target="_blank">${browser.name}</a></li>
-      `)}
-    </ul>
+    <div class="unsupported-platform-notice-route">
+      <h1>Browser anda tidak didukung</h1>
+      <p>Beberapa fitur pada browser anda tidak tersedia. Silahkan perbarui browser atau gunakan browser standard terbaru berikut:</p>
+      <ul>
+        ${staticList(suggestedBrowsers, (browser) => html`
+          <li><a href=${browser.url} target="_blank">${browser.name}</a></li>
+        `)}
+      </ul>
+    </div>
   `);
 }
 
@@ -754,9 +899,11 @@ function renderUnsupportedPlatformNoticeRoute() {
 
 function renderNotFoundRoute() {
   return renderBasicLayout(html`
-    <h1>Halaman tidak ditemukan</h1>
-    <p>Alamat yang anda kunjungi tidak ditemukan.</p>
-    <p><a href="${anchorTo('/')}">Kembali ke halaman utama</a></p>
+    <div class="not-found-route">
+      <h1>Halaman tidak ditemukan</h1>
+      <p>Alamat yang anda kunjungi tidak ditemukan.</p>
+      <p><a href="${anchorTo('/')}">Kembali ke halaman utama</a></p>
+    </div>
   `);
 }
 
