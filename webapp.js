@@ -75,6 +75,7 @@ if (isWindow(self)) {
 
 // ====== @Initialization ======
 
+
 if (isWindow(self)) {
   (async function () {
     for await (const _ of once(iterableEvents(self, 'load'))) {
@@ -214,10 +215,12 @@ function isAsyncGenerator(instance) {
 /**
  * @template T
  */
-class ActionIterator {
+class SubjectIterator {
   /** @type {(value: T) => void} */
   #resolve;
 
+  /** @type {T} */
+  #lastValue;
   /**
    * @param {T} value
    */
@@ -229,16 +232,20 @@ class ActionIterator {
    * @returns {DataIterable<T>}
    */
   async *iterate() {
+    if (this.#lastValue !== undefined) {
+      yield this.#lastValue;
+    }
     while (true) {
       /** @type {PromiseWithResolvers<T>} */
       const { promise, resolve } = Promise.withResolvers();
       this.#resolve = resolve;
-      yield await promise;
+      this.#lastValue = yield await promise;
     }
   }
 }
 
 /**
+ * @source
  * @param {EventTarget} eventTarget
  * @param {string} eventName
  * @returns {DataIterable<Event>}
@@ -263,16 +270,50 @@ async function* iterableEvents(eventTarget, eventName) {
 }
 
 /**
+ * @template TIn
+ */
+class Pipe {
+  /**
+   * @template T
+   * @param {DataIterable<T>} iterator
+   */
+  static inlet(iterator) {
+    const pipe = new Pipe(iterator);
+    return pipe;
+  }
+
+  #input;
+
+  /**
+   * @param {DataIterable<TIn>} input
+   */
+  constructor(input) {
+    this.#input = input;
+  }
+
+  /**
+   * @template TOut
+   * @param {(input: DataIterable<TIn>) => DataIterable<TOut>} operator
+   * @returns {Pipe<TOut>}
+   */
+  pipe(operator) {
+    const output = operator(this.#input);
+    return new Pipe(output);
+  }
+}
+
+/**
  * @template T
  * @typedef {T extends DataIterable<infer U> ? U : never} TypeOfDataIterable
  */
 
 /**
+ * @operator
  * @template {Array<DataIterable<unknown>>} T
  * @param {T} iterables
  * @returns {DataIterable<{ [K in keyof T]: TypeOfDataIterable<T[K]> }>}
  */
-async function* combineLatest(...iterables) {
+async function* combineLatest(iterables) {
   const results = await Promise.all(iterables.map(function (iterable) {
     return iterable.next();
   }));
@@ -340,9 +381,9 @@ async function* map(iterable, mapper) {
 /**
  * @template {Array<DataIterable<unknown>>} T
  * @param {T} iterables
- * @returns {DataIterable<TypeOfDataIterable<T[number]>>}
+ * @returns {DataIterable<[number, TypeOfDataIterable<T[number]>]>}
  */
-async function* merge(...iterables) {
+async function* merge(iterables) {
   /**
    * @template T
    * @param {DataIterable<T>} iterable
@@ -356,13 +397,12 @@ async function* merge(...iterables) {
   };
   const promises = iterables.map(next);
   while (true) {
-    console.debug('merge', promises);
     if (promises.length === 0) {
       break;
     }
     const first = await Promise.race(promises);
     // @ts-ignore
-    yield first.result.value;
+    yield [first.index, first.result.value];
     if (first.result.done) {
       promises.splice(first.index, 1);
     } else {
@@ -418,20 +458,31 @@ async function* anyToAsyncGenerator(...args) {
   }
 }
 
+/**
+ * @returns {DataIterable<Window>}
+ */
+async function* takeWindow() {
+  if (isWindow(self)) {
+    yield self;
+  }
+}
+
+takeWindow();
+
 // ====== @WebRouter ======
 
-/** @type {ActionIterator<string>} */
-var navigateAction = new ActionIterator();
+/** @type {SubjectIterator<string>} */
+var navigateAction = new SubjectIterator();
 
 async function initRouter() {
   const navigationAction$ = map(navigateAction.iterate(), function (path) {
     history.pushState(null, '', path);
   });
 
-  const navigationChange$ = merge(
+  const navigationChange$ = merge([
     navigationAction$,
     iterableEvents(window, 'popstate'),
-  );
+  ]);
 
   const location$ = startWith(map(navigationChange$, function () {
     return location;
@@ -476,9 +527,9 @@ var htmlPlaceholder = '\u2753';
 /**
  * @param {TemplateStringsArray} strings
  * @param {Array<HtmlValue>} values
- * @returns {Node}
+ * @returns {DataIterable<Node>}
  */
-function html(strings, ...values) {
+async function* html(strings, ...values) {
   const preparedTemplate = htmlCache.get(strings)
     ?? (function () {
       const template = document.createElement('template');
@@ -601,8 +652,8 @@ function html(strings, ...values) {
   const rootNode = content.childNodes[0];
 
   let valueIndex = 0;
-  /** @type {Array<Array<Node|HtmlValue>>} */
-  const nodeInterpolations = [];
+  /** @type {Array<Array<HtmlValue>>} */
+  const interpolations = [];
   for (const nodeRoute of preparedTemplate.nodeRoutes) {
     let node = rootNode;
     for (const [nodeType, attrIndex] of nodeRoute) {
@@ -610,13 +661,13 @@ function html(strings, ...values) {
       if (nodeType === Node.ATTRIBUTE_NODE) {
         assertInstanceOf(Element, node);
         const placeholderAttr = node.attributes.item(attrIndex);
-        nodeInterpolations.push([placeholderAttr, value]);
+        interpolations.push([placeholderAttr, value]);
         break;
       }
       else if (nodeType === Node.ELEMENT_NODE) {
         const childNode = node.childNodes.item(attrIndex);
         if (childNode instanceof Comment) {
-          nodeInterpolations.push([childNode, value]);
+          interpolations.push([childNode, value]);
           break;
         }
         node = childNode;
@@ -627,41 +678,48 @@ function html(strings, ...values) {
     }
   }
 
-  for (const mutateNode of nodeInterpolations) {
+  const iterators = interpolations.map(function ([, value]) {
+    return anyToAsyncGenerator(value);
+  });
+
+  for await (const first of once(combineLatest(iterators))) {
+    for (const [index, newValue] of first.entries()) {
+      const oldNode = interpolations[index][0];
+      assertInstanceOf(Node, oldNode);
+      htmlInterpolation(oldNode, newValue);
+    }
   }
 
-  // const contentWalker = document.createTreeWalker(content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-  //   acceptNode(node) {
-  //     return ((node instanceof Element) || (node instanceof Text && node.nodeValue === htmlPlaceholder))
-  //       ? NodeFilter.FILTER_ACCEPT
-  //       : NodeFilter.FILTER_REJECT;
-  //   },
-  // });
+  yield rootNode;
 
-  // let index = 0;
-  // while (contentWalker.nextNode() instanceof Node) {
-  //   const node = contentWalker.currentNode;
-  //   const value = values[index];
-  //   if (node instanceof Text) {
-  //     nodeMutations.push(function () {
-  //       replaceNode(node, applyHtmlNodeInterpolation(node, value));
-  //     });
-  //     index++;
-  //   }
-  //   else if (node instanceof Element) {
-  //     for (let attrIndex = 0; attrIndex < node.attributes.length; attrIndex++) {
-  //       const attr = node.attributes.item(attrIndex);
-  //       if (attr.value === htmlPlaceholder) {
-  //         nodeMutations.push(function () {
-  //           replaceAttr(attr, applyHtmlAttrInterpolation(attr, value));
-  //         });
-  //         index++;
-  //       }
-  //     }
-  //   }
-  // }
+  for await (const [index, newValue] of merge(iterators)) {
+    const oldNode = interpolations[index][0];
+    assertInstanceOf(Node, oldNode);
+    htmlInterpolation(oldNode, newValue);
+  }
+}
 
-  return content.childNodes[0];
+/**
+ * @param {Node} node
+ * @param {HtmlValue} newValue
+ */
+function htmlInterpolation(node, newValue) {
+  assertInstanceOf(Node, node);
+  if (newValue instanceof Node) {
+    if (newValue !== node) {
+      const oldNodeParent = node.parentNode;
+      oldNodeParent.replaceChild(newValue, node);
+    }
+  }
+  else {
+    const evaluatedNewValue = typeof newValue === 'function'
+      ? newValue(node)
+      : newValue;
+    if (isAsyncGenerator(evaluatedNewValue)) {
+      throw new Error('Nested dynamic interpolation is not supported yet.');
+    }
+    node.nodeValue = `${evaluatedNewValue}`;
+  }
 }
 
 /**
@@ -738,19 +796,59 @@ function applyHtmlAttrOperation(attr, value) {
 
 /**
  * @template T
- * @param {Array<T>} items
- * @param {(item: T, index: number, items: Array<T>) => Node} contentMapper
- * @returns {(node: Node) => Node}
+ * @param {DataIterable<Array<T>>} items$
+ * @param {(item: T, index: number) => string} keyMapper
+ * @param {(item: DataIterable<T>, index: number) => DataIterable<Node>} itemView
+ * @returns {DataIterable<Node>}
  */
-function staticList(items, contentMapper) {
-  return function () {
-    const fragment = document.createDocumentFragment();
+async function* list(items$, keyMapper, itemView) {
+  const endOfList = document.createComment('');
+  yield endOfList;
+  const beginOfList = document.createComment('');
+  const contentNode = endOfList.parentNode;
+  assertInstanceOf(Node, contentNode);
+  contentNode.insertBefore(beginOfList, endOfList);
+
+  /** @type {Map<string, { index: number, item: T, itemSubject: SubjectIterator<T> }>} */
+  let currentItemMap = new Map();
+  /** @type {Set<string>} */
+  let currentItemKeySet = new Set();
+
+  for await (const items of items$) {
+  /** @type {Map<string, { index: number, item: T, itemSubject: SubjectIterator<T> }>} */
+    const newItemMap = new Map();
+    /** @type {Set<string>} */
+    const newItemKeySet = new Set();
+
     for (const [index, item] of items.entries()) {
-      const content = contentMapper(item, index, items);
-      fragment.appendChild(content);
+      const key = keyMapper(item, items.indexOf(item));
+      /** @type {SubjectIterator<T>} */
+      const itemSubject = new SubjectIterator();
+      newItemMap.set(key, { index, item, itemSubject: new SubjectIterator() });
+      newItemKeySet.add(key);
     }
-    return fragment;
-  };
+
+    const addedItemKeySet = newItemKeySet.difference(currentItemKeySet);
+    const updatedItemKeySet = newItemKeySet.intersection(currentItemKeySet);
+    const removedItemKeySet = currentItemKeySet.difference(newItemKeySet);
+
+    /** @type {Array<DataIterable<Node>>} */
+    const activeItem$s = [];
+
+    for (const key of addedItemKeySet) {
+      const { index, item } = newItemMap.get(key);
+      const itemSubject = newItemMap.get(key).itemSubject;
+      itemSubject.push(item);
+      const itemView$ = itemView(itemSubject.iterate(), index);
+      activeItem$s.push(itemView$);
+    }
+
+    for (const key of updatedItemKeySet) {
+      const { itemSubject } = currentItemMap.get(key);
+      const { item } = newItemMap.get(key);
+      itemSubject.push(item);
+    }
+  }
 }
 
 // ====== @UiRouter ======
@@ -778,7 +876,8 @@ function anchorTo(path) {
 // ====== @UiOfTypography ======
 
 /**
- * @param {Node} content 
+ * @param {DataIterable<Node>} content
+ * @returns {DataIterable<Node>}
  */
 function renderTypography(content) {
   return html`
@@ -808,7 +907,8 @@ function renderTypography(content) {
 // ====== @UiOfTheme ======
 
 /**
- * @param {Node} content
+ * @param {DataIterable<Node>} content
+ * @returns {DataIterable<Node>}
  */
 function renderTheme(content) {
   return html`
@@ -847,7 +947,8 @@ function renderTheme(content) {
 // ====== @UiOfBasicLayout ======
 
 /**
- * @param {Node} content
+ * @param {DataIterable<Node>} content
+ * @returns {DataIterable<Node>}
  */
 function renderBasicLayout(content) {
   return renderTypography(renderTheme(html`
@@ -887,7 +988,7 @@ function renderUnsupportedPlatformNoticeRoute() {
       <h1>Browser anda tidak didukung</h1>
       <p>Beberapa fitur pada browser anda tidak tersedia. Silahkan perbarui browser atau gunakan browser standard terbaru berikut:</p>
       <ul>
-        ${staticList(suggestedBrowsers, (browser) => html`
+        ${list(suggestedBrowsers, (browser) => html`
           <li><a href=${browser.url} target="_blank">${browser.name}</a></li>
         `)}
       </ul>
@@ -974,12 +1075,3 @@ function assertInstanceOf(constructor, instance, message) {
     }
   }
 }
-
-function* test() {
-  yield 1;
-  yield '2';
-  yield true;
-  return Symbol();
-}
-
-const t = test();

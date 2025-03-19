@@ -13,8 +13,8 @@
       "DOM",
       "DOM.Iterable",
       "DOM.AsyncIterable",
-      "ES2024",
-      "webworker"
+      "ESNext",
+      "WebWorker"
     ],
     "paths": {}
   },
