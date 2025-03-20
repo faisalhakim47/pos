@@ -809,44 +809,57 @@ async function* list(items$, keyMapper, itemView) {
   assertInstanceOf(Node, contentNode);
   contentNode.insertBefore(beginOfList, endOfList);
 
-  /** @type {Map<string, { index: number, item: T, itemSubject: SubjectIterator<T> }>} */
-  let currentItemMap = new Map();
-  /** @type {Set<string>} */
-  let currentItemKeySet = new Set();
+  /** @type {Map<string, { key: string, itemView$: DataIterable<Node>, itemSubject: SubjectIterator<T>, removeSubject: SubjectIterator<void> }>} */
+  let currentListItemMap = new Map();
 
   for await (const items of items$) {
-  /** @type {Map<string, { index: number, item: T, itemSubject: SubjectIterator<T> }>} */
-    const newItemMap = new Map();
-    /** @type {Set<string>} */
-    const newItemKeySet = new Set();
-
-    for (const [index, item] of items.entries()) {
-      const key = keyMapper(item, items.indexOf(item));
-      /** @type {SubjectIterator<T>} */
-      const itemSubject = new SubjectIterator();
-      newItemMap.set(key, { index, item, itemSubject: new SubjectIterator() });
-      newItemKeySet.add(key);
+    /** @type {Array<ValueOfMap<currentListItemMap>>} */
+    const newListItems = [];
+    /** @type {Map<string, ValueOfMap<currentListItemMap>>} */
+    const newListItemMap = new Map();
+    for (const [itemIndex, item] of items.entries()) {
+      const newItemKey = keyMapper(item, itemIndex);
+      const existingItem = currentListItemMap.get(newItemKey);
+      if (existingItem) {
+        existingItem.itemSubject.push(item);
+        newListItems.push(existingItem);
+      }
+      else {
+        const itemSubject = new SubjectIterator();
+        itemSubject.push(item);
+        const itemView$ = itemView(itemSubject.iterate(), itemIndex);
+        newListItems.push({
+          key: newItemKey,
+          itemView$,
+          itemSubject,
+          removeSubject: new SubjectIterator(),
+        });
+      }
+      newListItemMap.set(newItemKey, newListItems[itemIndex]);
     }
 
-    const addedItemKeySet = newItemKeySet.difference(currentItemKeySet);
-    const updatedItemKeySet = newItemKeySet.intersection(currentItemKeySet);
-    const removedItemKeySet = currentItemKeySet.difference(newItemKeySet);
-
-    /** @type {Array<DataIterable<Node>>} */
-    const activeItem$s = [];
-
-    for (const key of addedItemKeySet) {
-      const { index, item } = newItemMap.get(key);
-      const itemSubject = newItemMap.get(key).itemSubject;
-      itemSubject.push(item);
-      const itemView$ = itemView(itemSubject.iterate(), index);
-      activeItem$s.push(itemView$);
+    for (const [key, existingItem] of currentListItemMap) {
+      if (!newListItemMap.has(key)) {
+        existingItem.removeSubject.push();
+      }
     }
 
-    for (const key of updatedItemKeySet) {
-      const { itemSubject } = currentItemMap.get(key);
-      const { item } = newItemMap.get(key);
-      itemSubject.push(item);
+    const initItemViews$ = once(combineLatest(newListItems.map(function (item) {
+      return item.itemView$;
+    })));
+
+    for await (const itemViews of initItemViews$) {
+      const lastIndexOfItemViews = itemViews.length - 1;
+      for (let index = lastIndexOfItemViews; index >= 0; index--) {
+        const itemView = itemViews[index];
+        if (index === lastIndexOfItemViews) {
+          contentNode.insertBefore(itemView, endOfList);
+        }
+        else {
+          const nextNode = itemViews[index + 1];
+          contentNode.insertBefore(itemView, nextNode);
+        }
+      }
     }
   }
 }
@@ -1011,6 +1024,11 @@ function renderNotFoundRoute() {
 // ====== @GeneralTypeAssertionFunctions ======
 
 /**
+ * @template T
+ * @typedef {T extends Map<unknown, infer V> ? V : never} ValueOfMap
+ */
+
+/**
  * Check Window instance without referencing Window object.
  *
  * @param {unknown} maybeWindow
@@ -1039,23 +1057,6 @@ function isServiceWorkerGlobalScope(maybeServiceWorkerGlobalScope) {
     && maybeServiceWorkerGlobalScope !== null
     && 'ServiceWorkerGlobalScope' in maybeServiceWorkerGlobalScope
     && maybeServiceWorkerGlobalScope.ServiceWorkerGlobalScope === maybeServiceWorkerGlobalScope;
-}
-
-/**
- * @param {unknown} a
- * @param {unknown} b
- * @param {string} [message]
- * @returns {asserts a equal b}
- */
-function assertEqual(a, b, message) {
-  if (a !== b) {
-    if (typeof message === 'string') {
-      throw new Error(message);
-    }
-    else {
-      throw new Error(`Expected ${a} to be equal to ${b}`);
-    }
-  }
 }
 
 /**
