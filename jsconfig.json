@@ -16,7 +16,9 @@
       "ESNext",
       "WebWorker"
     ],
-    "paths": {}
+    "paths": {
+      "webapp/*": ["./webapp/*"],
+    }
   },
   "include": [
     "**/*.js"

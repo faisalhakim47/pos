@@ -62,32 +62,23 @@ async function importSqlite3InitModule() {
 
 // ====== @PlatformFeatureSupportCheck ======
 
-if (isWindow(self)) {
-  if (!('serviceWorker' in self.navigator)) {
-    (async function () {
-      for await (const _ of once(iterableEvents(self, 'load'))) {
-        navigateAction.push('/unsupported-platform');
-      }
-      throw new Error('Service worker is not supported');
-    })();
+if (isWindow(self) && !('serviceWorker' in self.navigator)) (async function () {
+  for await (const _ of once(iterableEvents(self, 'load'))) {
+    navigateAction.push('/unsupported-platform');
   }
-}
+  throw new Error('Service worker is not supported');
+})();
 
 // ====== @Initialization ======
 
 
-if (isWindow(self)) {
-  (async function () {
-    for await (const _ of once(iterableEvents(self, 'load'))) {
-      initRouter();
-      registerServiceWorker();
-    }
-  })();
-}
+if (isWindow(self)) (async function () {
+  for await (const _ of iterateServiceWorkerRegistration()) { }
+})();
 
-else if (isServiceWorkerGlobalScope(self)) {
+else if (isServiceWorkerGlobalScope(self)) (async function () {
   initServiceWorker(self);
-}
+})();
 
 // ====== @TheDatabase ======
 
@@ -136,35 +127,37 @@ function deserialize(data) {
 
 // ====== @ServiceWorker ======
 
-async function registerServiceWorker() {
-  window.navigator.serviceWorker.register('./webapp.js');
+async function* iterateServiceWorkerRegistration() {
 
-  window.navigator.serviceWorker.addEventListener('message', async function (event) {
-    console.debug('ServiceWorkerContainer', 'message', event);
-  });
 
-  window.navigator.serviceWorker.addEventListener('messageerror', async function (event) {
-    console.debug('ServiceWorkerContainer', 'messageerror', event);
-  });
+  // window.navigator.serviceWorker.register('./webapp.js');
 
-  window.navigator.serviceWorker.addEventListener('controllerchange', async function (event) {
-    console.debug('ServiceWorkerContainer', 'controllerchange', event);
-    // window.location.reload();
-  });
+  // window.navigator.serviceWorker.addEventListener('message', async function (event) {
+  //   console.debug('ServiceWorkerContainer', 'message', event);
+  // });
 
-  const { active: serviceWorker } = await window.navigator.serviceWorker.register('./webapp.js', {
-    scope: '/',
-    type: 'module',
-    updateViaCache: 'all',
-  });
+  // window.navigator.serviceWorker.addEventListener('messageerror', async function (event) {
+  //   console.debug('ServiceWorkerContainer', 'messageerror', event);
+  // });
 
-  console.debug('Window', 'load', serviceWorker);
+  // window.navigator.serviceWorker.addEventListener('controllerchange', async function (event) {
+  //   console.debug('ServiceWorkerContainer', 'controllerchange', event);
+  //   // window.location.reload();
+  // });
 
-  serviceWorker.addEventListener('statechange', async function (event) {
-    console.debug('ServiceWorker', 'statechange', event);
-  });
+  // const { active: serviceWorker } = await window.navigator.serviceWorker.register('./webapp.js', {
+  //   scope: '/',
+  //   type: 'module',
+  //   updateViaCache: 'all',
+  // });
 
-  serviceWorker.postMessage({ method: 'version' });
+  // console.debug('Window', 'load', serviceWorker);
+
+  // serviceWorker.addEventListener('statechange', async function (event) {
+  //   console.debug('ServiceWorker', 'statechange', event);
+  // });
+
+  // serviceWorker.postMessage({ method: 'version' });
 }
 
 /**
@@ -369,12 +362,21 @@ async function* filter(iterable, predicate) {
 /**
  * @template TIn, TOut
  * @param {DataIterable<TIn>} iterable
- * @param {(value: TIn) => TOut|Promise<TOut>} mapper
+ * @param {(value: TIn) => TOut|Promise<TOut>|DataIterable<TOut>} mapper
  * @returns {DataIterable<TOut>}
  */
 async function* map(iterable, mapper) {
   for await (const value of iterable) {
-    yield await mapper(value);
+    const mappedValue = mapper(value);
+    if (isAsyncGenerator(mappedValue)) {
+      yield* takeUntil(mappedValue, iterable);
+    }
+    else if (mappedValue instanceof Promise) {
+      yield await mappedValue;
+    }
+    else {
+      yield mappedValue;
+    }
   }
 }
 
@@ -421,6 +423,33 @@ async function* once(iterable) {
     yield value;
     break;
   }
+}
+
+/**
+ * @template T
+ * @param {DataIterable<T>} iterable
+ * @param {DataIterable<unknown>} until
+ * @returns {DataIterable<T>}
+ */
+async function* takeUntil(iterable, until) {
+  for await (const value of merge([iterable, until])) {
+    if (value[0] === 1) {
+      break;
+    }
+    // @ts-ignore
+    yield value[1];
+  }
+}
+
+/**
+ * @template T
+ * @param {DataIterable<T>} iterable
+ * @param {DataIterable<unknown>} after
+ * @returns {DataIterable<T>}
+ */
+async function* takeAfter(iterable, after) {
+  for await (const _ of after) { }
+  yield* iterable;
 }
 
 /**
@@ -474,7 +503,7 @@ takeWindow();
 /** @type {SubjectIterator<string>} */
 var navigateAction = new SubjectIterator();
 
-async function initRouter() {
+async function* iterateRouter() {
   const navigationAction$ = map(navigateAction.iterate(), function (path) {
     history.pushState(null, '', path);
   });
@@ -485,26 +514,28 @@ async function initRouter() {
   ]);
 
   const location$ = startWith(map(navigationChange$, function () {
-    return location;
-  }), location);
+    return {
+      pathname: window.location.pathname,
+    };
+  }), {
+    pathname: window.location.pathname,
+  });
 
-  /** @type {Node} */
-  let outlet = document.createComment('');
-  document.body.appendChild(outlet);
-
-  for await (const location of location$) {
-    console.debug('Location', location.pathname, outlet, outlet.parentNode);
-    const pathname = location.pathname;
-    if (pathname === '/') {
-      outlet = replaceNode(outlet, renderRootRoute());
+  yield* map(location$, async function* (location) {
+    console.info('Router', 'location', location);
+    if (location === undefined) {
+      yield* html``;
     }
-    else if (pathname === '/unsupported-platform') {
-      outlet = replaceNode(outlet, renderUnsupportedPlatformNoticeRoute());
+    else if (location.pathname === '/') {
+      yield* renderRootRoute();
+    }
+    else if (location.pathname === '/unsupported-platform') {
+      yield* renderUnsupportedPlatformNoticeRoute();
     }
     else {
-      outlet = replaceNode(outlet, renderNotFoundRoute());
+      yield* renderNotFoundRoute();
     }
-  }
+  });
 }
 
 // ====== @UiLibrary ======
@@ -541,6 +572,13 @@ async function* html(strings, ...values) {
         .join('')
         .trim();
       template.innerHTML = stringsWithPlaceholders;
+
+      if (template.content.childNodes.length === 0) {
+        return {
+          nodeRoutes: [],
+          template,
+        };
+      }
 
       if (template.content.childNodes.length !== 1) {
         console.error('html', 'template', stringsWithPlaceholders);
@@ -582,7 +620,7 @@ async function* html(strings, ...values) {
 
       const traceWalker = document.createTreeWalker(rootNode, NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_ELEMENT, {
         acceptNode(node) {
-          return ((node instanceof Element) || (node instanceof Text && node.nodeValue.startsWith(htmlPlaceholder)))
+          return ((node instanceof Element) || (node instanceof Comment && node.nodeValue.startsWith(htmlPlaceholder)))
             ? NodeFilter.FILTER_ACCEPT
             : NodeFilter.FILTER_REJECT;
         },
@@ -591,7 +629,7 @@ async function* html(strings, ...values) {
       const palceholderNodes = [];
       while (traceWalker.nextNode()) {
         const node = traceWalker.currentNode;
-        if (node instanceof Text) {
+        if (node instanceof Comment) {
           palceholderNodes.push(node);
         }
         else if (node instanceof Element) {
@@ -602,6 +640,9 @@ async function* html(strings, ...values) {
               palceholderNodes.push(attr);
             }
           }
+        }
+        else {
+          throw new Error('Invalid node type');
         }
       }
 
@@ -643,7 +684,7 @@ async function* html(strings, ...values) {
 
       htmlCache.set(strings, preparedHtmlTemplate);
 
-      console.debug('html', 'template', preparedHtmlTemplate.template.innerHTML, preparedHtmlTemplate.nodeRoutes);
+      console.debug('html', 'template', preparedHtmlTemplate.template.innerHTML, preparedHtmlTemplate.nodeRoutes, palceholderNodes);
 
       return preparedHtmlTemplate;
     })();
@@ -678,53 +719,84 @@ async function* html(strings, ...values) {
     }
   }
 
+  yield rootNode;
+
   const iterators = interpolations.map(function ([, value]) {
     return anyToAsyncGenerator(value);
   });
 
-  for await (const first of once(combineLatest(iterators))) {
-    for (const [index, newValue] of first.entries()) {
-      const oldNode = interpolations[index][0];
-      assertInstanceOf(Node, oldNode);
-      htmlInterpolation(oldNode, newValue);
-    }
-  }
-
-  yield rootNode;
-
   for await (const [index, newValue] of merge(iterators)) {
     const oldNode = interpolations[index][0];
     assertInstanceOf(Node, oldNode);
-    htmlInterpolation(oldNode, newValue);
+    if (newValue instanceof Node) {
+      if (newValue !== oldNode) {
+        const oldNodeParent = oldNode.parentNode;
+        htmlAddInterpolationQueue(function () {
+          oldNodeParent.replaceChild(newValue, oldNode);
+        });
+      }
+    }
+    else if (typeof newValue === 'function') {
+      htmlAddInterpolationQueue(function () {
+        const newNode = newValue(oldNode);
+        if (newNode instanceof Node) {
+          if (newNode !== oldNode) {
+            const oldNodeParent = oldNode.parentNode;
+            assertInstanceOf(Node, oldNodeParent);
+            if (oldNodeParent) {
+              oldNodeParent.replaceChild(newNode, oldNode);
+            }
+          }
+        }
+        else if (newNode === undefined) {
+          removeNode(oldNode);
+        }
+      });
+    }
+    else {
+      if (isAsyncGenerator(newValue)) {
+        throw new Error('Nested dynamic interpolation is not supported yet.');
+      }
+      htmlAddInterpolationQueue(function () {
+        oldNode.nodeValue = `${newValue}`;
+      });
+    }
   }
 }
 
-/**
- * @param {Node} node
- * @param {HtmlValue} newValue
- */
-function htmlInterpolation(node, newValue) {
-  assertInstanceOf(Node, node);
-  if (newValue instanceof Node) {
-    if (newValue !== node) {
-      const oldNodeParent = node.parentNode;
-      oldNodeParent.replaceChild(newValue, node);
+/** @type {Array<() => void>} */
+let htmlQueuedInterpolations = [];
+let htmlQueueScheduled = false;
+let htmlQueueNextTickPromise = Promise.resolve();
+
+/** @param {() => void} interpolation */
+function htmlAddInterpolationQueue(interpolation) {
+  htmlQueuedInterpolations.push(interpolation);
+  if (htmlQueueScheduled) return;
+  /** @type {PromiseWithResolvers<void>} */
+  const { promise, resolve } = Promise.withResolvers();
+  htmlQueueNextTickPromise = promise;
+  requestAnimationFrame(function () {
+    for (const interpolation of htmlQueuedInterpolations) {
+      interpolation();
     }
-  }
-  else {
-    const evaluatedNewValue = typeof newValue === 'function'
-      ? newValue(node)
-      : newValue;
-    if (isAsyncGenerator(evaluatedNewValue)) {
-      throw new Error('Nested dynamic interpolation is not supported yet.');
-    }
-    node.nodeValue = `${evaluatedNewValue}`;
+    htmlQueuedInterpolations = [];
+    resolve();
+    htmlQueueScheduled = false;
+  });
+  htmlQueueScheduled = true;
+}
+
+async function* htmlTick() {
+  while (true) {
+    yield await htmlQueueNextTickPromise;
   }
 }
 
 /**
  * @param {Node} oldChild
  * @param {Node} newChild
+ * @return {Node}
  */
 function replaceNode(oldChild, newChild) {
   const parentOfOldChild = oldChild.parentNode;
@@ -735,73 +807,25 @@ function replaceNode(oldChild, newChild) {
 
 /**
  * @param {Node} node
- * @param {HtmlValue} value
- * @returns {Node}
  */
-function applyHtmlNodeInterpolation(node, value) {
-  if (typeof value === 'string') {
-    node.nodeValue = value;
-    return node;
-  }
-  if (typeof value === 'undefined' || value === null) {
-    return applyHtmlNodeInterpolation(node, '');
-  }
-  if (typeof value === 'number') {
-    return applyHtmlNodeInterpolation(node, value.toString());
-  }
-  if (typeof value === 'function') {
-    return applyHtmlNodeInterpolation(node, value(node));
-  }
-  if (value instanceof Node) {
-    return value;
-  }
-  throw new Error('Invalid HtmlNodeInterpolation value', {
-    cause: value,
-  });
-}
-
-/**
- * @param {Attr} oldAttr
- * @param {Attr} newAttr
- * @returns {Attr}
- */
-function replaceAttr(oldAttr, newAttr) {
-  const ownerElement = oldAttr.ownerElement;
-  if (ownerElement instanceof Element && oldAttr !== newAttr) {
-    ownerElement.setAttributeNode(newAttr);
-    ownerElement.removeAttributeNode(oldAttr);
-  }
-  return newAttr;
-}
-
-/**
- * @param {Attr} attr
- * @param {HtmlValue} value
- */
-function applyHtmlAttrOperation(attr, value) {
-  if (typeof value === 'string') {
-    attr.value = value;
-    return attr;
-  }
-  if (typeof value === 'undefined' || value === null) {
-    return applyHtmlAttrOperation(attr, '');
-  }
-  if (typeof value === 'function') {
-    return applyHtmlAttrOperation(attr, value(attr));
-  }
-  throw new Error('Invalid HtmlAttrInterpolation value', {
-    cause: value,
-  });
+function removeNode(node) {
+  const parentNode = node.parentNode;
+  assertInstanceOf(Node, parentNode);
+  parentNode.removeChild(node);
 }
 
 /**
  * @template T
- * @param {DataIterable<Array<T>>} items$
+ * @param {Array<T>|DataIterable<Array<T>>} items
  * @param {(item: T, index: number) => string} keyMapper
  * @param {(item: DataIterable<T>, index: number) => DataIterable<Node>} itemView
  * @returns {DataIterable<Node>}
  */
-async function* list(items$, keyMapper, itemView) {
+async function* list(items, keyMapper, itemView) {
+  const items$ = isAsyncGenerator(items)
+    ? items
+    : anyToAsyncGenerator(items);
+
   const endOfList = document.createComment('');
   yield endOfList;
   const beginOfList = document.createComment('');
@@ -809,58 +833,68 @@ async function* list(items$, keyMapper, itemView) {
   assertInstanceOf(Node, contentNode);
   contentNode.insertBefore(beginOfList, endOfList);
 
-  /** @type {Map<string, { key: string, itemView$: DataIterable<Node>, itemSubject: SubjectIterator<T>, removeSubject: SubjectIterator<void> }>} */
-  let currentListItemMap = new Map();
+  /** @type {Map<string, { key: string, node: Node, itemSubject: SubjectIterator<T>, removeSubject: SubjectIterator<void> }>} */
+  let currentItemStateMap = new Map();
 
   for await (const items of items$) {
-    /** @type {Array<ValueOfMap<currentListItemMap>>} */
-    const newListItems = [];
-    /** @type {Map<string, ValueOfMap<currentListItemMap>>} */
-    const newListItemMap = new Map();
+    /** @type {Map<string, ValueOfMap<currentItemStateMap>>} */
+    const newItemStateMap = new Map();
+    /** @type {Array<ValueOfMap<currentItemStateMap>>} */
+    const newItemStates = [];
     for (const [itemIndex, item] of items.entries()) {
-      const newItemKey = keyMapper(item, itemIndex);
-      const existingItem = currentListItemMap.get(newItemKey);
+      const key = keyMapper(item, itemIndex);
+      const existingItem = currentItemStateMap.get(key);
       if (existingItem) {
-        existingItem.itemSubject.push(item);
-        newListItems.push(existingItem);
+        newItemStates.push(existingItem);
       }
       else {
         const itemSubject = new SubjectIterator();
-        itemSubject.push(item);
+        const removeSubject = new SubjectIterator();
         const itemView$ = itemView(itemSubject.iterate(), itemIndex);
-        newListItems.push({
-          key: newItemKey,
-          itemView$,
-          itemSubject,
-          removeSubject: new SubjectIterator(),
+        const firstItemView = await once(itemView$).next();
+        const node = firstItemView.value;
+        assertInstanceOf(Node, node);
+        newItemStates.push({ key, node, itemSubject, removeSubject });
+        (async function (state) {
+          for await (const nextNode of takeUntil(itemView$, removeSubject.iterate())) {
+            if (state.node !== nextNode) {
+              state.node = replaceNode(state.node, nextNode);
+            }
+          }
+          removeNode(state.node);
+        })(newItemStates[itemIndex]);
+      }
+      newItemStateMap.set(key, newItemStates[itemIndex]);
+    }
+
+    for (const [key, item] of currentItemStateMap) {
+      if (!newItemStateMap.has(key)) {
+        item.removeSubject.push();
+      }
+    }
+
+    const lastIndexOfNewItemStates = newItemStates.length - 1;
+    for (let itemIndex = lastIndexOfNewItemStates; itemIndex >= 0; itemIndex--) {
+      const itemState = newItemStates[itemIndex];
+      const itemNode = itemState.node;
+      if (itemIndex === lastIndexOfNewItemStates) {
+        htmlAddInterpolationQueue(function () {
+          contentNode.insertBefore(itemNode, endOfList);
         });
       }
-      newListItemMap.set(newItemKey, newListItems[itemIndex]);
-    }
-
-    for (const [key, existingItem] of currentListItemMap) {
-      if (!newListItemMap.has(key)) {
-        existingItem.removeSubject.push();
-      }
-    }
-
-    const initItemViews$ = once(combineLatest(newListItems.map(function (item) {
-      return item.itemView$;
-    })));
-
-    for await (const itemViews of initItemViews$) {
-      const lastIndexOfItemViews = itemViews.length - 1;
-      for (let index = lastIndexOfItemViews; index >= 0; index--) {
-        const itemView = itemViews[index];
-        if (index === lastIndexOfItemViews) {
-          contentNode.insertBefore(itemView, endOfList);
-        }
-        else {
-          const nextNode = itemViews[index + 1];
-          contentNode.insertBefore(itemView, nextNode);
+      else {
+        const nextItemState = newItemStates[itemIndex + 1];
+        const nextItemNode = nextItemState.node;
+        if (itemNode !== nextItemNode) {
+          htmlAddInterpolationQueue(function () {
+            contentNode.insertBefore(itemNode, nextItemNode);
+          });
         }
       }
+      itemState.itemSubject.push(items[itemIndex]);
     }
+
+    currentItemStateMap = newItemStateMap;
   }
 }
 
@@ -1001,8 +1035,13 @@ function renderUnsupportedPlatformNoticeRoute() {
       <h1>Browser anda tidak didukung</h1>
       <p>Beberapa fitur pada browser anda tidak tersedia. Silahkan perbarui browser atau gunakan browser standard terbaru berikut:</p>
       <ul>
-        ${list(suggestedBrowsers, (browser) => html`
-          <li><a href=${browser.url} target="_blank">${browser.name}</a></li>
+        ${list(suggestedBrowsers, (browser) => browser.url, (browser$) => html`
+          <li>
+            <a
+              href=${map(browser$, (b) => b.url)}
+              target="_blank"
+            >${map(browser$, (b) => b.name)}</a>
+          </li>
         `)}
       </ul>
     </div>
