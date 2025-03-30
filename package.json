@@ -10,8 +10,19 @@
     "type": "git",
     "url": "git+https://github.com/faisalhakim47/pos.git"
   },
-  "license": "ISC",
-  "author": "",
+  "license": "UNLICENSED",
+  "author": {
+    "email": "faisalhakim47@gmail.com",
+    "name": "Faisal Hakim"
+  },
   "type": "module",
-  "main": "webapp.js"
+  "main": "webapp.js",
+  "devDependencies": {
+    "@eslint/js": "^9.23.0",
+    "@solidjs/router": "^0.15.3",
+    "@types/node": "^22.13.14",
+    "eslint-plugin-import": "^2.31.0",
+    "rolldown": "^1.0.0-beta.7",
+    "solid-js": "^1.9.5"
+  }
 }

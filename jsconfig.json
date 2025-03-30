@@ -17,11 +17,13 @@
       "WebWorker"
     ],
     "paths": {
-      "webapp/*": ["./webapp/*"],
+      "webapp/*": ["./webapp/*"]
     }
   },
   "include": [
-    "**/*.js"
+    "eslint.config.js",
+    "scripts/**/*.js",
+    "webapp/**/*.js"
   ],
   "exclude": [
     "vendor/**/*"
