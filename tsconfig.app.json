@@ -1,0 +1,27 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "include": [
+    "env.d.ts",
+    "public/service-worker/**/*.js",
+    "src/**/*",
+    "src/**/*.vue"
+, "public/service-worker.js"  ],
+  "exclude": [
+    "src/**/__tests__/*"
+  ],
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "target": "ES2024",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2024",
+      "WebWorker"
+    ],
+  }
+}

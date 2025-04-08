@@ -1,19 +1,37 @@
-// @ts-check
-
 import globals from 'globals';
-import eslintJs from '@eslint/js';
+import pluginVue from 'eslint-plugin-vue';
+import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript';
+import oxlint from 'eslint-plugin-oxlint';
 import eslintImport from 'eslint-plugin-import';
 
-/** @type {import('eslint').Linter.Config[]} */
-export default [
+// To allow more languages other than `ts` in `.vue` files, uncomment the following lines:
+// import { configureVueProject } from '@vue/eslint-config-typescript'
+// configureVueProject({ scriptLangs: ['ts', 'tsx'] })
+// More info at https://github.com/vuejs/eslint-config-typescript/#advanced-setup
+
+export default defineConfigWithVueTs(
   {
+    name: 'app/files-to-lint',
+    files: ['**/*.{ts,mts,tsx,vue}'],
+  },
+
+  {
+    name: 'app/files-to-ignore',
     ignores: [
       '**/.local/**',
-      '**/webapp/vendor.js',
+      '**/coverage/**',
+      '**/dist-ssr/**',
+      '**/dist/**',
+      '**/vendor/**',
     ],
   },
-  eslintJs.configs.recommended,
+
+  pluginVue.configs['flat/essential'],
+  vueTsConfigs.recommended,
+  ...oxlint.configs['flat/recommended'],
+
   eslintImport.flatConfigs.recommended,
+
   {
     languageOptions: {
       ecmaVersion: 2022,
@@ -43,4 +61,4 @@ export default [
       }],
     },
   },
-];
+);
