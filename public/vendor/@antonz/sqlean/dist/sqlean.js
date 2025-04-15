@@ -6427,9 +6427,6 @@ var sqlite3InitModule = (() => {
             ]]
           );
         }
-        if (false) {
-          wasm.bindingSignatures.push(["sqlite3_normalized_sql", "string", "sqlite3_stmt*"]);
-        }
         wasm.bindingSignatures.int64 = [
           ["sqlite3_bind_int64", "int", ["sqlite3_stmt*", "int", "i64"]],
           ["sqlite3_changes64", "i64", ["sqlite3*"]],
@@ -8541,7 +8538,6 @@ var sqlite3InitModule = (() => {
             } else {
               return bindOne(this, ndx, affirmSupportedBindType(arg), arg);
             }
-            toss3("Should not reach this point.");
           },
           bindAsBlob: function(ndx, arg) {
             affirmStmtOpen(this);

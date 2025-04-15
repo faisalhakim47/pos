@@ -35,6 +35,14 @@ async function installServiceWorker() {
     swInstallation.isOnProgress = false;
   }
 }
+
+const fileOpen = reactive({
+  isOpen: false,
+});
+
+async function openFile() {
+
+}
 </script>
 
 <template>
