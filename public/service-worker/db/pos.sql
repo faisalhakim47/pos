@@ -6,23 +6,32 @@ pragma foreign_keys = on;
 
 begin exclusive transaction;
 
-
-
 create table if not exists account_type (
   name text primary key,
   increased_by text not null -- 'credit' or 'debit'
 );
 
-insert into
-  account_type (name, increased_by)
+drop trigger if exists account_type_creation_validation_trigger;
+create trigger account_type_creation_validation_trigger
+before insert on account_type
+for each row begin
+select
+  case when new.increased_by not in ('credit', 'debit') then
+    raise(rollback, 'increased_by must be credit or debit')
+  end;
+end;
+
+insert into account_type (name, increased_by)
 values
-  ('Aset', 'debit'),
-  ('Beban', 'debit'),
-  ('Liabilitas', 'credit'),
-  ('Ekuitas', 'credit'),
-  ('Pendapatan', 'credit'),
-  ('Kontra-Pendapatan', 'debit'),
-  ('Kontra-Aset', 'credit') on conflict do nothing;
+  ('Asset', 'debit'),
+  ('Expense', 'debit'),
+  ('Liability', 'credit'),
+  ('Equity', 'credit'),
+  ('Revenue', 'credit'),
+  ('Contra-Revenue', 'debit'),
+  ('Contra-Asset', 'credit')
+on conflict do update set
+  increased_by = excluded.increased_by;
 
 create table if not exists account (
   code integer primary key,
@@ -35,14 +44,14 @@ create table if not exists account (
 insert into
   account (code, name, account_type_name, balance)
 values
-  (1101, 'Kas Kecil', 'Aset', 0),
-  (1102, 'Kas Besar', 'Aset', 0),
-  (1201, 'Persediaan Barang Dagang', 'Aset', 0),
-  (3101, 'Modal', 'Ekuitas', 0),
-  (4101, 'Penjualan', 'Pendapatan', 0),
-  (4201, 'Potongan Penjualan', 'Kontra-Pendapatan', 0),
-  (5101, 'Harga Pokok Penjualan', 'Beban', 0),
-  (5201, 'Selisih Kasir', 'Beban', 0)
+  (1101, 'Cash on Hand', 'Asset', 0),
+  (1102, 'Cash', 'Asset', 0),
+  (1201, 'Merchandice Inventory', 'Asset', 0),
+  (3101, 'Equity', 'Equity', 0),
+  (4101, 'Sale', 'Revenue', 0),
+  (4201, 'Discount', 'Contra-Revenue', 0),
+  (5101, 'Cost of Goods Sold', 'Expense', 0),
+  (5201, 'Cash Short and Over', 'Expense', 0)
 on conflict do update
 set
   name = excluded.name,
@@ -630,7 +639,6 @@ where
 end;
 
 drop trigger if exists pos_session_inventory_trigger;
-
 create trigger pos_session_inventory_trigger
 after
 update
@@ -671,11 +679,13 @@ select
   name,
   unit_price,
   cog,
-  case
-    when stock <= 0 then raise(rollback, 'stok barang tidak tersedia')
-    else case
-      when stock < stock_sold then raise(rollback, 'stok barang tidak mencukupi')
-      else stock - stock_sold
+  case when stock <= 0
+    then raise(rollback, 'stok barang tidak tersedia')
+  else
+    case when stock < stock_sold
+      then raise(rollback, 'stok barang tidak mencukupi')
+    else
+      stock - stock_sold
     end
   end,
   num_of_sales

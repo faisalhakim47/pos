@@ -41,14 +41,15 @@ export default defineConfigWithVueTs(
       },
     },
     rules: {
+      '@typescript-eslint/no-unused-vars': ['warn', { args: 'none' }],
       'comma-dangle': ['error', 'always-multiline'],
-      'indent': ['error', 2, { SwitchCase: 1 }],
-      'no-unused-vars': ['warn', { args: 'none' }],
-      'no-constant-binary-expression': ['off'],
-      'semi': ['error', 'always'],
-      'quotes': ['error', 'single'],
-      'quote-props': ['error', 'consistent-as-needed'],
       'import/no-unresolved': ['off'], // off for it is problematic
+      'indent': ['error', 2, { SwitchCase: 1 }],
+      'no-constant-binary-expression': ['off'],
+      'no-unused-vars': ['warn', { args: 'none' }],
+      'quote-props': ['error', 'consistent-as-needed'],
+      'quotes': ['error', 'single'],
+      'semi': ['error', 'always'],
       'import/order': ['error', {
         'groups': [
           'builtin',

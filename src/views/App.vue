@@ -255,11 +255,20 @@ import { RouterView } from 'vue-router';
 
   --app-recommended-width: 1440px;
 
+  --app-default-focus-outline-color: var(--color-neutral-400);
+
   --app-link-base-text-color: var(--color-blue-500);
   --app-link-hover-text-color: var(--color-sky-300);
   --app-link-visited-text-color: var(--color-indigo-500);
   --app-main-bg-color: var(--color-gray-50);
   --app-main-text-color: var(--color-stone-950);
+
+  --app-btnflat-active-bg-color: var(--color-gray-300);
+  --app-btnflat-active-text-color: var(--color-gray-900);
+  --app-btnflat-default-bg-color: var(--app-main-bg-color);
+  --app-btnflat-default-text-color: var(--app-main-text-color);
+  --app-btnflat-hover-bg-color: var(--color-gray-200);
+  --app-btnflat-hover-text-color: var(--color-gray-900);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -269,6 +278,15 @@ import { RouterView } from 'vue-router';
     --app-link-visited-text-color: var(--color-indigo-400);
     --app-main-bg-color: var(--color-gray-900);
     --app-main-text-color: var(--color-stone-50);
+
+    --app-btnflat-active-bg-color: var(--color-gray-600);
+    --app-btnflat-active-text-color: var(--color-gray-50);
+    --app-btnflat-default-bg-color: var(--app-main-bg-color);
+    --app-btnflat-default-text-color: var(--app-main-text-color);
+    --app-btnflat-focus-bg-color: var(--color-gray-600);
+    --app-btnflat-focus-text-color: var(--color-gray-50);
+    --app-btnflat-hover-bg-color: var(--color-gray-700);
+    --app-btnflat-hover-text-color: var(--color-gray-50);
   }
 }
 
@@ -279,7 +297,10 @@ html, body {
   padding: 0;
   background-color: var(--app-main-bg-color);
   color: var(--app-main-text-color);
-  font-family: sans-serif;
+}
+
+html, button {
+  font-family: 'Source Sans 3', sans-serif;
 }
 
 a:link {
@@ -294,4 +315,29 @@ a:hover {
   color: var(--app-link-hover-text-color);
 }
 
+button {
+  background-color: var(--color-white);
+  color: var(--color-black);
+  padding: 0px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 32px;
+}
+button:disabled {
+  background-color: var(--color-neutral-300);
+  color: var(--color-neutral-600);
+  cursor: not-allowed;
+}
+button:hover {
+  background-color: var(--color-neutral-300);
+}
+button:active {
+  background-color: var(--color-neutral-400);
+}
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--app-default-focus-outline-color);
+}
 </style>

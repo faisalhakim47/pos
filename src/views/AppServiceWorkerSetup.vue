@@ -1,17 +1,34 @@
 <script setup lang="ts">
-import { reactive, useCssModule } from 'vue';
+import { onMounted, reactive, useCssModule } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type { AppMessage } from '@/i18n/i18n.ts';
 import { sleep } from '@/tools/promise.ts';
+import { useLocation } from '@/composables/useLocation';
 
 const style = useCssModule();
 const { t } = useI18n<{ message: AppMessage }>();
+
+const location = useLocation();
 
 const swInstallation = reactive({
   isOnProgress: false,
   isInstalled: false,
   error: undefined as unknown,
+});
+
+onMounted(function () {
+  navigator.serviceWorker.getRegistration('/').then(function (registration) {
+    if (registration) {
+      swInstallation.isInstalled = true;
+      swInstallation.isOnProgress = false;
+      swInstallation.error = undefined;
+    }
+  }).catch(function (error) {
+    swInstallation.isInstalled = false;
+    swInstallation.isOnProgress = false;
+    swInstallation.error = error;
+  });
 });
 
 async function installServiceWorker() {
@@ -34,14 +51,6 @@ async function installServiceWorker() {
   finally {
     swInstallation.isOnProgress = false;
   }
-}
-
-const fileOpen = reactive({
-  isOpen: false,
-});
-
-async function openFile() {
-
 }
 </script>
 
