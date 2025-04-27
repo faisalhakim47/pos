@@ -4,7 +4,6 @@ import { inject, reactive, watchEffect } from 'vue';
 import { provide } from 'vue';
 
 /** @template T @typedef {import('vue').InjectionKey<T>} InjectionKey */
-/** @template T @typedef {import('vue').Ref<T>} Ref */
 
 /**
  * @typedef {object} HttpReqContext
@@ -20,7 +19,7 @@ export function provideHttpReq(context) {
   provide(httpReqKey, context);
 }
 
-/** @typedef {Ref<RequestInit & { url: string }>} HttpReqOptions */
+/** @typedef {RequestInit & { url: string }} HttpReqOptions */
 
 /**
  * @param {HttpReqOptions} options
@@ -34,6 +33,13 @@ export function useHttpReq(options) {
 
   const state = reactive({
     isReady: false,
+    /** @param {(input: string | URL | globalThis.Request, init?: RequestInit) => void} [initMap] */
+    request(initMap) {
+      fetch(options.url, {
+        ...options,
+        ...initMap,
+      });
+    },
     response: /** @type {Response | undefined} */ (undefined),
     error: /** @type {unknown} */ (undefined),
   });
@@ -42,10 +48,10 @@ export function useHttpReq(options) {
     state.isReady = false;
     state.response = undefined;
     state.error = undefined;
-    const url = options.value.url.startsWith('http')
-      ? new URL(options.value.url)
-      : new URL(options.value.url, httpReqContext.baseUrl);
-    fetch(url, options.value)
+    const url = options.url.startsWith('http')
+      ? new URL(options.url)
+      : new URL(options.url, httpReqContext.baseUrl);
+    fetch(url, options)
       .then(function (response) {
         state.response = response;
       })

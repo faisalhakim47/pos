@@ -43,7 +43,6 @@ async function handleCtaSubmission(event) {
 }
 
 async function newFile() {
-  const fileCreationResp = await apiReq
 }
 
 async function openFile() {
