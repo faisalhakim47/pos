@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script setup>
 import { ref, useCssModule, onMounted, onUnmounted } from 'vue';
 
 const style = useCssModule();

@@ -1,32 +1,33 @@
-<script setup lang="ts">
-import { useI18n } from 'vue-i18n';
+<script setup>
 import { computed, reactive, useCssModule } from 'vue';
 
-import { assertInstanceOf } from '../../public/service-worker/tools/assertion.js';
-
-import type { AppI18a } from '@/i18n/i18n.ts';
 import TextWithLoadingIndicator from '@/components/TextWithLoadingIndicator.vue';
+import { useI18n } from '@/i18n/i18n.js';
+import { assertInstanceOf } from '@/tools/assertion.js';
 
 const style = useCssModule();
-const { t } = useI18n<AppI18a>();
+const { t } = useI18n();
 
 const submission = reactive({
-  action: undefined as 'open' | 'new' | undefined,
-  error: undefined as unknown,
+  action: /** @type {'open' | 'new' | undefined} */ (undefined),
+  error: /** @type {unknown} */ (undefined),
 });
 
 const ctaDisabled = computed(function () {
   return submission.action !== undefined;
 });
 
-async function handleCtaSubmission(event: Event) {
+/**
+ * @param {unknown} event
+ */
+async function handleCtaSubmission(event) {
   try {
     submission.action = undefined;
     submission.error = undefined;
     assertInstanceOf(SubmitEvent, event, 'Expect event to be a SubmitEvent');
     const submitter = event.submitter;
     assertInstanceOf(HTMLButtonElement, submitter, 'Expect target to be a HTMLButtonElement');
-    const action = submitter.value as 'open' | 'new';
+    const action = /** @type {'open' | 'new'} */ (submitter.value);
     submission.action = action;
     if (action === 'open') await openFile();
     else if (action === 'new') await newFile();
@@ -42,11 +43,7 @@ async function handleCtaSubmission(event: Event) {
 }
 
 async function newFile() {
-  await new Promise(function (resolve) {
-    setTimeout(function () {
-      resolve(undefined);
-    }, 200000);
-  });
+  const fileCreationResp = await apiReq
 }
 
 async function openFile() {

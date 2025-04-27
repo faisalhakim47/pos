@@ -1,12 +1,11 @@
-<script setup lang="ts">
+<script setup>
 import { useCssModule } from 'vue';
-import { useI18n } from 'vue-i18n';
 import { RouterView, RouterLink } from 'vue-router';
 
-import type { AppMessage } from '@/i18n/i18n.ts';
 import MaterialSymbolDashboard from '@/assets/material-symbols/dashboard_24dp_E3E3E3_FILL1_wght400_GRAD0_opsz24.svg';
+import { useI18n } from '@/i18n/i18n.js';
 
-const { t } = useI18n<{ message: AppMessage }>();
+const { t } = useI18n();
 const style = useCssModule();
 </script>
 

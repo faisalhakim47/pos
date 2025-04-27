@@ -1,20 +1,22 @@
-<script setup lang="ts">
-import { onMounted, reactive, useCssModule } from 'vue';
-import { useI18n } from 'vue-i18n';
+<script setup>
+// @ts-check
 
-import type { AppMessage } from '@/i18n/i18n.ts';
-import { sleep } from '@/tools/promise.ts';
+import { onMounted, reactive, useCssModule } from 'vue';
+import ServiceWorkerUrl from '/service-worker.js?worker&url';
+
+import { sleep } from '@/tools/promise';
 import { useLocation } from '@/composables/useLocation';
+import { useI18n } from '@/i18n/i18n.js';
 
 const style = useCssModule();
-const { t } = useI18n<{ message: AppMessage }>();
+const { t } = useI18n();
 
 const location = useLocation();
 
 const swInstallation = reactive({
   isOnProgress: false,
   isInstalled: false,
-  error: undefined as unknown,
+  error: /** @type {unknown} */ (undefined),
 });
 
 onMounted(function () {
@@ -36,7 +38,7 @@ async function installServiceWorker() {
     swInstallation.isOnProgress = true;
     swInstallation.isInstalled = false;
     swInstallation.error = undefined;
-    await navigator.serviceWorker.register('/service-worker.js', {
+    await navigator.serviceWorker.register(ServiceWorkerUrl, {
       scope: '/',
       type: 'module',
       updateViaCache: 'none',

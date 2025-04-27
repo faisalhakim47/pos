@@ -1,8 +1,7 @@
-<script setup lang="ts">
-import { useI18n } from 'vue-i18n';
+<script setup>
+import { useI18n } from '@/i18n/i18n.js';
 
-import type { AppMessage } from '@/i18n/i18n.ts';
-const { t } = useI18n<{ message: AppMessage }>();
+const { t } = useI18n();
 const supportedBrowsers = [
   { name: 'Google Chrome', url: 'https://www.google.com/chrome/' },
   { name: 'Mozilla Firefox', url: 'https://www.mozilla.org/firefox/' },

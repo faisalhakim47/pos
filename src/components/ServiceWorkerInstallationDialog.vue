@@ -1,20 +1,20 @@
-<script setup lang="ts">
+<script setup>
+import { useI18n } from '@/i18n/i18n.js';
 import { computed, defineProps, onMounted, reactive } from 'vue';
-import { useI18n } from 'vue-i18n';
 
-import type { AppI18a } from '@/i18n/i18n.ts';
+/** @typedef {import('@/i18n/i18n.js').AppI18a} AppI18a */
 
 const props = defineProps({
   isOpen: { type: Boolean, default: false },
 });
 
-const { t } = useI18n<AppI18a>();
+const { t } = useI18n();
 
 const installationState = reactive({
   isReady: false,
   isOnProgress: false,
-  isInstalled: undefined as boolean | undefined,
-  error: undefined as unknown,
+  isInstalled: /** @type {boolean | undefined} */ (undefined),
+  error: /** @type {unknown} */ (undefined),
 });
 
 onMounted(async function () {

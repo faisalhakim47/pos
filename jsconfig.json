@@ -1,0 +1,30 @@
+{
+  "include": [
+    "env.d.ts",
+    "service-worker.js",
+    "src/**/*.js",
+    "src/**/*.vue",
+    "vite.config.js"
+  ],
+  "exclude": [
+    "src/**/__tests__/*"
+  ],
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "target": "ESNext",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext",
+      "WebWorker"
+    ]
+  }
+}

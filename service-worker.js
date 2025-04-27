@@ -1,0 +1,57 @@
+// @ts-check
+
+import { ApiRequest } from '@/service-worker/api/request.js';
+import { ApiResponse } from '@/service-worker/api/response.js';
+import { router } from '@/service-worker/api/router.js';
+import { assertInstanceOf } from '@/tools/assertion.js';
+import { isServiceWorkerGlobalScope } from '@/tools/platform.js';
+
+/** @typedef {import('@/service-worker/pos-file.js').PosFileContext} PosFileContext */
+
+const serviceWorker = self;
+
+if (!isServiceWorkerGlobalScope(serviceWorker)) {
+  throw new Error('This script must be executed on service worker context.');
+}
+
+/** @type {PosFileContext} */
+const posFileContext = {
+  posFiles: [],
+};
+
+/** @type {PosFileContext} */
+const context = {
+  ...posFileContext,
+};
+
+serviceWorker.addEventListener(
+  'fetch',
+  /** @param {unknown} event */
+  function (event) {
+    assertInstanceOf(FetchEvent, event);
+    const response = (async function () {
+      const apiReq = ApiRequest.from(event.request);
+      const apiRes = new ApiResponse();
+      const routedRes = await router(context, apiReq, apiRes)
+        .catch(function (error) {
+          console.error('[SW] router error:', error);
+          throw apiRes.withStatus(500).withJson({
+            message: 'Internal server error',
+          });
+        });
+      if (routedRes instanceof Response) {
+        return routedRes;
+      }
+      else {
+        const cachedRes = await self.caches.match(event.request);
+        return cachedRes ?? await fetch(event.request)
+          .catch(function (error) {
+            console.error('[SW] fetch error:', error);
+            throw error;
+          });
+      }
+    })();
+    event.waitUntil(response);
+    event.respondWith(response);
+  },
+);

@@ -1,18 +1,13 @@
+import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import pluginVue from 'eslint-plugin-vue';
-import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript';
-import oxlint from 'eslint-plugin-oxlint';
+import pluginOxlint from 'eslint-plugin-oxlint';
 import eslintImport from 'eslint-plugin-import';
 
-// To allow more languages other than `ts` in `.vue` files, uncomment the following lines:
-// import { configureVueProject } from '@vue/eslint-config-typescript'
-// configureVueProject({ scriptLangs: ['ts', 'tsx'] })
-// More info at https://github.com/vuejs/eslint-config-typescript/#advanced-setup
-
-export default defineConfigWithVueTs(
+export default defineConfig([
   {
     name: 'app/files-to-lint',
-    files: ['**/*.{ts,mts,tsx,vue}'],
+    files: ['**/*.{js,vue}'],
   },
 
   {
@@ -22,13 +17,13 @@ export default defineConfigWithVueTs(
       '**/coverage/**',
       '**/dist-ssr/**',
       '**/dist/**',
+      '**/node_modules/**',
       '**/vendor/**',
     ],
   },
 
   pluginVue.configs['flat/essential'],
-  vueTsConfigs.recommended,
-  ...oxlint.configs['flat/recommended'],
+  ...pluginOxlint.configs['flat/recommended'],
 
   eslintImport.flatConfigs.recommended,
 
@@ -43,13 +38,7 @@ export default defineConfigWithVueTs(
     rules: {
       '@typescript-eslint/no-unused-vars': ['warn', { args: 'none' }],
       'comma-dangle': ['error', 'always-multiline'],
-      'import/no-unresolved': ['off'], // off for it is problematic
-      'indent': ['error', 2, { SwitchCase: 1 }],
-      'no-constant-binary-expression': ['off'],
-      'no-unused-vars': ['warn', { args: 'none' }],
-      'quote-props': ['error', 'consistent-as-needed'],
-      'quotes': ['error', 'single'],
-      'semi': ['error', 'always'],
+      'import/no-unresolved': ['off'],
       'import/order': ['error', {
         'groups': [
           'builtin',
@@ -60,6 +49,12 @@ export default defineConfigWithVueTs(
         ],
         'newlines-between': 'always',
       }],
+      'indent': ['error', 2, { SwitchCase: 1 }],
+      'no-constant-binary-expression': ['off'],
+      'no-unused-vars': ['warn', { args: 'none' }],
+      'quote-props': ['error', 'consistent-as-needed'],
+      'quotes': ['error', 'single'],
+      'semi': ['error', 'always'],
     },
   },
-);
+]);
