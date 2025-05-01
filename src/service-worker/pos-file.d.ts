@@ -7,4 +7,6 @@ export type PosFileContext = {
 export type PosFile = {
   uid: string;
   sqlite: Database;
+  lastModified: number;
+  lastSaved: number;
 };

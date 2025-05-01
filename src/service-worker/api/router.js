@@ -3,11 +3,12 @@
 import { apiV1FileCreation } from '@/service-worker/api/handlers/api-v1-file-creation.js';
 
 /** @typedef {import('@/service-worker/pos-file.js').PosFileContext} PosFileContext */
+/** @typedef {import('@/service-worker/service-worker.js').ServiceWorkerContext} ServiceWorkerContext */
 /** @typedef {import('@/service-worker/api/request.js').ApiRequest} ApiRequest */
 /** @typedef {import('@/service-worker/api/response.js').ApiResponse} ApiResponse */
 
 /**
- * @param {PosFileContext} context
+ * @param {PosFileContext & ServiceWorkerContext} context
  * @param {ApiRequest} req
  * @param {ApiResponse} res
  * @returns {Promise<ApiResponse|undefined>}
