@@ -43,6 +43,31 @@ async function handleCtaSubmission(event) {
 }
 
 async function newFile() {
+  const uuid = crypto.randomUUID();
+
+  const fileCreationResp = await fetch('/api/v1/files', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      uid: uuid,
+    }),
+  });
+
+  if (!fileCreationResp.ok) {
+    submission.error = fileCreationResp;
+    return;
+  }
+
+  const files = await fetch('/api/v1/accounts?posFileUid=' + uuid, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  console.debug('Files:', await files.json());
 }
 
 async function openFile() {

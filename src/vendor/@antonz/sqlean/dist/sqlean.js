@@ -287,6 +287,7 @@ var sqlite3InitModule = (() => {
     function instantiateAsync(binary, binaryFile, imports, callback) {
       if (!binary && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(binaryFile) && typeof fetch == "function") {
         return fetch(binaryFile, { credentials: "same-origin" }).then((response) => {
+          console.info(binaryFile, response, imports);
           var result = WebAssembly.instantiateStreaming(response, imports);
           return result.then(
             callback,

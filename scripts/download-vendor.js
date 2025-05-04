@@ -11,7 +11,7 @@ const vendors = [
   { url: 'https://cdn.jsdelivr.net/npm/@antonz/sqlean@3.47.1-rc1/dist/sqlean.wasm', path: join(__dirname, '../src/vendor/@antonz/sqlean/dist/sqlean.wasm') },
 ];
 
-Promise.all(vendors.map(async function (vendor) {
+await Promise.all(vendors.map(async function (vendor) {
   const fileResp = await fetch(vendor.url);
   const fileContent = await fileResp.text();
   const fileDir = dirname(vendor.path);

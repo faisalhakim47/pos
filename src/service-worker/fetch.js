@@ -20,8 +20,11 @@ export function createFetchHandler(context) {
       const apiRes = new ApiResponse();
       const routedRes = await router(context, apiReq, apiRes)
         .catch(function (error) {
+          if (error instanceof Response) {
+            return error;
+          }
           console.error('[SW] router error:', error);
-          throw apiRes.withStatus(500).withJson({
+          return apiRes.withStatus(500).withJson({
             message: 'Internal server error',
           });
         });

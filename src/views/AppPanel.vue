@@ -35,7 +35,7 @@ const style = useCssModule();
 <style module>
 .container {
   display: grid;
-  grid-template-columns: 100px 1fr;
+  grid-template-columns: 96px 1fr;
   grid-template-rows: 64px 1fr;
   grid-template-areas:
     "header content"
@@ -81,8 +81,8 @@ const style = useCssModule();
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 72px;
-  width: 100px;
+  height: 64px;
+  width: 96px;
 }
 
 .sidebarMenuItem a {
@@ -90,8 +90,8 @@ const style = useCssModule();
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 72px;
-  height: 72px;
+  width: 64px;
+  height: 64px;
   border-radius: 8px;
   text-decoration: none;
   font-weight: 500;
@@ -128,7 +128,7 @@ const style = useCssModule();
 }
 
 .sidebarMenuItem a span {
-  font-size: 0.8em;
+  font-size: 0.75em;
 }
 
 .content {

@@ -1,5 +1,6 @@
 // @ts-check
 
+import { apiV1AccountList } from '@/service-worker/api/handlers/api-v1-account-list.js';
 import { apiV1FileCreation } from '@/service-worker/api/handlers/api-v1-file-creation.js';
 
 /** @typedef {import('@/service-worker/pos-file.js').PosFileContext} PosFileContext */
@@ -29,5 +30,9 @@ export async function router(context, req, res) {
 
   if (method === 'POST' && url.pathname === '/api/v1/files') {
     return await apiV1FileCreation(context, req, res);
+  }
+
+  if (method === 'GET' && url.pathname === '/api/v1/accounts') {
+    return await apiV1AccountList(context, req, res);
   }
 }

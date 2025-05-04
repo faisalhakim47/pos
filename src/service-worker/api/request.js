@@ -12,39 +12,45 @@ export class ApiRequest extends Request {
 
   /**
    * @param {string} name
-   * @returns {string | undefined}
+   * @param {string} defaultValue
+   * @returns {string}
    */
-  query(name) {
+  query(name, defaultValue) {
     const url = new URL(this.url);
     const value = url.searchParams.get(name);
     if (typeof value === 'string') {
       return value;
     }
-    return undefined;
+    return defaultValue;
   }
 
   /**
    * @param {string} name
-   * @returns {number | undefined}
+   * @param {number} defaultValue
+   * @returns {number}
    */
-  queryNumber(name) {
-    const value = this.query(name);
-    if (value === undefined) {
-      return undefined;
+  queryNumber(name, defaultValue) {
+    const value = this.query(name, '');
+    if (value === '') {
+      return defaultValue;
     }
     const numberValue = parseFloat(value);
     if (Number.isNaN(numberValue)) {
-      return undefined;
+      return defaultValue;
     }
     return numberValue;
   }
 
   /**
    * @param {string} name
-   * @returns {boolean | undefined}
+   * @param {boolean} defaultValue
+   * @returns {boolean}
    */
-  queryBoolean(name) {
-    const value = this.query(name);
+  queryBoolean(name, defaultValue) {
+    const value = this.query(name, '');
+    if (value === '') {
+      return defaultValue;
+    }
     return value === '1' || value === 'true' || value === 'yes';
   }
 }
