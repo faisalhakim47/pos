@@ -1,6 +1,7 @@
 <script setup>
-import { useI18n } from '@/i18n/i18n.js';
 import { computed, defineProps, onMounted, reactive } from 'vue';
+
+import { useI18n } from '@/i18n/i18n.js';
 
 /** @typedef {import('@/i18n/i18n.js').AppI18a} AppI18a */
 

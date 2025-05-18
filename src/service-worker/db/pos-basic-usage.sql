@@ -1,8 +1,15 @@
+-- insert into journal_entry (entry_time, description)
+-- values (strftime('%s', 'now'), 'Modal awal');
+-- insert into account_mutation (journal_entry_id, debit_account_code, credit_account_code, amount)
+-- select last_insert_rowid(), 1102, 3101, 1000000;
 
-insert into journal_entry (entry_time, description)
-values (strftime('%s', 'now'), 'Modal awal');
+with new_journal_entry as
+  insert into journal_entry (entry_time, description)
+  values (strftime('%s', 'now'), 'Modal awal')
+  returning id
 insert into account_mutation (journal_entry_id, debit_account_code, credit_account_code, amount)
-select last_insert_rowid(), 1102, 3101, 1000000;
+select id, 1102, 3101, 1000000
+from new_journal_entry;
 
 insert into product (name, sell_unit_price)
 values

@@ -36,7 +36,6 @@ export default defineConfig([
       },
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['warn', { args: 'none' }],
       'comma-dangle': ['error', 'always-multiline'],
       'import/no-unresolved': ['off'],
       'import/order': ['error', {

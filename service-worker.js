@@ -22,6 +22,7 @@ const posFileContext = {
   posFiles: [],
 };
 
+
 serviceWorker.addEventListener('fetch', createFetchHandler({
   ...posFileContext,
   ...serviceWorkerContext,

@@ -2,6 +2,7 @@
 // @ts-check
 
 import { onMounted, reactive, useCssModule } from 'vue';
+
 import ServiceWorkerUrl from '/service-worker.js?worker&url';
 
 import { sleep } from '@/tools/promise';
@@ -20,17 +21,19 @@ const swInstallation = reactive({
 });
 
 onMounted(function () {
-  navigator.serviceWorker.getRegistration('/').then(function (registration) {
-    if (registration) {
-      swInstallation.isInstalled = true;
+  navigator.serviceWorker.getRegistration('/')
+    .then(function (registration) {
+      if (registration) {
+        swInstallation.isInstalled = true;
+        swInstallation.isOnProgress = false;
+        swInstallation.error = undefined;
+      }
+    })
+    .catch(function (error) {
+      swInstallation.isInstalled = false;
       swInstallation.isOnProgress = false;
-      swInstallation.error = undefined;
-    }
-  }).catch(function (error) {
-    swInstallation.isInstalled = false;
-    swInstallation.isOnProgress = false;
-    swInstallation.error = error;
-  });
+      swInstallation.error = error;
+    });
 });
 
 async function installServiceWorker() {

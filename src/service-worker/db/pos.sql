@@ -1,5 +1,8 @@
 -- SQLite Database
--- note: all price means total price, the unit price will be named explicitly
+-- code style: use lower case for all SQL keywords
+-- naming convention: use snake_case for table, column, table view, trigger names, anything.
+-- naming convention: all term "price" mean total price, the unit price will be named explicitly
+-- bussiness logic: 
 
 pragma journal_mode = wal;
 pragma foreign_keys = on;

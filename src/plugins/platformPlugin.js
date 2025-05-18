@@ -1,6 +1,6 @@
 // @ts-check
 
-import { reactive } from 'vue';
+import { inject, reactive } from 'vue';
 
 /** @template T @typedef {import('vue').InjectionKey<T>} InjectionKey */
 /** @template T @typedef {import('vue').Plugin<T>} Plugin */
@@ -8,14 +8,15 @@ import { reactive } from 'vue';
 
 /**
  * @typedef {object} PlatformContext
+ * @property {() => Date} date
  * @property {boolean} isSupported
- * @property {ServiceWorkerContainer} [serviceWorker]
+ * @property {ServiceWorkerContainer} [serviceWorkerContainer]
  * @property {Crypto} [crypto]
  * @property {string} [unsupportedMessage]
  * @property {Array<{ name: string, url: string }>} [supportedBrowsers]
  */
 
-const platformKey = /** @type {InjectionKey<PlatformContext>} */ (Symbol());
+export const platformKey = /** @type {InjectionKey<PlatformContext>} */ (Symbol());
 
 export const platformPlugin = /** @type {Plugin<unknown>} */ ({
   install(app) {
@@ -42,10 +43,13 @@ export const platformPlugin = /** @type {Plugin<unknown>} */ ({
 
     const state = reactive(/** @type {PlatformContext} */ ({
       isSupported,
+      date() {
+        return new Date();
+      },
       unsupportedMessage: errors.length > 0
         ? errors.join('; ')
         : undefined,
-      serviceWorker: globalThis?.navigator?.serviceWorker,
+      serviceWorkerContainer: globalThis?.navigator?.serviceWorker,
       crypto: globalThis?.crypto,
       supportedBrowsers: [
         { name: 'Chrome', url: 'https://www.google.com/chrome/' },
@@ -56,4 +60,12 @@ export const platformPlugin = /** @type {Plugin<unknown>} */ ({
   },
 });
 
+export function usePlatform() {
+  const platform = inject(platformKey);
 
+  if (!platform) {
+    throw new Error('usePlatform requires PlatformPlugin to be installed');
+  }
+
+  return platform;
+}
