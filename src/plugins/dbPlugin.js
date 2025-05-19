@@ -18,10 +18,8 @@ import { assertPropertyExists, assertPropertyString } from '@/tools/assertion.js
 const posFileKey = /** @type {InjectionKey<PosFileContext>} */ (Symbol());
 
 const POS_FILE_BROADCAST_CHANNEL = 'POS_FILE_BROADCAST_CHANNEL';
-const POS_FILE_CHANGE_EVENT = 'POS_FILE_CHANGE_EVENT';
 const POS_FILE_CLOSE_REQUEST_EVENT = 'POS_FILE_CLOSE_REQUEST_EVENT';
 const POS_FILE_CLOSE_REQUESTED_EVENT = 'POS_FILE_CLOSE_REQUESTED_EVENT';
-const POS_FILE_CLOSED_EVENT = 'POS_FILE_CLOSED_EVENT';
 
 export const posFilePlugin = /** @type {Plugin<unknown>} */ ({
   install(app) {

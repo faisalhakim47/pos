@@ -10,9 +10,9 @@ import { inject, reactive } from 'vue';
  * @typedef {object} PlatformContext
  * @property {() => Date} date
  * @property {boolean} isSupported
- * @property {ServiceWorkerContainer} [serviceWorkerContainer]
  * @property {Crypto} [crypto]
  * @property {string} [unsupportedMessage]
+ * @property {WebAssembly} [webAssembly]
  * @property {Array<{ name: string, url: string }>} [supportedBrowsers]
  */
 
@@ -29,14 +29,14 @@ export const platformPlugin = /** @type {Plugin<unknown>} */ ({
       errors.push('This app is only supported in the main thread of a browser.');
     }
 
-    const isServiceWorkerSupported = 'serviceWorker' in globalThis.navigator;
-    if (!isServiceWorkerSupported) {
-      errors.push('This app requires service worker support.');
-    }
-
     const isCryptoSupported = 'crypto' in globalThis;
     if (!isCryptoSupported) {
       errors.push('This app requires crypto support.');
+    }
+
+    const isWebAssemblySupported = 'WebAssembly' in globalThis;
+    if (!isWebAssemblySupported) {
+      errors.push('This app requires WebAssembly support.');
     }
 
     const isSupported = errors.length === 0;
@@ -46,11 +46,9 @@ export const platformPlugin = /** @type {Plugin<unknown>} */ ({
       date() {
         return new Date();
       },
-      unsupportedMessage: errors.length > 0
-        ? errors.join('; ')
-        : undefined,
-      serviceWorkerContainer: globalThis?.navigator?.serviceWorker,
+      unsupportedMessage: errors.length > 0 ? errors.join('; ') : undefined,
       crypto: globalThis?.crypto,
+      webAssembly: globalThis?.WebAssembly,
       supportedBrowsers: [
         { name: 'Chrome', url: 'https://www.google.com/chrome/' },
       ],
