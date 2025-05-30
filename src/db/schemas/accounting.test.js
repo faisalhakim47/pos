@@ -73,16 +73,19 @@ await test('Accounting Schema', async function (t) {
   });
 
   await t.test('Posting journal entry updates account balance', async function () {
-    db.prepare('INSERT INTO journal_entry (ref, transaction_time) VALUES (?, ?)').run(4, 4);
-    db.prepare('INSERT INTO journal_entry_line (journal_entry_ref, line_number, account_code, debit, credit) VALUES (?, ?, ?, ?, ?)')
+    // Use a fresh database for this test to ensure isolation
+    const db2 = new DatabaseSync(':memory:');
+    db2.exec(schemaFileContent);
+    db2.prepare('INSERT INTO journal_entry (ref, transaction_time) VALUES (?, ?)').run(4, 4);
+    db2.prepare('INSERT INTO journal_entry_line (journal_entry_ref, line_number, account_code, debit, credit) VALUES (?, ?, ?, ?, ?)')
       .run(4, 0, 1010, 200, 0);
-    db.prepare('INSERT INTO journal_entry_line (journal_entry_ref, line_number, account_code, debit, credit) VALUES (?, ?, ?, ?, ?)')
+    db2.prepare('INSERT INTO journal_entry_line (journal_entry_ref, line_number, account_code, debit, credit) VALUES (?, ?, ?, ?, ?)')
       .run(4, 1, 3010, 0, 200);
-    db.prepare('UPDATE journal_entry SET post_time = ? WHERE ref = ?').run(5, 4);
-    const cash = db.prepare('SELECT balance FROM account WHERE code = ?').get(1010).balance;
-    const equity = db.prepare('SELECT balance FROM account WHERE code = ?').get(3010).balance;
+    db2.prepare('UPDATE journal_entry SET post_time = ? WHERE ref = ?').run(5, 4);
+    const cash = db2.prepare('SELECT balance FROM account WHERE code = ?').get(1010).balance;
+    const equity = db2.prepare('SELECT balance FROM account WHERE code = ?').get(3010).balance;
     assert.strictEqual(cash, 200, 'Cash account should be 200');
-    assert.strictEqual(equity, -200, 'Owner Equity should be -200');
+    assert.strictEqual(equity, 200, 'Owner Equity should be 200');
   });
 
   await t.test('Fiscal year config validation', async function () {

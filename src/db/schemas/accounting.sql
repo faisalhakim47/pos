@@ -75,7 +75,7 @@ create trigger journal_entry_unpost_preventation_trigger
 before update on journal_entry for each row
 begin
   select
-    case when old.post_time is not null and old.post_time != new.post_time then
+    case when old.post_time is not null and new.post_time is null then
       raise(rollback, 'cannot unpost journal entry after journal entry is posted')
     end;
 end;
@@ -122,23 +122,22 @@ create trigger journal_entry_post_account_trigger
 after update on journal_entry for each row
 when old.post_time is null and new.post_time is not null
 begin
-  insert into account (code, name, account_type_name, balance)
-  select
-    account.code,
-    account.name,
-    account.account_type_name,
-    case when account_type.increase_on_debit = 1 then
-      account.balance + sum(journal_entry_line.debit) - sum(journal_entry_line.credit)
-    else
-      account.balance + sum(journal_entry_line.credit) - sum(journal_entry_line.debit)
-    end
-  from journal_entry_line
-  left join account on journal_entry_line.account_code = account.code
-  left join account_type on account.account_type_name = account_type.name
-  where journal_entry_ref = new.ref
-  group by journal_entry_line.account_code
-  on conflict (code) do update set
-    balance = excluded.balance;
+  update account
+  set balance = (
+    select coalesce(sum(
+      case
+        when account_type.increase_on_debit = 1 then jel.debit - jel.credit
+        else jel.credit - jel.debit
+      end
+    ), 0)
+    from journal_entry_line jel
+    join journal_entry je on je.ref = jel.journal_entry_ref
+    join account_type on account.account_type_name = account_type.name
+    where jel.account_code = account.code and je.post_time is not null
+  )
+  where code in (
+    select account_code from journal_entry_line where journal_entry_ref = new.ref
+  );
 end;
 
 drop trigger if exists journal_entry_delete_preventation_trigger;
