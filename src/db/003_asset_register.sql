@@ -35,10 +35,6 @@ Includes default asset categories for buildings, machinery, office equipment,
 vehicles, and other fixed assets with industry-standard depreciation settings.
 */
 
--- SQLite 3.49.0
--- Asset Register Schema: Fixed Asset Management and Depreciation
---
-
 pragma journal_mode = wal;
 pragma foreign_keys = on;
 
