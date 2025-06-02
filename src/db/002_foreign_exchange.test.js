@@ -3,8 +3,9 @@
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
-import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
+
+import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -20,7 +21,7 @@ class FXTestFixture {
     this.label = label.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
     this.testRunId = testRunId;
     this.coreSchemaPath = join(__dirname, '001_core_accounting.sql');
-    this.fxSchemaPath = join(__dirname, '004_foreign_exchange.sql');
+    this.fxSchemaPath = join(__dirname, '002_foreign_exchange.sql');
     this.db = null;
     this.dbPath = null;
   }
@@ -45,10 +46,10 @@ class FXTestFixture {
 
   /**
    * Create a test journal entry with foreign currency
-   * @param {number} ref 
-   * @param {string} note 
-   * @param {string} currencyCode 
-   * @param {number} exchangeRate 
+   * @param {number} ref
+   * @param {string} note
+   * @param {string} currencyCode
+   * @param {number} exchangeRate
    */
   createForeignCurrencyEntry(ref, note, currencyCode = 'EUR', exchangeRate = 1.1050) {
     this.db.prepare(`
@@ -65,7 +66,7 @@ class FXTestFixture {
   addForeignCurrencyLine(entryRef, accountCode, dbAmount, crAmount, functionalDbAmount, functionalCrAmount, foreignAmount, foreignCurrency, exchangeRate) {
     this.db.prepare(`
       insert into journal_entry_line_auto_number (
-        journal_entry_ref, account_code, db, cr, 
+        journal_entry_ref, account_code, db, cr,
         db_functional, cr_functional,
         foreign_currency_amount, foreign_currency_code, exchange_rate
       )
@@ -82,8 +83,8 @@ class FXTestFixture {
    */
   postEntry(ref) {
     this.db.prepare(`
-      update journal_entry 
-      set post_time = unixepoch() 
+      update journal_entry
+      set post_time = unixepoch()
       where ref = ?
     `).run(ref);
   }
@@ -102,8 +103,8 @@ test('Foreign Exchange - Currency Management', async function (t) {
 
   await t.test('should have default currencies loaded', function (t) {
     const currencies = fixture.db.prepare(`
-      select code, name, symbol, decimal_places, is_functional_currency 
-      from currency 
+      select code, name, symbol, decimal_places, is_functional_currency
+      from currency
       where is_active = true
       order by code
     `).all();
@@ -122,8 +123,8 @@ test('Foreign Exchange - Currency Management', async function (t) {
   await t.test('should enforce single functional currency', function (t) {
     // Try to set EUR as functional currency
     fixture.db.prepare(`
-      update currency 
-      set is_functional_currency = true 
+      update currency
+      set is_functional_currency = true
       where code = 'EUR'
     `).run();
 
@@ -136,8 +137,8 @@ test('Foreign Exchange - Currency Management', async function (t) {
 
     // Reset to USD
     fixture.db.prepare(`
-      update currency 
-      set is_functional_currency = true 
+      update currency
+      set is_functional_currency = true
       where code = 'USD'
     `).run();
   });
@@ -151,7 +152,7 @@ test('Foreign Exchange - Exchange Rates', async function (t) {
 
   await t.test('should have sample exchange rates', function (t) {
     const rates = fixture.db.prepare(`
-      select from_currency_code, to_currency_code, rate 
+      select from_currency_code, to_currency_code, rate
       from exchange_rate
       order by from_currency_code, to_currency_code
     `).all();
@@ -206,14 +207,14 @@ test('Foreign Exchange - Multi-Currency Accounts', async function (t) {
       values (10101, 'Cash - EUR', 'asset', 'EUR')
     `).run();
 
-    // Create GBP cash account  
+    // Create GBP cash account
     fixture.db.prepare(`
       insert into account (code, name, account_type_name, currency_code)
       values (10102, 'Cash - GBP', 'asset', 'GBP')
     `).run();
 
     const accounts = fixture.db.prepare(`
-      select code, name, currency_code from account 
+      select code, name, currency_code from account
       where code in (10101, 10102)
       order by code
     `).all();
@@ -241,7 +242,7 @@ test('Foreign Exchange - Multi-Currency Accounts', async function (t) {
 
     // Check the posted entry
     const summary = fixture.db.prepare(`
-      select account_code, db, cr, db_functional, cr_functional, 
+      select account_code, db, cr, db_functional, cr_functional,
              foreign_currency_amount, foreign_currency_code
       from journal_entry_summary
       where ref = 1
@@ -275,7 +276,7 @@ test('Foreign Exchange - Multi-Currency Balances', async function (t) {
 
     // Check multi-currency balance view
     const balances = fixture.db.prepare(`
-      select code, name, currency_code, balance_original_currency, 
+      select code, name, currency_code, balance_original_currency,
              balance_functional_currency, functional_currency_code
       from account_balance_multicurrency
       where code = 10103

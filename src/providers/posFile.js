@@ -2,8 +2,9 @@
 
 /** @template T @typedef {import('vue').InjectionKey<T>} InjectionKey */
 
-import { apiV1FileList } from '@/service-worker/api/handlers/api-v1-file-list.js';
 import { onMounted, provide, reactive } from 'vue';
+
+import { apiV1FileList } from '@/service-worker/api/handlers/api-v1-file-list.js';
 
 /** @typedef {import('@/service-worker/api/api.js').JsonApiHandlerType<apiV1FileList>} ApiV1FileList */
 

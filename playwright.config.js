@@ -1,6 +1,7 @@
 // @ts-check
 
 import { join } from 'node:path';
+
 import { defineConfig, devices } from '@playwright/test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -24,5 +25,5 @@ export default defineConfig({
         viewport: { width: 1280, height: 720 },
       },
     },
-  ]
+  ],
 });

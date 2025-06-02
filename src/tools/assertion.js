@@ -10,7 +10,7 @@
 export function assertInstanceOf(constructor, value, message) {
   if (!(value instanceof constructor)) {
     throw new TypeError(
-      message ?? `Expected instance of ${constructor.name}, but got ${typeof value}`
+      message ?? `Expected instance of ${constructor.name}, but got ${typeof value}`,
     );
   }
 }
@@ -26,7 +26,7 @@ export function assertInstanceOf(constructor, value, message) {
 export function assertPropertyExists(object, property, message) {
   if (!(property in (object ?? {}))) {
     throw new Error(
-      message ?? `Property ${property.toString()} does not exist on object`
+      message ?? `Property ${property.toString()} does not exist on object`,
     );
   }
 }
@@ -42,7 +42,7 @@ export function assertPropertyExists(object, property, message) {
 export function assertPropertyString(object, property, message) {
   if (typeof object[property] !== 'string') {
     throw new TypeError(
-      message ?? `Expected property ${property.toString()} to be a string, but got ${typeof object[property]}`
+      message ?? `Expected property ${property.toString()} to be a string, but got ${typeof object[property]}`,
     );
   }
 }

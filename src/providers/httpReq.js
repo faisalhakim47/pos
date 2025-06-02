@@ -1,7 +1,6 @@
 // @ts-check
 
-import { inject, reactive, watchEffect } from 'vue';
-import { provide } from 'vue';
+import { inject, reactive, watchEffect , provide } from 'vue';
 
 /** @template T @typedef {import('vue').InjectionKey<T>} InjectionKey */
 

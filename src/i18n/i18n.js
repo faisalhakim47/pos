@@ -1,7 +1,6 @@
 // @ts-check
 
-import { createI18n as create } from 'vue-i18n';
-import { useI18n as vueUseI18n } from 'vue-i18n';
+import { createI18n as create , useI18n as vueUseI18n } from 'vue-i18n';
 
 import en from '@/i18n/langs/en.js';
 

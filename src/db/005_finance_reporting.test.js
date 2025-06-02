@@ -3,8 +3,9 @@
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
-import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
+
+import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -20,7 +21,7 @@ class TestFixture {
     this.label = label.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
     this.testRunId = testRunId;
     this.coreSchemaFilePath = join(__dirname, '001_core_accounting.sql');
-    this.schemaFilePath = join(__dirname, '002_finance_reporting.sql');
+    this.schemaFilePath = join(__dirname, '005_finance_reporting.sql');
     this.schemaFileContent = null;
     this.db = null;
     this.dbPath = null;
@@ -66,7 +67,7 @@ class TestFixture {
 
   /**
    * Comprehensive Fiscal Year Closing Test
-   * 
+   *
    * This test creates a complete business cycle including:
    * 1. Initial capital investment (cash and common stock)
    * 2. Purchase merchandise inventory on credit (creating accounts payable)
@@ -336,7 +337,7 @@ await test('Finance Reporting Schema', async function (t) {
     t.assert.equal(config.income_statement_revenue_tag, 'income_statement_revenue');
     t.assert.equal(config.fiscal_year_closing_income_summary_account_code, 30400);
     t.assert.equal(config.fiscal_year_closing_retained_earnings_account_code, 30200);
-    
+
     // Test that finance statement config cannot be deleted
     t.assert.throws(function() {
       db.prepare(`
@@ -496,19 +497,19 @@ await test('Finance Reporting Schema', async function (t) {
   /*
    * COMPREHENSIVE FISCAL YEAR CLOSING TEST SUMMARY
    * ===============================================
-   * 
+   *
    * The enhanced test suite includes a complete business cycle with:
-   * 
+   *
    * TRANSACTIONS COVERED:
    * - Initial capital investment ($100,000)
    * - Purchase merchandise inventory on credit ($50,000)
-   * - Payment of accounts payable with cash ($30,000) 
+   * - Payment of accounts payable with cash ($30,000)
    * - Sales with discount ($100,000 gross, $5,000 discount, $30,000 COGS)
    * - Collection of accounts receivable ($95,000)
    * - Operating expenses: utilities ($20,000), rent ($15,000)
    * - Dividend declaration and payment ($10,000)
    * - Depreciation expense ($5,000)
-   * 
+   *
    * FINAL ACCOUNT BALANCES (after closing):
    * - Cash: $120,000
    * - Merchandise Inventory: $20,000
@@ -516,7 +517,7 @@ await test('Finance Reporting Schema', async function (t) {
    * - Accounts Payable: $20,000
    * - Common Stock: $100,000
    * - Retained Earnings: $15,000 (Net Income $25,000 - Dividends $10,000)
-   * 
+   *
    * FISCAL YEAR CLOSING VALIDATION:
    * - All revenue accounts closed to zero
    * - All expense accounts closed to zero
@@ -524,7 +525,7 @@ await test('Finance Reporting Schema', async function (t) {
    * - Net income properly transferred to retained earnings
    * - Balance sheet equation maintained: Assets = Liabilities + Equity
    * - Post-closing trial balance contains only balance sheet accounts
-   * 
+   *
    * NET INCOME CALCULATION:
    * Sales Revenue                $100,000
    * Less: Sales Returns/Allow.    (5,000)
@@ -534,7 +535,7 @@ await test('Finance Reporting Schema', async function (t) {
    * Less: Depreciation Expense    (5,000)
    * --------------------------------
    * Net Income                   $25,000
-   * 
+   *
    * Less: Dividends              (10,000)
    * --------------------------------
    * Retained Earnings            $15,000
@@ -553,7 +554,7 @@ await test('Finance Reporting Schema', async function (t) {
 
     // Verify that closing entries were created
     const closingEntries = db.prepare(`
-      select count(*) as count from journal_entry 
+      select count(*) as count from journal_entry
       where note like '%closing%' or ref >= 900
     `).get().count;
     t.assert.equal(Number(closingEntries) > 0, true, 'Should have closing entries created');
@@ -618,7 +619,7 @@ await test('Finance Reporting Schema', async function (t) {
 
     // 5. Verify closing entries were created
     const closingEntries = db.prepare(`
-      select count(*) as count from journal_entry 
+      select count(*) as count from journal_entry
       where note like '%closing%' or ref >= 900
     `).get().count;
     t.assert.equal(Number(closingEntries) > 0, true, 'Closing entries should have been created');
@@ -652,7 +653,7 @@ await test('Finance Reporting Schema', async function (t) {
     // Verify specific post-closing balances
     const expectedPostClosing = {
       10100: { db: 120000, cr: 0 },     // Cash
-      10600: { db: 20000, cr: 0 },      // Merchandise Inventory  
+      10600: { db: 20000, cr: 0 },      // Merchandise Inventory
       20100: { db: 0, cr: 20000 },      // Accounts Payable
       30100: { db: 0, cr: 100000 },     // Common Stock
       30200: { db: 0, cr: 15000 },      // Retained Earnings

@@ -3,8 +3,9 @@
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
-import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
+
+import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
