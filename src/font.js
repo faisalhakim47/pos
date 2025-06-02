@@ -5,8 +5,8 @@ import FontSourceSans3ItalicUrl from '@/vendor/Source_Sans_3/SourceSans3-Italic-
 
 const fonts = /** @type {Array<FontFace>} */ ([]);
 const fontStyles = [
-  { style: 'normal', url: `url("${FontSourceSans3Url}")` },
-  { style: 'italic', url: `url("${FontSourceSans3ItalicUrl}")` },
+  { style: 'normal', url: `url("${FontSourceSans3Url}") format("truetype")` },
+  { style: 'italic', url: `url("${FontSourceSans3ItalicUrl}") format("truetype")` },
 ];
 const fontWeights = [
   '300',
@@ -29,7 +29,7 @@ for (const fontStyle of fontStyles) {
 export async function loadFonts() {
   for (const font of fonts) {
     document.fonts.add(font);
-    font.load();
+    await font.load();
   }
   await document.fonts.ready;
   return true;
