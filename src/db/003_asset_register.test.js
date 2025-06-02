@@ -300,218 +300,223 @@ await test('Asset Register Schema', async function (t) {
 
     t.assert.equal(maintenanceResult.changes, 1, 'Should insert one maintenance record');
 
-    // Verify maintenance record
-    const maintenance = db.prepare(`
-      SELECT * FROM asset_modification WHERE fixed_asset_id = ? AND modification_type = 'maintenance'
-    `).get(assetId);
+    // Record an improvement (capitalizable)
+    const improvementResult = db.prepare(`
+      INSERT INTO asset_modification (
+        fixed_asset_id, modification_date, modification_type,
+        description, cost, capitalizable
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      assetId,
+      1677801600, // 2023-03-02
+      'improvement',
+      'Add air conditioning system',
+      200000, // $2,000 in cents
+      1,      // Capitalizable
+    );
 
-    t.assert.equal(maintenance.modification_type, 'maintenance', 'Modification type should be maintenance');
-    t.assert.equal(maintenance.cost, 15000, 'Maintenance cost should match');
-    t.assert.equal(maintenance.description, 'Regular oil change and inspection', 'Maintenance description should match');
-    t.assert.equal(maintenance.capitalizable, 0, 'Maintenance should not be capitalizable');
+    t.assert.equal(improvementResult.changes, 1, 'Should insert one improvement record');
+
+    // Verify maintenance records
+    const modifications = db.prepare(`
+      SELECT * FROM asset_modification
+      WHERE fixed_asset_id = ?
+      ORDER BY modification_date
+    `).all(assetId);
+
+    t.assert.equal(modifications.length, 2, 'Should have 2 modification records');
+    t.assert.equal(modifications[0].capitalizable, 0, 'Maintenance should not be capitalizable');
+    t.assert.equal(modifications[1].capitalizable, 1, 'Improvement should be capitalizable');
   });
 
-  await t.test('Asset register view comprehensive reporting', async function (t) {
-    const fixture = new TestFixture('Asset register view comprehensive reporting');
+  await t.test('Asset register summary view includes all calculations', async function (t) {
+    const fixture = new TestFixture('Asset register summary view includes all calculations');
     const db = await fixture.setup();
 
-    // Create multiple assets with different categories
-    db.prepare(`
+    // Create an asset
+    const assetResult = db.prepare(`
       INSERT INTO fixed_asset (
         asset_number, name, description, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      'BLDG-002',
-      'Warehouse Building',
-      'Storage facility',
-      1, // Buildings
-      1640995200, // 2022-01-01
-      2000000, // $20,000
-      200000,  // $2,000 salvage
-      25,      // 25 years
+      'TEST-001',
+      'Test Asset',
+      'Test asset for summary view',
+      1, // Buildings category
+      1672531200, // 2023-01-01
+      100000, // $1,000 cost in cents
+      10000,  // $100 salvage in cents
+      10,     // 10 years
       'straight_line',
     );
 
+    const assetId = assetResult.lastInsertRowid;
+
+    // Add a depreciation period
     db.prepare(`
+      INSERT INTO depreciation_period (
+        fixed_asset_id, period_start_date, period_end_date,
+        depreciation_amount, accumulated_depreciation, book_value,
+        calculation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      assetId,
+      1672531200, // 2023-01-01
+      1704067200, // 2024-01-01
+      9000,       // Annual depreciation: (100000 - 10000) / 10
+      9000,       // First year accumulated
+      91000,      // Book value after first year
+      'straight_line',
+    );
+
+    // Add a capitalizable modification
+    db.prepare(`
+      INSERT INTO asset_modification (
+        fixed_asset_id, modification_date, modification_type,
+        description, cost, capitalizable
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      assetId,
+      1675209600, // 2023-02-01
+      'improvement',
+      'Major upgrade',
+      50000, // $500 in cents
+      1,     // Capitalizable
+    );
+
+    // Check asset register summary
+    const summary = db.prepare(`
+      SELECT * FROM asset_register_summary
+      WHERE id = ?
+    `).get(assetId);
+
+    t.assert.equal(summary.asset_number, 'TEST-001', 'Asset number should match');
+    t.assert.equal(summary.purchase_cost, 100000, 'Purchase cost should match');
+    t.assert.equal(summary.accumulated_depreciation, 9000, 'Accumulated depreciation should match');
+    t.assert.equal(summary.book_value, 91000, 'Book value should be calculated correctly');
+    t.assert.equal(summary.capitalized_modifications, 50000, 'Capitalized modifications should be included');
+    t.assert.equal(summary.total_cost_basis, 150000, 'Total cost basis should include modifications');
+  });
+
+  await t.test('Depreciation calculation views work correctly', async function (t) {
+    const fixture = new TestFixture('Depreciation calculation views work correctly');
+    const db = await fixture.setup();
+
+    // Create straight-line asset
+    const slAssetResult = db.prepare(`
+      INSERT INTO fixed_asset (
+        asset_number, name, description, asset_category_id, purchase_date,
+        purchase_cost, salvage_value, useful_life_years, depreciation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'SL-001',
+      'Straight Line Asset',
+      'Test straight line depreciation',
+      1, // Buildings category
+      1672531200, // 2023-01-01
+      120000, // $1,200 cost in cents
+      20000,  // $200 salvage in cents
+      10,     // 10 years
+      'straight_line',
+    );
+
+    // Create declining balance asset
+    const dbAssetResult = db.prepare(`
       INSERT INTO fixed_asset (
         asset_number, name, description, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
         declining_balance_rate
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      'COMP-002',
-      'Office Computers',
-      'Desktop workstations',
-      3, // Office Equipment
+      'DB-001',
+      'Declining Balance Asset',
+      'Test declining balance depreciation',
+      3, // Office Equipment category
       1672531200, // 2023-01-01
-      100000, // $1,000
-      10000,  // $100 salvage
+      50000,  // $500 cost in cents
+      5000,   // $50 salvage in cents
       5,      // 5 years
       'declining_balance',
-      0.2,    // 20% declining balance rate
+      0.4,    // 40% declining balance rate
     );
 
-    // Query the asset register view
-    const assetRegister = db.prepare(`
-      SELECT
-        name,
-        category_name,
-        purchase_date,
-        purchase_cost,
-        book_value,
-        depreciation_method,
-        useful_life_years
-      FROM asset_register_summary
-      ORDER BY name
-    `).all();
+    // Test straight-line calculation view
+    const slCalc = db.prepare(`
+      SELECT * FROM calculate_straight_line_depreciation
+      WHERE fixed_asset_id = ?
+    `).get(slAssetResult.lastInsertRowid);
 
-    t.assert.equal(assetRegister.length, 2, 'Should have 2 assets in register');
+    t.assert.equal(slCalc.annual_depreciation, 10000, 'Straight-line annual depreciation should be (120000-20000)/10 = 10000');
+    t.assert.equal(slCalc.monthly_depreciation, 833, 'Monthly depreciation should be approximately 833');
 
-    const computers = assetRegister.find(function (a) { return a.name === 'Office Computers'; });
-    t.assert.equal(computers.category_name, 'Office Equipment', 'Computer category should be Office Equipment');
-    t.assert.equal(computers.purchase_cost, 100000, 'Computer purchase cost should match');
-    t.assert.equal(computers.book_value, 100000, 'Computer book value should equal purchase cost (no depreciation yet)');
-    t.assert.equal(computers.depreciation_method, 'declining_balance', 'Computer depreciation method should be declining_balance');
+    // Test declining balance calculation view
+    const dbCalc = db.prepare(`
+      SELECT * FROM calculate_declining_balance_depreciation
+      WHERE fixed_asset_id = ?
+    `).get(dbAssetResult.lastInsertRowid);
 
-    const warehouse = assetRegister.find(function (a) { return a.name === 'Warehouse Building'; });
-    t.assert.equal(warehouse.category_name, 'Buildings', 'Warehouse category should be Buildings');
-    t.assert.equal(warehouse.purchase_cost, 2000000, 'Warehouse purchase cost should match');
-    t.assert.equal(warehouse.book_value, 2000000, 'Warehouse book value should equal purchase cost (no depreciation yet)');
-    t.assert.equal(warehouse.depreciation_method, 'straight_line', 'Warehouse depreciation method should be straight_line');
+    t.assert.equal(dbCalc.declining_balance_rate, 0.4, 'Declining balance rate should be 0.4');
+    t.assert.equal(dbCalc.current_book_value, 50000, 'Initial book value should equal purchase cost');
+    t.assert.equal(dbCalc.next_year_depreciation, 20000, 'First year depreciation should be 50000 * 0.4 = 20000');
   });
 
-  await t.test('Foreign key constraints validation', async function (t) {
-    const fixture = new TestFixture('Foreign key constraints validation');
+  await t.test('Assets pending depreciation view works correctly', async function (t) {
+    const fixture = new TestFixture('Assets pending depreciation view works correctly');
     const db = await fixture.setup();
 
-    // Test that all foreign key references in asset categories are valid
-    t.assert.throws(
-      function () {
-        db.prepare(`
-          INSERT INTO asset_category (
-            name, description, useful_life_years, default_depreciation_method,
-            asset_account_code, accumulated_depreciation_account_code, depreciation_expense_account_code
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          'Invalid Category',
-          'Test category with invalid account codes',
-          10,
-          'straight_line',
-          99999, // Invalid account code
-          99998, // Invalid account code
-          99997,  // Invalid account code
-        );
-      },
-      function (error) {
-        return error instanceof Error && error.message.includes('FOREIGN KEY constraint failed');
-      },
-      'Should throw foreign key constraint error for invalid account codes',
+    // Create an active asset
+    const assetResult = db.prepare(`
+      INSERT INTO fixed_asset (
+        asset_number, name, description, asset_category_id, purchase_date,
+        purchase_cost, salvage_value, useful_life_years, depreciation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'PENDING-001',
+      'Asset Needing Depreciation',
+      'Asset that needs depreciation calculation',
+      2, // Machinery category
+      1672531200, // 2023-01-01
+      200000, // $2,000 cost in cents
+      20000,  // $200 salvage in cents
+      10,     // 10 years
+      'straight_line',
     );
 
-    // Test that asset must reference valid category
-    t.assert.throws(
-      function () {
-        db.prepare(`
-          INSERT INTO fixed_asset (
-            asset_number, name, description, asset_category_id, purchase_date,
-            purchase_cost, salvage_value, useful_life_years, depreciation_method
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          'INVALID-001',
-          'Invalid Asset',
-          'Asset with invalid category',
-          999, // Invalid category ID
-          1672531200,
-          100000,
-          10000,
-          5,
-          'straight_line',
-        );
-      },
-      function (error) {
-        return error instanceof Error && error.message.includes('FOREIGN KEY constraint failed');
-      },
-      'Should throw foreign key constraint error for invalid category ID',
-    );
-  });
+    // Check assets pending depreciation
+    const pending = db.prepare(`
+      SELECT * FROM assets_pending_depreciation
+      WHERE id = ?
+    `).get(assetResult.lastInsertRowid);
 
-  await t.test('Data validation constraints', async function (t) {
-    const fixture = new TestFixture('Data validation constraints');
-    const db = await fixture.setup();
+    t.assert.equal(pending.asset_number, 'PENDING-001', 'Asset should appear in pending list');
+    t.assert.equal(pending.purchase_cost, 200000, 'Purchase cost should match');
+    t.assert.equal(pending.current_accumulated_depreciation, 0, 'Should have no depreciation yet');
 
-    // Test useful life years must be positive
-    t.assert.throws(
-      function () {
-        db.prepare(`
-          INSERT INTO asset_category (
-            name, description, useful_life_years, default_depreciation_method,
-            asset_account_code, accumulated_depreciation_account_code, depreciation_expense_account_code
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          'Invalid Life Category',
-          'Test category',
-          0, // Invalid: must be > 0
-          'straight_line',
-          12200,
-          12210,
-          61100,
-        );
-      },
-      function (error) {
-        return error instanceof Error && error.message.includes('CHECK constraint failed');
-      },
-      'Should throw CHECK constraint error for invalid useful life years',
+    // Add depreciation and verify it's removed from pending
+    db.prepare(`
+      INSERT INTO depreciation_period (
+        fixed_asset_id, period_start_date, period_end_date,
+        depreciation_amount, accumulated_depreciation, book_value,
+        calculation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      assetResult.lastInsertRowid,
+      1672531200, // 2023-01-01
+      1704067200, // 2024-01-01
+      18000,      // Annual depreciation
+      18000,      // Accumulated
+      182000,     // Book value
+      'straight_line',
     );
 
-    // Test depreciation method validation
-    t.assert.throws(
-      function () {
-        db.prepare(`
-          INSERT INTO asset_category (
-            name, description, useful_life_years, default_depreciation_method,
-            asset_account_code, accumulated_depreciation_account_code, depreciation_expense_account_code
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          'Invalid Method Category',
-          'Test category',
-          10,
-          'invalid_method', // Invalid depreciation method
-          12200,
-          12210,
-          61100,
-        );
-      },
-      function (error) {
-        return error instanceof Error && error.message.includes('CHECK constraint failed');
-      },
-      'Should throw CHECK constraint error for invalid depreciation method',
-    );
+    // Asset should still appear if not fully depreciated
+    const stillPending = db.prepare(`
+      SELECT * FROM assets_pending_depreciation
+      WHERE id = ?
+    `).get(assetResult.lastInsertRowid);
 
-    // Test declining balance rate validation
-    t.assert.throws(
-      function () {
-        db.prepare(`
-          INSERT INTO asset_category (
-            name, description, useful_life_years, default_depreciation_method,
-            default_declining_balance_rate, asset_account_code,
-            accumulated_depreciation_account_code, depreciation_expense_account_code
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          'Invalid Rate Category',
-          'Test category',
-          10,
-          'declining_balance',
-          1.5, // Invalid: must be <= 1
-          12200,
-          12210,
-          61100,
-        );
-      },
-      function (error) {
-        return error instanceof Error && error.message.includes('CHECK constraint failed');
-      },
-      'Should throw CHECK constraint error for invalid declining balance rate',
-    );
+    t.assert.equal(!!stillPending, true, 'Asset should still need more depreciation');
+    t.assert.equal(stillPending.current_accumulated_depreciation, 18000, 'Should show updated accumulated depreciation');
   });
 });

@@ -387,12 +387,12 @@ test('Foreign Exchange - Rate Trends', async function (t) {
   await fixture.setup();
 
   await t.test('should calculate rate change percentages', async function (t) {
-    // Add a second rate for EUR/USD to create a trend
-    const tomorrow = Math.floor(Date.now() / 1000) + 86400;
+    // Add a second rate for EUR/USD to create a trend (use yesterday instead of tomorrow)
+    const yesterday = Math.floor(Date.now() / 1000) - 86400;
     fixture.db.prepare(`
       insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
       values ('EUR', 'USD', ?, 1.1100, 'Manual Entry')
-    `).run(tomorrow);
+    `).run(yesterday);
 
     const trends = fixture.db.prepare(`
       select from_currency_code, to_currency_code, rate, previous_rate, rate_change_percent
@@ -408,6 +408,170 @@ test('Foreign Exchange - Rate Trends', async function (t) {
     t.assert.equal(Number(latestTrend.previous_rate) > 0, true, 'Should have previous rate');
     t.assert.equal(Number(latestTrend.rate_change_percent) !== 0, true, 'Should have calculated rate change');
     t.assert.equal(Math.abs(Number(latestTrend.rate_change_percent)) < 10, true, 'Rate change should be reasonable');
+  });
+
+  fixture.cleanup();
+});
+
+test('Foreign Exchange - FX Revaluation Calculations', async function (t) {
+  const fixture = new FXTestFixture('fx_revaluation_calculations');
+  await fixture.setup();
+
+  await t.test('should calculate unrealized gains and losses correctly', async function (t) {
+    // Create EUR account
+    fixture.db.prepare(`
+      insert into account (code, name, account_type_name, currency_code)
+      values (10106, 'Cash - EUR', 'asset', 'EUR')
+    `).run();
+
+    // Initial EUR transaction at rate 1.1000
+    const entryRef1 = fixture.createForeignCurrencyEntry(1, 'Initial EUR deposit', 'EUR', 1.1000);
+    fixture.addForeignCurrencyLine(entryRef1, 10106, 100000, 0, 110000, 0, 100000, 'EUR', 1.1000);
+    fixture.addForeignCurrencyLine(entryRef1, 30100, 0, 110000, 0, 110000, 0, 'USD', 1.1000);
+    fixture.postEntry(entryRef1);
+
+    // Update exchange rate to 1.1500 (EUR strengthened)
+    const newRateDate = Math.floor(Date.now() / 1000);
+    fixture.db.prepare(`
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+      values ('EUR', 'USD', ?, 1.1500, 'Manual Entry')
+    `).run(newRateDate);
+
+    // Check revaluation candidates after rate change
+    const candidates = fixture.db.prepare(`
+      select code, currency_code, balance_original_currency, current_functional_balance, current_exchange_rate
+      from fx_revaluation_candidates
+      where code = 10106
+    `).all();
+
+    t.assert.equal(candidates.length, 1, 'Should have one revaluation candidate');
+    t.assert.equal(candidates[0].balance_original_currency, 100000, 'Original balance should be EUR 1000');
+    t.assert.equal(Math.round(Number(candidates[0].current_functional_balance)), 115000, 'New functional balance should be USD 1150 (rounded)');
+    t.assert.equal(Number(candidates[0].current_exchange_rate), 1.1500, 'Should use latest exchange rate');
+
+    // Calculate unrealized gain: 115000 - 110000 = 5000 (USD 50 gain)
+    const unrealizedGain = Number(candidates[0].current_functional_balance) - 110000;
+    t.assert.equal(unrealizedGain, 5000, 'Should have USD 50 unrealized gain');
+  });
+
+  await t.test('should track revaluation runs properly', async function (t) {
+    // Create a revaluation run
+    const revalRunResult = fixture.db.prepare(`
+      insert into fx_revaluation_run (revaluation_date, functional_currency_code, total_unrealized_gain_loss, notes)
+      values (?, 'USD', 5000, 'Monthly FX revaluation')
+    `).run(Math.floor(Date.now() / 1000));
+
+    const revalRunId = revalRunResult.lastInsertRowid;
+
+    // Add revaluation detail
+    fixture.db.prepare(`
+      insert into fx_revaluation_detail (
+        fx_revaluation_run_id, account_code, original_currency_code,
+        balance_original_currency, old_exchange_rate, new_exchange_rate,
+        old_functional_balance, new_functional_balance, unrealized_gain_loss
+      ) values (?, 10106, 'EUR', 100000, 1.1000, 1.1500, 110000, 115000, 5000)
+    `).run(revalRunId);
+
+    // Verify revaluation records
+    const revalRun = fixture.db.prepare(`
+      select * from fx_revaluation_run where id = ?
+    `).get(revalRunId);
+
+    t.assert.equal(revalRun.total_unrealized_gain_loss, 5000, 'Total unrealized gain should be 5000');
+    t.assert.equal(revalRun.functional_currency_code, 'USD', 'Functional currency should be USD');
+
+    const revalDetails = fixture.db.prepare(`
+      select * from fx_revaluation_detail where fx_revaluation_run_id = ?
+    `).all(revalRunId);
+
+    t.assert.equal(revalDetails.length, 1, 'Should have one revaluation detail');
+    t.assert.equal(revalDetails[0].unrealized_gain_loss, 5000, 'Detail should show 5000 gain');
+  });
+
+  fixture.cleanup();
+});
+
+test('Foreign Exchange - Rate Import Validation', async function (t) {
+  const fixture = new FXTestFixture('rate_import_validation');
+  await fixture.setup();
+
+  await t.test('should validate exchange rate constraints', async function (t) {
+    // Test invalid same currency rate
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+        values ('USD', 'USD', ?, 1.0, 'Manual Entry')
+      `).run(Math.floor(Date.now() / 1000));
+    }, 'Should reject same currency exchange rate');
+
+    // Test zero rate
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+        values ('EUR', 'USD', ?, 0.0, 'Manual Entry')
+      `).run(Math.floor(Date.now() / 1000));
+    }, 'Should reject zero exchange rate');
+
+    // Test negative rate
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+        values ('EUR', 'USD', ?, -1.5, 'Manual Entry')
+      `).run(Math.floor(Date.now() / 1000));
+    }, 'Should reject negative exchange rate');
+
+    // Test unreasonably high rate
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+        values ('EUR', 'USD', ?, 2000000, 'Manual Entry')
+      `).run(Math.floor(Date.now() / 1000));
+    }, 'Should reject unreasonably high exchange rate');
+
+    // Test future date
+    const futureDate = Math.floor(Date.now() / 1000) + 86400; // Tomorrow
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+        values ('EUR', 'USD', ?, 1.1500, 'Manual Entry')
+      `).run(futureDate);
+    }, 'Should reject future exchange rate dates');
+  });
+
+  await t.test('should prevent modification of exchange rate key fields', async function (t) {
+    // Insert a valid rate first
+    const rateDate = Math.floor(Date.now() / 1000) - 86400; // Yesterday
+    fixture.db.prepare(`
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+      values ('GBP', 'USD', ?, 1.2500, 'Manual Entry')
+    `).run(rateDate);
+
+    // Try to modify currency codes - should fail
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        update exchange_rate
+        set from_currency_code = 'EUR'
+        where from_currency_code = 'GBP' and to_currency_code = 'USD' and rate_date = ?
+      `).run(rateDate);
+    }, 'Should not allow modification of currency codes');
+
+    // Try to modify rate date - should fail
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        update exchange_rate
+        set rate_date = ?
+        where from_currency_code = 'GBP' and to_currency_code = 'USD' and rate_date = ?
+      `).run(rateDate + 3600, rateDate);
+    }, 'Should not allow modification of rate date');
+
+    // Should allow modification of rate value and source
+    const updateResult = fixture.db.prepare(`
+      update exchange_rate
+      set rate = 1.2600, source = 'Updated Manual Entry'
+      where from_currency_code = 'GBP' and to_currency_code = 'USD' and rate_date = ?
+    `).run(rateDate);
+
+    t.assert.equal(updateResult.changes, 1, 'Should allow rate and source updates');
   });
 
   fixture.cleanup();

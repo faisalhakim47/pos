@@ -140,7 +140,7 @@ on conflict (account_code, tag) do nothing;
 -- Accounts requiring FX revaluation
 drop view if exists fx_revaluation_candidates;
 create view fx_revaluation_candidates as
-select 
+select
   a.code,
   a.name,
   a.currency_code,
@@ -148,10 +148,10 @@ select
   fc.code as functional_currency_code,
   ler.rate as current_exchange_rate,
   ler.rate_date as rate_date,
-  cast(a.balance * ler.rate as integer) as current_functional_balance
+  round(a.balance * ler.rate) as current_functional_balance
 from account a
 cross join (select code from currency where is_functional_currency = 1) fc
-left join latest_exchange_rate ler on ler.from_currency_code = a.currency_code 
+left join latest_exchange_rate ler on ler.from_currency_code = a.currency_code
   and ler.to_currency_code = fc.code
 where a.currency_code != fc.code
   and a.balance != 0
@@ -160,7 +160,7 @@ where a.currency_code != fc.code
 -- FX exposure summary
 drop view if exists fx_exposure_summary;
 create view fx_exposure_summary as
-select 
+select
   frc.currency_code,
   c.name as currency_name,
   c.symbol as currency_symbol,
@@ -177,16 +177,16 @@ order by abs(sum(frc.current_functional_balance)) desc;
 -- Historical FX rate trends
 drop view if exists fx_rate_trends;
 create view fx_rate_trends as
-select 
+select
   er.from_currency_code,
   er.to_currency_code,
   er.rate,
   er.rate_date,
   er.source,
   lag(er.rate) over (partition by er.from_currency_code, er.to_currency_code order by er.rate_date) as previous_rate,
-  case 
+  case
     when lag(er.rate) over (partition by er.from_currency_code, er.to_currency_code order by er.rate_date) is not null
-    then ((er.rate - lag(er.rate) over (partition by er.from_currency_code, er.to_currency_code order by er.rate_date)) / 
+    then ((er.rate - lag(er.rate) over (partition by er.from_currency_code, er.to_currency_code order by er.rate_date)) /
           lag(er.rate) over (partition by er.from_currency_code, er.to_currency_code order by er.rate_date)) * 100
     else 0
   end as rate_change_percent
@@ -208,6 +208,54 @@ on conflict (name) do update set
   base_url = excluded.base_url,
   api_key_required = excluded.api_key_required;
 
+--- EXCHANGE RATE VALIDATION TRIGGERS ---
+
+-- Prevent invalid exchange rates
+drop trigger if exists exchange_rate_validation_trigger;
+create trigger exchange_rate_validation_trigger
+before insert on exchange_rate for each row
+begin
+  select
+    case
+      when new.from_currency_code = new.to_currency_code
+      then raise(rollback, 'from_currency_code and to_currency_code cannot be the same')
+    end,
+    case
+      when new.rate <= 0
+      then raise(rollback, 'exchange rate must be positive')
+    end,
+    case
+      when new.rate > 1000000
+      then raise(rollback, 'exchange rate seems unreasonably high')
+    end,
+    case
+      when new.rate_date > unixepoch()
+      then raise(rollback, 'exchange rate date cannot be in the future')
+    end;
+end;
+
+-- Validate exchange rate updates
+drop trigger if exists exchange_rate_update_validation_trigger;
+create trigger exchange_rate_update_validation_trigger
+before update on exchange_rate for each row
+begin
+  select
+    case
+      when new.from_currency_code != old.from_currency_code or
+           new.to_currency_code != old.to_currency_code or
+           new.rate_date != old.rate_date
+      then raise(rollback, 'cannot modify currency codes or rate date of existing exchange rate')
+    end,
+    case
+      when new.rate <= 0
+      then raise(rollback, 'exchange rate must be positive')
+    end,
+    case
+      when new.rate > 1000000
+      then raise(rollback, 'exchange rate seems unreasonably high')
+    end;
+end;
+
 --- SAMPLE EXCHANGE RATES ---
 -- Insert some sample exchange rates for testing (rates as of a typical day)
 insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source) values
@@ -228,12 +276,12 @@ on conflict (from_currency_code, to_currency_code, rate_date) do update set
 -- Multi-Currency Account Balance View
 drop view if exists account_balance_multicurrency;
 create view account_balance_multicurrency as
-select 
+select
   a.code,
   a.name,
   a.currency_code,
   a.balance as balance_original_currency,
-  case 
+  case
     when a.currency_code = fc.code then a.balance
     else round(a.balance * coalesce(er.rate, 1.0))
   end as balance_functional_currency,
@@ -246,37 +294,37 @@ where a.balance != 0;
 -- Multi-Currency Trial Balance View
 drop view if exists trial_balance_multicurrency;
 create view trial_balance_multicurrency as
-select 
+select
   a.code,
   a.name,
   a.currency_code,
   a.balance as balance_original_currency,
-  case 
+  case
     when a.currency_code = fc.code then a.balance
     else round(a.balance * coalesce(er.rate, 1.0))
   end as balance_functional_currency,
-  case 
-    when a.currency_code = fc.code then 
+  case
+    when a.currency_code = fc.code then
       case
         when a.balance > 0 and at.normal_balance = 'db' then a.balance
         when a.balance < 0 and at.normal_balance = 'cr' then -a.balance
         else 0
       end
-    else 
+    else
       case
         when a.balance > 0 and at.normal_balance = 'db' then round(a.balance * coalesce(er.rate, 1.0))
         when a.balance < 0 and at.normal_balance = 'cr' then -round(a.balance * coalesce(er.rate, 1.0))
         else 0
       end
   end as debit_balance_functional,
-  case 
-    when a.currency_code = fc.code then 
+  case
+    when a.currency_code = fc.code then
       case
         when a.balance > 0 and at.normal_balance = 'cr' then a.balance
         when a.balance < 0 and at.normal_balance = 'db' then -a.balance
         else 0
       end
-    else 
+    else
       case
         when a.balance > 0 and at.normal_balance = 'cr' then round(a.balance * coalesce(er.rate, 1.0))
         when a.balance < 0 and at.normal_balance = 'db' then -round(a.balance * coalesce(er.rate, 1.0))

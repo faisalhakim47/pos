@@ -305,4 +305,108 @@ await test('Core Accounting Schema', async function (t) {
       `).run();
     }, 'Should not have finance_statement_config table in core accounting');
   });
+
+  await t.test('Multi-currency journal entry validation', async function (t) {
+    const fixture = new TestFixture('Multi-currency journal entry validation');
+    const db = await fixture.setup();
+
+    // Create EUR cash account
+    db.prepare(`
+      insert into account (code, name, account_type_name, currency_code)
+      values (10105, 'Cash - EUR', 'asset', 'EUR')
+    `).run();
+
+    // Create foreign currency journal entry
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note, transaction_currency_code, exchange_rate_to_functional)
+      values (?, ?, ?, ?, ?)
+    `).run(1, 1000000000, 'EUR sale transaction', 'EUR', 1.1050);
+
+    // EUR 1000 in foreign currency amounts to USD 1105 in functional currency
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional, foreign_currency_amount, foreign_currency_code, exchange_rate)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 0, 10105, 100000, 0, 110500, 0, 100000, 'EUR', 1.1050);
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional, foreign_currency_amount, foreign_currency_code, exchange_rate)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 1, 40100, 0, 100000, 0, 110500, -100000, 'EUR', 1.1050);
+    db.exec('commit');
+
+    // Post the entry
+    db.prepare(`
+      update journal_entry set post_time = ? where ref = ?
+    `).run(1000000000, 1);
+
+    // Verify the entry was posted correctly
+    const summary = db.prepare('SELECT * FROM journal_entry_summary WHERE ref = 1 ORDER BY line_order').all();
+    t.assert.equal(summary.length, 2, 'Should have 2 lines in summary');
+    t.assert.equal(summary[0].db_functional, 110500, 'Functional currency debit should be converted');
+    t.assert.equal(summary[1].cr_functional, 110500, 'Functional currency credit should be converted');
+    t.assert.equal(summary[0].foreign_currency_amount, 100000, 'Foreign currency amount should be preserved');
+    t.assert.equal(summary[0].foreign_currency_code, 'EUR', 'Foreign currency code should be preserved');
+  });
+
+  await t.test('Exchange rate conversion consistency', async function (t) {
+    const fixture = new TestFixture('Exchange rate conversion consistency');
+    const db = await fixture.setup();
+
+    // Test that functional amounts match exchange rate calculations
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note, transaction_currency_code, exchange_rate_to_functional)
+      values (?, ?, ?, ?, ?)
+    `).run(1, 1000000000, 'Test conversion', 'EUR', 1.2500);
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 0, 10100, 80000, 0, 100000, 0); // EUR 800 -> USD 1000
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 1, 30100, 0, 80000, 0, 100000); // EUR 800 -> USD 1000
+    db.exec('commit');
+
+    // Should post successfully with consistent exchange rate
+    db.prepare(`
+      update journal_entry set post_time = ? where ref = ?
+    `).run(1000000000, 1);
+
+    const entry = db.prepare('SELECT * FROM journal_entry WHERE ref = 1').get();
+    t.assert.equal(entry.post_time, 1000000000, 'Entry should be posted');
+  });
+
+  await t.test('Prevent posting unbalanced functional currency amounts', async function (t) {
+    const fixture = new TestFixture('Prevent posting unbalanced functional currency amounts');
+    const db = await fixture.setup();
+
+    // Create unbalanced entry in functional currency
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(1, 1000000000, 'Unbalanced functional entry');
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 0, 10100, 50000, 0, 50000, 0);
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 1, 30100, 0, 50000, 0, 60000); // Intentionally unbalanced functional amounts
+    db.exec('commit');
+
+    // Try to post - should fail
+    t.assert.throws(function () {
+      db.prepare(`
+        update journal_entry set post_time = ? where ref = ?
+      `).run(1000000000, 1);
+    }, 'Should throw error for unbalanced functional currency amounts');
+  });
 });
