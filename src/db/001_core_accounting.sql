@@ -117,12 +117,12 @@ create table if not exists journal_entry (
   note text,
   transaction_currency_code text not null default 'USD',
   exchange_rate_to_functional real,
-  reversal_of_journal_entry_ref integer,
-  correction_of_journal_entry_ref integer,
+  reversed_by_journal_entry_ref integer,
+  corrected_by_journal_entry_ref integer,
   post_time integer,
   foreign key (transaction_currency_code) references currency (code) on update restrict on delete restrict,
-  foreign key (reversal_of_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict,
-  foreign key (correction_of_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
+  foreign key (reversed_by_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict,
+  foreign key (corrected_by_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
 ) strict;
 
 create index if not exists journal_entry_transaction_time_index on journal_entry (transaction_time);
