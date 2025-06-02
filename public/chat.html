@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Chat for Accounting SQLite</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #181a20;
+      color: #e0e0e0;
+      margin: 0;
+    }
+    #container {
+      max-width: 700px;
+      margin: 40px auto;
+      background: #23262f;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px #0008;
+      padding: 24px;
+    }
+    #chat {
+      height: 400px;
+      overflow-y: auto;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 12px;
+      background: #1a1c23;
+      margin-bottom: 16px;
+    }
+    .msg {
+      margin-bottom: 18px;
+    }
+    .msg.user {
+      text-align: right;
+    }
+    .msg.assistant {
+      text-align: left;
+    }
+    .msg .bubble {
+      display: inline-block;
+      padding: 10px 16px;
+      border-radius: 16px;
+      max-width: 80%;
+    }
+    .msg.user .bubble {
+      background: #0078d4;
+      color: #fff;
+    }
+    .msg.assistant .bubble {
+      background: #2c2f3a;
+      color: #e0e0e0;
+    }
+    #input-area {
+      display: flex;
+      gap: 8px;
+    }
+    #user-input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #23262f;
+      color: #e0e0e0;
+    }
+    #send-btn {
+      padding: 10px 18px;
+      border-radius: 6px;
+      border: none;
+      background: #0078d4;
+      color: #fff;
+      cursor: pointer;
+    }
+    #send-btn:disabled {
+      background: #444;
+    }
+    #api-key, #openai-url {
+      width: 100%;
+      margin-bottom: 12px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #23262f;
+      color: #e0e0e0;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 8px;
+      width: 100%;
+      background: #23262f;
+      color: #e0e0e0;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 6px 10px;
+    }
+    th {
+      background: #2c2f3a;
+    }
+    em { color: #aaa; }
+  </style>
+</head>
+<body>
+<div id="container">
+  <h2>AI Chat for Accounting SQLite</h2>
+  <input id="openai-url" type="text" placeholder="OpenAI API URL (default: https://api.openai.com/v1/chat/completions)" style="width:100%;margin-bottom:12px;padding:8px;border-radius:6px;border:1px solid #ccc;" />
+  <input id="api-key" type="password" placeholder="Enter OpenAI API Key" />
+  <div id="chat"></div>
+  <form id="input-area">
+    <input id="user-input" autocomplete="off" placeholder="Type your question..." />
+    <button id="send-btn" type="submit">Send</button>
+  </form>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/sql-wasm.js"></script>
+<!-- Marked.js for Markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="./chat.js"></script>
+</body>
+</html>
