@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -1220,11 +1219,10 @@ await test('Finance Reporting Schema', async function (t) {
 
       // Verify closing entries were properly recorded
       const closingEntries = db.prepare(`
-        SELECT je.ref, je.note, COUNT(jel.id) as line_count
+        SELECT je.ref, je.note, COUNT(*) as line_count
         FROM journal_entry je
         JOIN journal_entry_line jel ON je.ref = jel.journal_entry_ref
         WHERE je.note LIKE '%closing%' OR je.ref >= 900
-        GROUP BY je.ref, je.note
         GROUP BY je.ref, je.note
         ORDER BY je.ref
       `).all();
@@ -1246,7 +1244,7 @@ await test('Finance Reporting Schema', async function (t) {
 
     await t.test('should validate materiality and disclosure principles', async function (t) {
       const fixture = new TestFixture('Materiality and disclosure validation');
-      const db = await fixture.setupWithSalesAndExpenses();
+      const db = await fixture.setupWithClosedFiscalYear();
 
       // Generate balance sheet to check for proper disclosure of significant items
       db.prepare('INSERT INTO balance_sheet (report_time) VALUES (?)').run(2000000000);

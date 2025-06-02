@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -625,48 +624,47 @@ test('Asset Register - Accounting Principles Validation', async function (t) {
     const fixture = new TestFixture('cost_salvage_test');
     let db;
 
-    try {
-      db = await fixture.setup();
+    db = await fixture.setup();
 
-      // Try to create asset with salvage value equal to purchase cost (should fail)
-      t.assert.throws(() => {
-        db.prepare(`
+    // Try to create asset with salvage value equal to purchase cost (should fail)
+    t.assert.throws(() => {
+      db.prepare(`
           INSERT INTO fixed_asset (
             asset_number, name, description, asset_category_id, purchase_date,
             purchase_cost, salvage_value, useful_life_years, depreciation_method
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          'INVALID-001',
-          'Invalid Asset',
-          'Asset with salvage = cost',
-          1, // Buildings category
-          1672531200,
-          100000, // $1,000 cost (in smallest currency unit)
-          100000, // $1,000 salvage (invalid - equal to cost)
-          10,
-          'straight_line',
-        );
-      }, /salvage_value must be less than purchase_cost/); // Match the exact error message from the trigger
+        'INVALID-001',
+        'Invalid Asset',
+        'Asset with salvage = cost',
+        1, // Buildings category
+        1672531200,
+        100000, // $1,000 cost (in smallest currency unit)
+        100000, // $1,000 salvage (invalid - equal to cost)
+        10,
+        'straight_line',
+      );
+    }, /salvage_value must be less than purchase_cost/); // Match the exact error message from the trigger
 
-      // Try with salvage value greater than purchase cost (should also fail)
-      t.assert.throws(() => {
-        db.prepare(`
+    // Try with salvage value greater than purchase cost (should also fail)
+    t.assert.throws(() => {
+      db.prepare(`
           INSERT INTO fixed_asset (
             asset_number, name, description, asset_category_id, purchase_date,
             purchase_cost, salvage_value, useful_life_years, depreciation_method
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          'INVALID-002',
-          'Invalid Asset',
-          'Asset with salvage > cost',
-          1, // Buildings category
-          1672531200,
-          100000, // $1,000 cost (in smallest currency unit)
-          150000, // $1,500 salvage (invalid - greater than cost)
-          10,
-          'straight_line',
-        );
-      }, /salvage_value must be less than purchase_cost/); // Match the exact error message from the trigger
+        'INVALID-002',
+        'Invalid Asset',
+        'Asset with salvage > cost',
+        1, // Buildings category
+        1672531200,
+        100000, // $1,000 cost (in smallest currency unit)
+        150000, // $1,500 salvage (invalid - greater than cost)
+        10,
+        'straight_line',
+      );
+    }, /salvage_value must be less than purchase_cost/); // Match the exact error message from the trigger
 
     // Valid asset with salvage < cost should work
     const validResult = db.prepare(`
@@ -687,7 +685,9 @@ test('Asset Register - Accounting Principles Validation', async function (t) {
     );
 
     t.assert.equal(validResult.changes, 1, 'Valid asset should be created successfully');
-  });  await t.test('should validate asset modification capitalization rules', async function (t) {
+  });
+
+  await t.test('should validate asset modification capitalization rules', async function (t) {
     const fixture = new TestFixture('modification_capitalization');
     const db = await fixture.setup();
 
