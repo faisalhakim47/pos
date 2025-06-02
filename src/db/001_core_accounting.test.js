@@ -1114,4 +1114,66 @@ await test('Core Accounting Schema', async function (t) {
     t.assert.equal(cashAfter, 100000, 'Cash should be back to $1000');
     t.assert.equal(salesAfter, 0, 'Sales should be back to $0');
   });
+
+  await t.test('Missing exchange rate returns null instead of default', async function (t) {
+    const fixture = new TestFixture('Missing exchange rate returns null instead of default');
+    const db = await fixture.setup();
+
+    // Create EUR account without setting up exchange rates
+    db.prepare(`
+      insert into account (code, name, account_type_name, currency_code, balance)
+      values (10105, 'Cash - EUR', 'asset', 'EUR', 50000)
+    `).run();
+
+    // Query account balance - should return null for functional currency when no exchange rate exists
+    const balance = db.prepare(`
+      select balance_functional_currency, balance_original_currency
+      from account_balance_multicurrency
+      where code = 10105
+    `).get();
+
+    t.assert.equal(balance.balance_functional_currency, null,
+      'Should return null when exchange rate is missing instead of defaulting to 1.0');
+    t.assert.equal(balance.balance_original_currency, 50000,
+      'Original currency balance should remain unchanged');
+
+    // Trial balance should exclude accounts with null functional currency balance
+    const trialBalance = db.prepare(`
+      select count(*) as count, sum(debit_balance_functional) as total_debits
+      from trial_balance_multicurrency
+      where code = 10105
+    `).get();
+
+    t.assert.equal(trialBalance.count, 0,
+      'Trial balance should exclude accounts with null functional currency balance');
+    t.assert.equal(trialBalance.total_debits, null,
+      'No debit balance should be included when exchange rate is missing');
+
+    // Now add the required exchange rate
+    db.prepare(`
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+      values ('EUR', 'USD', 1000000000, 1.2, 'manual')
+    `).run();
+
+    // Now the queries should work with proper conversion
+    const balanceWithRate = db.prepare(`
+      select balance_functional_currency
+      from account_balance_multicurrency
+      where code = 10105
+    `).get();
+
+    t.assert.equal(balanceWithRate.balance_functional_currency, 60000,
+      'Should convert EUR 500 to USD 600 at rate 1.2');
+
+    const trialBalanceWithRate = db.prepare(`
+      select count(*) as count, sum(debit_balance_functional) as total_debits
+      from trial_balance_multicurrency
+      where code = 10105
+    `).get();
+
+    t.assert.equal(trialBalanceWithRate.count, 1,
+      'Trial balance should include account when exchange rate is available');
+    t.assert.equal(trialBalanceWithRate.total_debits, 60000,
+      'Trial balance should show converted amount');
+  });
 });

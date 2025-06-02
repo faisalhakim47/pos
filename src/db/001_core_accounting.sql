@@ -553,6 +553,9 @@ select
 from currency;
 
 -- Multi-currency account balance view
+-- NOTE: Returns NULL for balance_functional_currency when no exchange rate exists
+-- Applications should check for NULL and handle missing exchange rates appropriately
+-- instead of relying on a default rate of 1.0 which could lead to incorrect calculations
 drop view if exists account_balance_multicurrency;
 create view account_balance_multicurrency as
 select 
@@ -563,7 +566,8 @@ select
   a.balance as balance_original_currency,
   case 
     when a.currency_code = fc.code then a.balance
-    else cast(a.balance * coalesce(erl.rate, 1.0) as integer)
+    when erl.rate is not null then cast(a.balance * erl.rate as integer)
+    else null -- Return null instead of defaulting to 1.0, let application handle missing rates
   end as balance_functional_currency,
   fc.code as functional_currency_code,
   erl.rate as exchange_rate_to_functional,
