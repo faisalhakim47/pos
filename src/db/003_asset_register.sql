@@ -223,6 +223,19 @@ begin
     end;
 end;
 
+-- Also apply the same validation for updates
+drop trigger if exists fixed_asset_depreciation_update_validation_trigger;
+create trigger fixed_asset_depreciation_update_validation_trigger
+before update on fixed_asset for each row
+when new.salvage_value != old.salvage_value or new.purchase_cost != old.purchase_cost
+begin
+  select
+    case
+      when new.salvage_value >= new.purchase_cost
+      then raise(rollback, 'salvage_value must be less than purchase_cost')
+    end;
+end;
+
 -- Prevent modification of disposed assets
 drop trigger if exists fixed_asset_disposed_modification_trigger;
 create trigger fixed_asset_disposed_modification_trigger
@@ -395,3 +408,6 @@ left join (
 where fa.status = 'active'
   and (latest_dep.period_end_date is null or
        julianday('now') - julianday(datetime(latest_dep.period_end_date, 'unixepoch')) >= 365);
+
+-- Commit the transaction to finalize all schema changes
+commit transaction;

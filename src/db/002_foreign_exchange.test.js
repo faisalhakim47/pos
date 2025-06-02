@@ -603,7 +603,7 @@ await test('Foreign Exchange - Accounting Principles Validation', async function
     const balances = fixture.db.prepare(`
       select
         sum(case when at.name = 'asset'
-            then case when at.normal_balance = 'dr' then a.balance else -a.balance end
+            then case when at.normal_balance = 'db' then a.balance else -a.balance end
             else 0 end) as total_assets,
         sum(case when at.name = 'liability'
             then case when at.normal_balance = 'cr' then a.balance else -a.balance end
@@ -681,7 +681,25 @@ await test('Foreign Exchange - Accounting Principles Validation', async function
     t.assert.equal(Number(trialBalance.account_count) > 0, true, 'Should have accounts in trial balance');
   });
 
-  await t.test('should validate currency consistency in transactions', async function (t) {
+  await t.test('should validate currency consistency in transactions', async function (t) {    // Create a foreign currency transaction to test consistency
+    fixture.db.exec('begin');
+    fixture.db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (3, ?, 'Foreign currency transaction test')
+    `).run(Math.floor(Date.now() / 1000));
+
+    // EUR transaction at rate 1.1050 to USD: EUR 50,000 = USD 55,250
+    fixture.db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional, foreign_currency_amount, foreign_currency_code, exchange_rate)
+      values (3, 0, 10100, 55250, 0, 55250, 0, 50000, 'EUR', 1.1050)
+    `).run(); // Cash USD (debit)
+    fixture.db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional, foreign_currency_amount, foreign_currency_code, exchange_rate)
+      values (3, 1, 40100, 0, 55250, 0, 55250, -50000, 'EUR', 1.1050)
+    `).run(); // Sales Revenue (credit)
+    fixture.db.exec('commit');
+    fixture.postEntry(3);
+
     // Test that foreign currency amounts match exchange rate calculations
     const entry = fixture.db.prepare(`
       select * from journal_entry_summary

@@ -623,28 +623,50 @@ test('Asset Register - Accounting Principles Validation', async function (t) {
 
   await t.test('should enforce asset cost and salvage value relationships', async function (t) {
     const fixture = new TestFixture('cost_salvage_test');
-    const db = await fixture.setup();
+    let db;
 
-    // Try to create asset with salvage value >= purchase cost (should fail)
-    t.assert.throws(function () {
+    try {
+      db = await fixture.setup();
 
-      db.prepare(`
-        INSERT INTO fixed_asset (
-          asset_number, name, description, asset_category_id, purchase_date,
-          purchase_cost, salvage_value, useful_life_years, depreciation_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        'INVALID-001',
-        'Invalid Asset',
-        'Asset with salvage >= cost',
-        1, // Buildings category
-        1672531200,
-        100000, // $1,000 cost
-        150000, // $1,500 salvage (invalid - higher than cost)
-        10,
-        'straight_line',
-      );
-    }, 'Should reject assets where salvage value >= purchase cost');
+      // Try to create asset with salvage value equal to purchase cost (should fail)
+      t.assert.throws(() => {
+        db.prepare(`
+          INSERT INTO fixed_asset (
+            asset_number, name, description, asset_category_id, purchase_date,
+            purchase_cost, salvage_value, useful_life_years, depreciation_method
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          'INVALID-001',
+          'Invalid Asset',
+          'Asset with salvage = cost',
+          1, // Buildings category
+          1672531200,
+          100000, // $1,000 cost (in smallest currency unit)
+          100000, // $1,000 salvage (invalid - equal to cost)
+          10,
+          'straight_line',
+        );
+      }, /salvage_value must be less than purchase_cost/); // Match the exact error message from the trigger
+
+      // Try with salvage value greater than purchase cost (should also fail)
+      t.assert.throws(() => {
+        db.prepare(`
+          INSERT INTO fixed_asset (
+            asset_number, name, description, asset_category_id, purchase_date,
+            purchase_cost, salvage_value, useful_life_years, depreciation_method
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          'INVALID-002',
+          'Invalid Asset',
+          'Asset with salvage > cost',
+          1, // Buildings category
+          1672531200,
+          100000, // $1,000 cost (in smallest currency unit)
+          150000, // $1,500 salvage (invalid - greater than cost)
+          10,
+          'straight_line',
+        );
+      }, /salvage_value must be less than purchase_cost/); // Match the exact error message from the trigger
 
     // Valid asset with salvage < cost should work
     const validResult = db.prepare(`
@@ -658,8 +680,8 @@ test('Asset Register - Accounting Principles Validation', async function (t) {
       'Asset with proper salvage value',
       1,
       1672531200,
-      100000, // $1,000 cost
-      10000,  // $100 salvage (valid)
+      100000, // $1,000 cost (in smallest currency unit)
+      10000,  // $100 salvage (valid - less than cost)
       10,
       'straight_line',
     );
