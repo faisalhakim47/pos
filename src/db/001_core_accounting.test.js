@@ -68,7 +68,7 @@ await test('Core Accounting Schema', async function (t) {
 
     const accountTypes = db.prepare('SELECT * FROM account_type ORDER BY name').all();
 
-    t.assert.equal(accountTypes.length, 12, 'Should have 12 account types');
+    t.assert.equal(accountTypes.length, 11, 'Should have 11 account types');
 
     const asset = accountTypes.find(function (at) { return at.name === 'asset'; });
     t.assert.equal(asset.normal_balance, 'db', 'Asset should have debit normal balance');
@@ -440,7 +440,7 @@ await test('Core Accounting Schema', async function (t) {
         sum(case when at.name in ('liability', 'contra_liability')
             then case when at.normal_balance = 'cr' then a.balance else -a.balance end
             else 0 end) as total_liabilities,
-        sum(case when at.name in ('equity', 'contra_equity', 'dividend')
+        sum(case when at.name in ('equity', 'contra_equity')
             then case when at.normal_balance = 'cr' then a.balance else -a.balance end
             else 0 end) as total_equity
       from account a

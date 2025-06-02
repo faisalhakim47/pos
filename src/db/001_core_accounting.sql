@@ -1,45 +1,31 @@
 /*
-SQLite 3.49.0
+MIGRATION 001: CORE ACCOUNTING FOUNDATION
+=========================================
 
-MIGRATION 001: CORE ACCOUNTING FOUNDATION WITH MULTI-CURRENCY SUPPORT
-====================================================================
+Double-entry bookkeeping system with multi-currency support.
 
-Establishes the fundamental double-entry bookkeeping system with:
-
-CHART OF ACCOUNTS:
-• Account types (asset, liability, equity, revenue, expense) with normal balances
-• 5-digit account codes (10000-99999) with hierarchical naming
-• Account tagging system for financial statement categorization
-• Currency assignment per account for multi-currency support
-
-JOURNAL ENTRY SYSTEM:
-• Double-entry journal entries with automatic balance validation
-• Immutable posted entries (no updates/deletes after posting)
-• Reversal and correction mechanisms for posted entries
-• Real-time account balance updates via triggers
-• Auto-numbering for journal entry lines
-• Multi-currency transactions with foreign exchange conversion
-
-CURRENCY MANAGEMENT:
-• ISO 4217 currency code support with decimal precision
+FEATURES:
+• Chart of accounts with 5-digit codes (10000-99999)
+• Account types: asset, liability, equity, revenue, expense, contra accounts
+• Journal entries with immutable posted entries (reversals only)
+• Multi-currency support with functional currency (USD default)
+• Real-time balance updates via triggers
 • Exchange rate management with historical tracking
-• Functional currency designation for base reporting
-• Foreign currency translation and revaluation
 
-KEY CONSTRAINTS & CODING STANDARDS:
-• Multi-currency system with functional currency base
-• Unix timestamps for all time fields (stored in seconds)
-• Smallest currency denomination (cents/pennies) using signed int 64
-• Exchange rates stored as decimal with precision up to 8 decimal places
-• No SQL deletes - adjustment entries only
-• Atomic transactions enforced throughout
-• Use lowercase for all SQL keywords
-• Use snake_case for table, column, view, trigger names
-• Use full names in queries, not shorthand aliases
-• Currency truncation towards zero is acceptable
+DATA DESIGN:
+• Integer amounts in smallest currency units (cents) to avoid rounding
+• Unix timestamps for all time fields
+• ISO 4217 currency codes with configurable decimal places
+• Strict double-entry validation: debits must equal credits
+• No SQL deletes - use reversal/correction entries instead
 
-Includes default chart of accounts with standard business account structure
-and pre-configured tags for balance sheet and income statement generation.
+COMPLIANCE:
+• GAAP/IFRS compliant chart of accounts structure
+• SOX compliant immutable audit trail
+• Accounting equation enforced: Assets = Liabilities + Equity
+• Account tags for financial statement generation
+
+Includes default chart of accounts and 30 major world currencies.
 */
 
 pragma journal_mode = wal;
@@ -380,7 +366,6 @@ insert into account_type (name, normal_balance) values
   ('contra_liability', 'db'),
   ('equity', 'cr'),
   ('contra_equity', 'db'),
-  ('dividend', 'db'),
   ('revenue', 'cr'),
   ('contra_revenue', 'db'),
   ('expense', 'db'),
@@ -421,7 +406,7 @@ insert into account (code, name, account_type_name) values
   (30200, 'Retained Earnings', 'equity'),
   (30300, 'Dividends', 'equity'),
   (30400, 'Income Summary', 'equity'),
-  (30600, 'Dividends/Withdrawals', 'dividend'),
+  (30600, 'Dividends/Withdrawals', 'contra_equity'),
   
   -- Revenue
   (40100, 'Sales Revenue', 'revenue'),
