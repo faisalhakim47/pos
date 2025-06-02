@@ -607,4 +607,199 @@ join account_type at on at.name = abmc.account_type_name
 where abmc.balance_functional_currency != 0
 order by abmc.code;
 
+--- REVERSAL AND CORRECTION HELPERS ---
+
+-- View to create reversal entries automatically
+drop view if exists journal_entry_reversal;
+create view journal_entry_reversal as
+select 
+  'reversal' as operation_type,
+  je.ref as original_ref,
+  je.transaction_time as original_transaction_time,
+  je.note as original_note,
+  je.transaction_currency_code,
+  je.exchange_rate_to_functional,
+  'Reversal of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) as reversal_note
+from journal_entry je
+where je.post_time is not null
+  and je.reversed_by_journal_entry_ref is null
+  and je.corrected_by_journal_entry_ref is null;
+
+-- Trigger to create reversal entry
+drop trigger if exists journal_entry_create_reversal_trigger;
+create trigger journal_entry_create_reversal_trigger
+instead of insert on journal_entry_reversal for each row
+begin
+  -- Validate that the original entry exists and is posted
+  select
+    case
+      when (select count(*) from journal_entry where ref = new.original_ref and post_time is not null) = 0
+      then raise(rollback, 'original journal entry must exist and be posted to create reversal')
+    end,
+    case
+      when (select count(*) from journal_entry where note like '%[Reverses Entry #' || printf('%.0f', new.original_ref) || ']%') > 0
+      then raise(rollback, 'journal entry has already been reversed')
+    end,
+    case
+      when (select count(*) from journal_entry where note like '%[Corrects Entry #' || printf('%.0f', new.original_ref) || ']%') > 0
+      then raise(rollback, 'journal entry has already been corrected, cannot reverse')
+    end;
+  
+  -- Create the reversal journal entry with the tracking note
+  insert into journal_entry (
+    transaction_time,
+    note,
+    transaction_currency_code,
+    exchange_rate_to_functional
+  )
+  select
+    unixepoch(),
+    'Reversal of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) || ' [Reverses Entry #' || printf('%.0f', new.original_ref) || ']',
+    je.transaction_currency_code,
+    je.exchange_rate_to_functional
+  from journal_entry je
+  where je.ref = new.original_ref;
+  
+  -- Create reversal journal entry lines (flip debit/credit)
+  insert into journal_entry_line (
+    journal_entry_ref,
+    line_order,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional,
+    foreign_currency_amount,
+    foreign_currency_code,
+    exchange_rate
+  )
+  select
+    (select max(ref) from journal_entry),
+    jel.line_order,
+    jel.account_code,
+    jel.cr, -- flip credit to debit
+    jel.db, -- flip debit to credit
+    jel.cr_functional, -- flip credit to debit in functional currency
+    jel.db_functional, -- flip debit to credit in functional currency
+    case when jel.foreign_currency_amount is not null then -jel.foreign_currency_amount else null end,
+    jel.foreign_currency_code,
+    jel.exchange_rate
+  from journal_entry_line jel
+  where jel.journal_entry_ref = new.original_ref
+  order by jel.line_order;
+  
+  -- Post the reversal entry immediately
+  update journal_entry 
+  set post_time = unixepoch()
+  where ref = (select max(ref) from journal_entry);
+end;
+
+-- View to create correction entries
+drop view if exists journal_entry_correction;
+create view journal_entry_correction as
+select 
+  'correction' as operation_type,
+  je.ref as original_ref,
+  je.transaction_time as original_transaction_time,
+  je.note as original_note,
+  je.transaction_currency_code,
+  je.exchange_rate_to_functional,
+  'Correction of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) as correction_note
+from journal_entry je
+where je.post_time is not null
+  and je.reversed_by_journal_entry_ref is null
+  and je.corrected_by_journal_entry_ref is null;
+
+-- Trigger to create correction entry (reversal + new correct entry)
+drop trigger if exists journal_entry_create_correction_trigger;
+create trigger journal_entry_create_correction_trigger
+instead of insert on journal_entry_correction for each row
+begin
+  -- Validate that the original entry exists and is posted
+  select
+    case
+      when (select count(*) from journal_entry where ref = new.original_ref and post_time is not null) = 0
+      then raise(rollback, 'original journal entry must exist and be posted to create correction')
+    end,
+    case
+      when (select count(*) from journal_entry where note like '%[Reverses Entry #' || printf('%.0f', new.original_ref) || ']%') > 0
+      then raise(rollback, 'journal entry has already been reversed, cannot correct')
+    end,
+    case
+      when (select count(*) from journal_entry where note like '%[Corrects Entry #' || printf('%.0f', new.original_ref) || ']%') > 0
+      then raise(rollback, 'journal entry has already been corrected')
+    end;
+  
+  -- Create the correction journal entry (reversal part)
+  insert into journal_entry (
+    transaction_time,
+    note,
+    transaction_currency_code,
+    exchange_rate_to_functional
+  )
+  select
+    unixepoch(),
+    'Correction of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) || ' [Corrects Entry #' || printf('%.0f', new.original_ref) || ']',
+    je.transaction_currency_code,
+    je.exchange_rate_to_functional
+  from journal_entry je
+  where je.ref = new.original_ref;
+  
+  -- Create correction journal entry lines (flip debit/credit to reverse)
+  insert into journal_entry_line (
+    journal_entry_ref,
+    line_order,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional,
+    foreign_currency_amount,
+    foreign_currency_code,
+    exchange_rate
+  )
+  select
+    (select max(ref) from journal_entry),
+    jel.line_order,
+    jel.account_code,
+    jel.cr, -- flip credit to debit
+    jel.db, -- flip debit to credit
+    jel.cr_functional, -- flip credit to debit in functional currency
+    jel.db_functional, -- flip debit to credit in functional currency
+    case when jel.foreign_currency_amount is not null then -jel.foreign_currency_amount else null end,
+    jel.foreign_currency_code,
+    jel.exchange_rate
+  from journal_entry_line jel
+  where jel.journal_entry_ref = new.original_ref
+  order by jel.line_order;
+  
+  -- Post the correction entry
+  update journal_entry 
+  set post_time = unixepoch()
+  where ref = (select max(ref) from journal_entry);
+end;
+
+-- Helper view to find entries that can be reversed or corrected
+drop view if exists journal_entry_reversible;
+create view journal_entry_reversible as
+select 
+  je.ref,
+  je.transaction_time,
+  je.note,
+  je.transaction_currency_code,
+  je.post_time,
+  case 
+    when exists(select 1 from journal_entry je2 where je2.note like '%[Reverses Entry #' || printf('%.0f', je.ref) || ']%') then 'reversed'
+    when exists(select 1 from journal_entry je2 where je2.note like '%[Corrects Entry #' || printf('%.0f', je.ref) || ']%') then 'corrected'
+    else 'reversible'
+  end as status,
+  (select ref from journal_entry je2 where je2.note like '%[Reverses Entry #' || printf('%.0f', je.ref) || ']%' limit 1) as reversed_by_journal_entry_ref,
+  (select ref from journal_entry je2 where je2.note like '%[Corrects Entry #' || printf('%.0f', je.ref) || ']%' limit 1) as corrected_by_journal_entry_ref,
+  (select count(*) from journal_entry_line where journal_entry_ref = je.ref) as line_count,
+  (select sum(db_functional) from journal_entry_line where journal_entry_ref = je.ref) as total_debit,
+  (select sum(cr_functional) from journal_entry_line where journal_entry_ref = je.ref) as total_credit
+from journal_entry je
+where je.post_time is not null
+order by je.ref;
+
 commit transaction;

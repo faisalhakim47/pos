@@ -683,4 +683,435 @@ await test('Core Accounting Schema', async function (t) {
       `).run(1000000000, 1);
     }, 'Should not allow posting journal entries with zero amounts');
   });
+
+  await t.test('Journal entry reversal functionality', async function (t) {
+    const fixture = new TestFixture('Journal entry reversal functionality');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Create a simple sales transaction to reverse
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000100, 'Sale of goods');
+
+    // Debit: Cash $500
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 10100, 50000, 0, 50000, 0);
+
+    // Credit: Sales Revenue $500
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 40100, 0, 50000, 0, 50000);
+    db.exec('commit');
+
+    // Post the sales transaction
+    db.prepare(`
+      update journal_entry set post_time = ? where ref = ?
+    `).run(1000000100, 2);
+
+    // Verify initial balances
+    const cashBalanceBefore = db.prepare('select balance from account where code = ?').get(10100).balance;
+    const salesBalanceBefore = db.prepare('select balance from account where code = ?').get(40100).balance;
+    t.assert.equal(cashBalanceBefore, 150000, 'Cash should be $1500 (initial $1000 + sale $500)');
+    t.assert.equal(salesBalanceBefore, 50000, 'Sales revenue should be $500');
+
+    // Test reversal creation
+    db.prepare(`
+      insert into journal_entry_reversal (original_ref) values (?)
+    `).run(2);
+
+    // Verify reversal entry was created
+    const reversalEntry = db.prepare('select * from journal_entry where ref = 3').get();
+    t.assert.equal(reversalEntry !== null && reversalEntry !== undefined, true, 'Reversal entry should be created');
+    t.assert.equal(typeof reversalEntry.note, 'string', 'Reversal note should be a string');
+    t.assert.equal(String(reversalEntry.note).includes('Reversal of:'), true, 'Reversal note should indicate it is a reversal');
+    t.assert.equal(reversalEntry.post_time !== null && reversalEntry.post_time !== undefined, true, 'Reversal entry should be automatically posted');
+
+    // Verify original entry is marked as reversed (in the note)
+    const reversalEntryCheck = db.prepare('select * from journal_entry where ref = 3').get();
+    t.assert.equal(String(reversalEntryCheck.note).includes('[Reverses Entry #2]'), true, 'Reversal entry should reference original entry');
+
+    // Verify reversal lines
+    const reversalLines = db.prepare(`
+      select * from journal_entry_line where journal_entry_ref = 3 order by line_order
+    `).all();
+    t.assert.equal(reversalLines.length, 2, 'Reversal should have 2 lines');
+    t.assert.equal(reversalLines[0].account_code, 10100, 'First line should be cash account');
+    t.assert.equal(reversalLines[0].db, 0, 'Cash debit should be 0 (reversed)');
+    t.assert.equal(reversalLines[0].cr, 50000, 'Cash credit should be $500');
+    t.assert.equal(reversalLines[1].account_code, 40100, 'Second line should be sales account');
+    t.assert.equal(reversalLines[1].db, 50000, 'Sales debit should be $500');
+    t.assert.equal(reversalLines[1].cr, 0, 'Sales credit should be 0 (reversed)');
+
+    // Verify balances are back to original
+    const cashBalanceAfter = db.prepare('select balance from account where code = ?').get(10100).balance;
+    const salesBalanceAfter = db.prepare('select balance from account where code = ?').get(40100).balance;
+    t.assert.equal(cashBalanceAfter, 100000, 'Cash should be back to $1000');
+    t.assert.equal(salesBalanceAfter, 0, 'Sales revenue should be back to $0');
+
+    // Test that already reversed entry cannot be reversed again
+    t.assert.throws(function () {
+      db.prepare('insert into journal_entry_reversal (original_ref) values (2)').run();
+    }, 'Should not allow reversing already reversed entry');
+  });
+
+  await t.test('Journal entry correction functionality', async function (t) {
+    const fixture = new TestFixture('Journal entry correction functionality');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Create a transaction with wrong amount to correct
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000100, 'Office supplies purchase - wrong amount');
+
+    // Debit: Office Supplies $200 (should be $300)
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 60500, 20000, 0, 20000, 0);
+
+    // Credit: Cash $200
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 10100, 0, 20000, 0, 20000);
+    db.exec('commit');
+
+    // Post the incorrect transaction
+    db.prepare(`
+      update journal_entry set post_time = ? where ref = ?
+    `).run(1000000100, 2);
+
+    // Verify initial balances
+    const cashBalanceBefore = db.prepare('select balance from account where code = ?').get(10100).balance;
+    const expenseBalanceBefore = db.prepare('select balance from account where code = ?').get(60500).balance;
+    t.assert.equal(cashBalanceBefore, 80000, 'Cash should be $800 (initial $1000 - $200)');
+    t.assert.equal(expenseBalanceBefore, 20000, 'Office supplies expense should be $200');
+
+    // Test correction creation (this reverses the original entry)
+    db.prepare(`
+      insert into journal_entry_correction (original_ref) values (?)
+    `).run(2);
+
+    // Verify correction entry was created
+    const correctionEntry = db.prepare('select * from journal_entry where ref = 3').get();
+    t.assert.equal(correctionEntry !== null && correctionEntry !== undefined, true, 'Correction entry should be created');
+    t.assert.equal(String(correctionEntry.note).includes('Correction of:'), true, 'Correction note should indicate it is a correction');
+    t.assert.equal(correctionEntry.post_time !== null && correctionEntry.post_time !== undefined, true, 'Correction entry should be automatically posted');
+
+    // Verify original entry is marked as corrected (in the note)
+    const correctionEntryCheck = db.prepare('select * from journal_entry where ref = 3').get();
+    t.assert.equal(String(correctionEntryCheck.note).includes('[Corrects Entry #2]'), true, 'Correction entry should reference original entry');
+
+    // Verify correction lines (should reverse the original)
+    const correctionLines = db.prepare(`
+      select * from journal_entry_line where journal_entry_ref = 3 order by line_order
+    `).all();
+    t.assert.equal(correctionLines.length, 2, 'Correction should have 2 lines');
+    t.assert.equal(correctionLines[0].account_code, 60500, 'First line should be office supplies account');
+    t.assert.equal(correctionLines[0].db, 0, 'Office supplies debit should be 0 (reversed)');
+    t.assert.equal(correctionLines[0].cr, 20000, 'Office supplies credit should be $200');
+    t.assert.equal(correctionLines[1].account_code, 10100, 'Second line should be cash account');
+    t.assert.equal(correctionLines[1].db, 20000, 'Cash debit should be $200');
+    t.assert.equal(correctionLines[1].cr, 0, 'Cash credit should be 0 (reversed)');
+
+    // Verify balances are back to original after correction
+    const cashBalanceAfter = db.prepare('select balance from account where code = ?').get(10100).balance;
+    const expenseBalanceAfter = db.prepare('select balance from account where code = ?').get(60500).balance;
+    t.assert.equal(cashBalanceAfter, 100000, 'Cash should be back to $1000');
+    t.assert.equal(expenseBalanceAfter, 0, 'Office supplies expense should be back to $0');
+
+    // Now create the correct entry manually
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(4, 1000000100, 'Office supplies purchase - correct amount');
+
+    // Debit: Office Supplies $300 (correct amount)
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(4, 0, 60500, 30000, 0, 30000, 0);
+
+    // Credit: Cash $300
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(4, 1, 10100, 0, 30000, 0, 30000);
+    db.exec('commit');
+
+    // Post the correct transaction
+    db.prepare(`
+      update journal_entry set post_time = ? where ref = ?
+    `).run(1000000100, 4);
+
+    // Verify final balances with correct amounts
+    const cashBalanceFinal = db.prepare('select balance from account where code = ?').get(10100).balance;
+    const expenseBalanceFinal = db.prepare('select balance from account where code = ?').get(60500).balance;
+    t.assert.equal(cashBalanceFinal, 70000, 'Cash should be $700 (initial $1000 - $300)');
+    t.assert.equal(expenseBalanceFinal, 30000, 'Office supplies expense should be $300');
+
+    // Test that already corrected entry cannot be corrected again
+    t.assert.throws(function () {
+      db.prepare('insert into journal_entry_correction (original_ref) values (2)').run();
+    }, 'Should not allow correcting already corrected entry');
+  });
+
+  await t.test('Reversal and correction validation rules', async function (t) {
+    const fixture = new TestFixture('Reversal and correction validation rules');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Create an unposted journal entry
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000100, 'Unposted entry');
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 10100, 10000, 0, 10000, 0);
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 40100, 0, 10000, 0, 10000);
+    db.exec('commit');
+
+    // Test that unposted entries cannot be reversed
+    t.assert.throws(function () {
+      db.prepare('insert into journal_entry_reversal (original_ref) values (2)').run();
+    }, 'Should not allow reversing unposted entry');
+
+    // Test that unposted entries cannot be corrected
+    t.assert.throws(function () {
+      db.prepare('insert into journal_entry_correction (original_ref) values (2)').run();
+    }, 'Should not allow correcting unposted entry');
+
+    // Test that non-existent entries cannot be reversed
+    t.assert.throws(function () {
+      db.prepare('insert into journal_entry_reversal (original_ref) values (999)').run();
+    }, 'Should not allow reversing non-existent entry');
+
+    // Post the entry and then test mixed operations
+    db.prepare(`
+      update journal_entry set post_time = ? where ref = ?
+    `).run(1000000100, 2);
+
+    // Reverse the entry
+    db.prepare('insert into journal_entry_reversal (original_ref) values (2)').run();
+
+    // Test that reversed entry cannot be corrected
+    t.assert.throws(function () {
+      db.prepare('insert into journal_entry_correction (original_ref) values (2)').run();
+    }, 'Should not allow correcting reversed entry');
+
+    // Create another entry for correction test
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(4, 1000000200, 'Entry to correct');
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(4, 0, 10100, 5000, 0, 5000, 0);
+
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(4, 1, 40100, 0, 5000, 0, 5000);
+    db.exec('commit');
+
+    // Post and correct the entry
+    db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000200, 4);
+
+    db.prepare('insert into journal_entry_correction (original_ref) values (4)').run();
+
+    // Test that corrected entry cannot be reversed
+    t.assert.throws(function () {
+      db.prepare('insert into journal_entry_reversal (original_ref) values (4)').run();
+    }, 'Should not allow reversing corrected entry');
+  });
+
+  await t.test('Journal entry reversible view functionality', async function (t) {
+    const fixture = new TestFixture('Journal entry reversible view functionality');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Create multiple entries in different states
+    db.exec('begin');
+
+    // Entry 2: Normal posted entry
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000100, 'Normal entry');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 10100, 10000, 0, 10000, 0);
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 40100, 0, 10000, 0, 10000);
+
+    // Entry 3: Entry to be reversed
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(3, 1000000200, 'Entry to reverse');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(3, 0, 10100, 5000, 0, 5000, 0);
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(3, 1, 40100, 0, 5000, 0, 5000);
+
+    // Entry 4: Entry to be corrected
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(4, 1000000300, 'Entry to correct');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(4, 0, 10100, 7500, 0, 7500, 0);
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(4, 1, 40100, 0, 7500, 0, 7500);
+
+    db.exec('commit');
+
+    // Post all entries
+    db.prepare('update journal_entry set post_time = transaction_time where ref in (2, 3, 4)').run();
+
+    // Check initial reversible view
+    const reversibleBefore = db.prepare(`
+      select ref, status, line_count, total_debit, total_credit
+      from journal_entry_reversible
+      order by ref
+    `).all();
+
+    t.assert.equal(reversibleBefore.length, 4, 'Should show 4 posted entries'); // including initial capital
+    t.assert.equal(reversibleBefore.filter(e => e.status === 'reversible').length, 4, 'All should be reversible initially');
+
+    // Reverse entry 3
+    db.prepare('insert into journal_entry_reversal (original_ref) values (3)').run();
+
+    // Correct entry 4
+    db.prepare('insert into journal_entry_correction (original_ref) values (4)').run();
+
+    // Check reversible view after operations
+    const reversibleAfter = db.prepare(`
+      select ref, status, reversed_by_journal_entry_ref, corrected_by_journal_entry_ref, total_debit, total_credit
+      from journal_entry_reversible
+      where ref in (1, 2, 3, 4)
+      order by ref
+    `).all();
+
+    t.assert.equal(reversibleAfter[0].status, 'reversible', 'Entry 1 should still be reversible');
+    t.assert.equal(reversibleAfter[1].status, 'reversible', 'Entry 2 should still be reversible');
+    t.assert.equal(reversibleAfter[2].status, 'reversed', 'Entry 3 should be marked as reversed');
+    t.assert.equal(reversibleAfter[2].reversed_by_journal_entry_ref, 5, 'Entry 3 should be reversed by entry 5');
+    t.assert.equal(reversibleAfter[3].status, 'corrected', 'Entry 4 should be marked as corrected');
+    t.assert.equal(reversibleAfter[3].corrected_by_journal_entry_ref, 6, 'Entry 4 should be corrected by entry 6');
+
+    // Verify totals in the view
+    t.assert.equal(reversibleAfter[0].total_debit, 100000, 'Entry 1 should have correct debit total');
+    t.assert.equal(reversibleAfter[0].total_credit, 100000, 'Entry 1 should have correct credit total');
+  });
+
+  await t.test('Foreign currency reversal and correction', async function (t) {
+    const fixture = new TestFixture('Foreign currency reversal and correction');
+    const db = await fixture.setup();
+
+    // Setup EUR currency and exchange rate
+    db.exec('begin');
+    db.prepare(`
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
+      values (?, ?, ?, ?, ?)
+    `).run('EUR', 'USD', 1000000000, 1.2, 'manual');
+    db.exec('commit');
+
+    // Create initial capital in USD
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note, transaction_currency_code, exchange_rate_to_functional)
+      values (?, ?, ?, ?, ?)
+    `).run(1, 1000000000, 'Initial capital', 'USD', 1.0);
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 0, 10100, 100000, 0, 100000, 0); // $1000 USD
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 1, 30100, 0, 100000, 0, 100000);
+    db.exec('commit');
+    db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000000, 1);
+
+    // Create EUR transaction
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note, transaction_currency_code, exchange_rate_to_functional)
+      values (?, ?, ?, ?, ?)
+    `).run(2, 1000000100, 'EUR sale', 'EUR', 1.2);
+
+    // Cash €100 = $120
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional, foreign_currency_amount, foreign_currency_code, exchange_rate)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 10100, 10000, 0, 12000, 0, 10000, 'EUR', 1.2); // €100 = $120
+
+    // Sales Revenue €100 = $120
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional, foreign_currency_amount, foreign_currency_code, exchange_rate)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 40100, 0, 10000, 0, 12000, -10000, 'EUR', 1.2); // €100 = $120
+    db.exec('commit');
+
+    // Post the EUR transaction
+    db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000100, 2);
+
+    // Verify balances before reversal
+    const cashBefore = db.prepare('select balance from account where code = ?').get(10100).balance;
+    const salesBefore = db.prepare('select balance from account where code = ?').get(40100).balance;
+    t.assert.equal(cashBefore, 112000, 'Cash should be $1120 ($1000 + $120)');
+    t.assert.equal(salesBefore, 12000, 'Sales should be $120');
+
+    // Reverse the EUR transaction
+    db.prepare('insert into journal_entry_reversal (original_ref) values (2)').run();
+
+    // Verify reversal maintains foreign currency information
+    const reversalEntry = db.prepare('select * from journal_entry where ref = 3').get();
+    t.assert.equal(reversalEntry.transaction_currency_code, 'EUR', 'Reversal should maintain EUR currency');
+    t.assert.equal(reversalEntry.exchange_rate_to_functional, 1.2, 'Reversal should maintain exchange rate');
+
+    // Verify reversal lines with foreign currency
+    const reversalLines = db.prepare(`
+      select * from journal_entry_line where journal_entry_ref = 3 order by line_order
+    `).all();
+    t.assert.equal(reversalLines[0].foreign_currency_amount, -10000, 'Reversal should flip foreign currency amount');
+    t.assert.equal(reversalLines[0].foreign_currency_code, 'EUR', 'Reversal should maintain foreign currency code');
+    t.assert.equal(reversalLines[0].exchange_rate, 1.2, 'Reversal should maintain exchange rate');
+    t.assert.equal(reversalLines[1].foreign_currency_amount, 10000, 'Reversal should flip foreign currency amount');
+
+    // Verify balances are restored
+    const cashAfter = db.prepare('select balance from account where code = ?').get(10100).balance;
+    const salesAfter = db.prepare('select balance from account where code = ?').get(40100).balance;
+    t.assert.equal(cashAfter, 100000, 'Cash should be back to $1000');
+    t.assert.equal(salesAfter, 0, 'Sales should be back to $0');
+  });
 });
