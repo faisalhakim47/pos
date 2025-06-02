@@ -97,7 +97,7 @@ class FXTestFixture {
 }
 
 // Tests
-test('Foreign Exchange - Currency Management', async function (t) {
+await test('Foreign Exchange - Currency Management', async function (t) {
   const fixture = new FXTestFixture('currency_management');
   await fixture.setup();
 
@@ -146,7 +146,7 @@ test('Foreign Exchange - Currency Management', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - Exchange Rates', async function (t) {
+await test('Foreign Exchange - Exchange Rates', async function (t) {
   const fixture = new FXTestFixture('exchange_rates');
   await fixture.setup();
 
@@ -196,7 +196,7 @@ test('Foreign Exchange - Exchange Rates', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - Multi-Currency Accounts', async function (t) {
+await test('Foreign Exchange - Multi-Currency Accounts', async function (t) {
   const fixture = new FXTestFixture('multicurrency_accounts');
   await fixture.setup();
 
@@ -258,7 +258,7 @@ test('Foreign Exchange - Multi-Currency Accounts', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - Multi-Currency Balances', async function (t) {
+await test('Foreign Exchange - Multi-Currency Balances', async function (t) {
   const fixture = new FXTestFixture('multicurrency_balances');
   await fixture.setup();
 
@@ -308,7 +308,7 @@ test('Foreign Exchange - Multi-Currency Balances', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - FX Revaluation', async function (t) {
+await test('Foreign Exchange - FX Revaluation', async function (t) {
   const fixture = new FXTestFixture('fx_revaluation');
   await fixture.setup();
 
@@ -356,7 +356,7 @@ test('Foreign Exchange - FX Revaluation', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - FX Rate Sources', async function (t) {
+await test('Foreign Exchange - FX Rate Sources', async function (t) {
   const fixture = new FXTestFixture('fx_rate_sources');
   await fixture.setup();
 
@@ -382,7 +382,7 @@ test('Foreign Exchange - FX Rate Sources', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - Rate Trends', async function (t) {
+await test('Foreign Exchange - Rate Trends', async function (t) {
   const fixture = new FXTestFixture('rate_trends');
   await fixture.setup();
 
@@ -413,7 +413,7 @@ test('Foreign Exchange - Rate Trends', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - FX Revaluation Calculations', async function (t) {
+await test('Foreign Exchange - FX Revaluation Calculations', async function (t) {
   const fixture = new FXTestFixture('fx_revaluation_calculations');
   await fixture.setup();
 
@@ -491,7 +491,7 @@ test('Foreign Exchange - FX Revaluation Calculations', async function (t) {
   fixture.cleanup();
 });
 
-test('Foreign Exchange - Rate Import Validation', async function (t) {
+await test('Foreign Exchange - Rate Import Validation', async function (t) {
   const fixture = new FXTestFixture('rate_import_validation');
   await fixture.setup();
 
@@ -572,6 +572,213 @@ test('Foreign Exchange - Rate Import Validation', async function (t) {
     `).run(rateDate);
 
     t.assert.equal(updateResult.changes, 1, 'Should allow rate and source updates');
+  });
+
+  fixture.cleanup();
+});
+
+await test('Foreign Exchange - Accounting Principles Validation', async function (t) {
+  const fixture = new FXTestFixture('fx_accounting_principles');
+  await fixture.setup();
+
+  await t.test('should maintain balance sheet equality with FX transactions', async function (t) {
+    // Simple test with balanced FX transaction
+    fixture.db.exec('begin');
+    fixture.db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (1, ?, 'Initial capital')
+    `).run(Math.floor(Date.now() / 1000));
+    fixture.db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (1, 0, 10100, 50000, 0, 50000, 0)
+    `).run(); // Cash USD
+    fixture.db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (1, 1, 30100, 0, 50000, 0, 50000)
+    `).run(); // Common Stock
+    fixture.db.exec('commit');
+    fixture.postEntry(1);
+
+    // Check balance sheet equation
+    const balances = fixture.db.prepare(`
+      select
+        sum(case when at.name = 'asset'
+            then case when at.normal_balance = 'dr' then a.balance else -a.balance end
+            else 0 end) as total_assets,
+        sum(case when at.name = 'liability'
+            then case when at.normal_balance = 'cr' then a.balance else -a.balance end
+            else 0 end) as total_liabilities,
+        sum(case when at.name = 'equity'
+            then case when at.normal_balance = 'cr' then a.balance else -a.balance end
+            else 0 end) as total_equity
+      from account a
+      join account_type at on a.account_type_name = at.name
+    `).get();
+
+    t.assert.equal(
+      Number(balances.total_assets),
+      Number(balances.total_liabilities) + Number(balances.total_equity),
+      'Assets must equal Liabilities + Equity even with FX transactions',
+    );
+  });
+
+  await t.test('should properly handle FX gain/loss recognition', async function (t) {
+    // Verify FX gain/loss accounts exist and are properly configured
+    const fxAccounts = fixture.db.prepare(`
+      select code, name, account_type_name from account
+      where code in (71000, 71100, 71200, 71300)
+      order by code
+    `).all();
+
+    t.assert.equal(fxAccounts.length, 4, 'Should have all FX gain/loss accounts');
+
+    const realizedGain = fxAccounts.find(a => a.code === 71000);
+    t.assert.equal(realizedGain.account_type_name, 'revenue', 'Realized FX Gain should be revenue');
+
+    const realizedLoss = fxAccounts.find(a => a.code === 71100);
+    t.assert.equal(realizedLoss.account_type_name, 'expense', 'Realized FX Loss should be expense');
+
+    const unrealizedGain = fxAccounts.find(a => a.code === 71200);
+    t.assert.equal(unrealizedGain.account_type_name, 'revenue', 'Unrealized FX Gain should be revenue');
+
+    const unrealizedLoss = fxAccounts.find(a => a.code === 71300);
+    t.assert.equal(unrealizedLoss.account_type_name, 'expense', 'Unrealized FX Loss should be expense');
+  });
+
+  await t.test('should validate multi-currency trial balance integrity', async function (t) {
+    // Simple balanced entry to test trial balance
+    fixture.db.exec('begin');
+    fixture.db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (2, ?, 'Test entry for trial balance')
+    `).run(Math.floor(Date.now() / 1000));
+    fixture.db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (2, 0, 10300, 25000, 0, 25000, 0)
+    `).run(); // Inventory
+    fixture.db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (2, 1, 10100, 0, 25000, 0, 25000)
+    `).run(); // Cash
+    fixture.db.exec('commit');
+    fixture.postEntry(2);
+
+    // Check multi-currency trial balance
+    const trialBalance = fixture.db.prepare(`
+      select
+        sum(debit_balance_functional) as total_debits,
+        sum(credit_balance_functional) as total_credits,
+        count(*) as account_count
+      from trial_balance_multicurrency
+    `).get();
+
+    t.assert.equal(
+      Number(trialBalance.total_debits),
+      Number(trialBalance.total_credits),
+      'Multi-currency trial balance must balance in functional currency',
+    );
+
+    t.assert.equal(Number(trialBalance.account_count) > 0, true, 'Should have accounts in trial balance');
+  });
+
+  await t.test('should validate currency consistency in transactions', async function (t) {
+    // Test that foreign currency amounts match exchange rate calculations
+    const entry = fixture.db.prepare(`
+      select * from journal_entry_summary
+      where ref = 3
+      order by line_order
+    `).all();
+
+    t.assert.equal(entry.length, 2, 'Should have 2 journal entry lines');
+
+    // Verify functional currency amounts match foreign currency * exchange rate
+    entry.forEach(line => {
+      if (line.foreign_currency_amount && line.exchange_rate) {
+        const expectedFunctional = Math.abs(Number(line.foreign_currency_amount)) * Number(line.exchange_rate);
+        const actualFunctional = Math.max(Number(line.db_functional), Number(line.cr_functional));
+
+        // Allow for rounding differences (within 1 cent)
+        const difference = Math.abs(expectedFunctional - actualFunctional);
+        t.assert.equal(difference <= 1, true,
+          `Foreign currency conversion should be accurate (diff: ${difference})`);
+      }
+    });
+  });
+
+  await t.test('should prevent inconsistent currency assignments', async function (t) {
+    // Try to create account with invalid currency
+    t.assert.throws(function () {
+      fixture.db.prepare(`
+        insert into account (code, name, account_type_name, currency_code)
+        values (10199, 'Invalid Currency Account', 'asset', 'XXX')
+      `).run();
+    }, 'Should reject accounts with invalid currency codes');
+  });
+
+  await t.test('should validate FX rate reasonableness', async function (t) {
+    // Check that existing sample rates are reasonable
+    const sampleRates = fixture.db.prepare(`
+      select from_currency_code, to_currency_code, rate
+      from exchange_rate
+      where source = 'Manual Entry'
+      order by from_currency_code
+    `).all();
+
+    sampleRates.forEach(rate => {
+      t.assert.equal(Number(rate.rate) > 0, true, 'Exchange rates must be positive');
+      t.assert.equal(Number(rate.rate) < 100, true, 'Exchange rates should be reasonable (< 100)');
+
+      // Special case for JPY (should be much less than 1)
+      if (rate.from_currency_code === 'JPY') {
+        t.assert.equal(Number(rate.rate) < 0.1, true, 'JPY rates should be less than 0.1');
+      }
+    });
+  });
+
+  fixture.cleanup();
+});
+
+await test('Foreign Exchange - Rate Source Management', async function (t) {
+  const fixture = new FXTestFixture('fx_rate_sources');
+  await fixture.setup();
+
+  await t.test('should have default rate sources configured', async function (t) {
+    const sources = fixture.db.prepare(`
+      select name, description, api_key_required, is_active
+      from fx_rate_source
+      order by name
+    `).all();
+
+    t.assert.equal(sources.length >= 7, true, 'Should have at least 7 rate sources');
+
+    const manualEntry = sources.find(s => s.name === 'Manual Entry');
+    t.assert.equal(!!manualEntry, true, 'Should have Manual Entry source');
+    t.assert.equal(manualEntry.api_key_required, 0, 'Manual Entry should not require API key');
+    t.assert.equal(manualEntry.is_active, 1, 'Manual Entry should be active');
+
+    const ecb = sources.find(s => s.name === 'European Central Bank');
+    t.assert.equal(!!ecb, true, 'Should have ECB source');
+    t.assert.equal(ecb.api_key_required, 0, 'ECB should not require API key');
+  });
+
+  await t.test('should track rate import logs', async function (t) {
+    // Create a sample import log
+    const sourceId = 1; // Manual Entry source
+    const logResult = fixture.db.prepare(`
+      insert into fx_rate_import_log (
+        source_id, rates_imported, rates_updated, rates_failed,
+        import_status, error_message
+      ) values (?, 10, 2, 0, 'success', null)
+    `).run(sourceId);
+
+    const importLog = fixture.db.prepare(`
+      select * from fx_rate_import_log where id = ?
+    `).get(logResult.lastInsertRowid);
+
+    t.assert.equal(importLog.rates_imported, 10, 'Should track imported rates count');
+    t.assert.equal(importLog.rates_updated, 2, 'Should track updated rates count');
+    t.assert.equal(importLog.import_status, 'success', 'Should track import status');
+    t.assert.equal(Number(importLog.import_time) > 0, true, 'Should have import timestamp');
   });
 
   fixture.cleanup();

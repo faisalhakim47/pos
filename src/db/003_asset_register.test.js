@@ -6,6 +6,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 import { DatabaseSync } from 'node:sqlite';
+
 const __dirname = new URL('.', import.meta.url).pathname;
 
 // Generate a unique test run ID for this process
@@ -19,6 +20,7 @@ class TestFixture {
   constructor(label) {
     this.label = label.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
     this.testRunId = testRunId;
+    this.uniqueId = Math.random().toString(36).substring(2, 8); // Add extra randomness
     this.coreSchemaFilePath = join(__dirname, '001_core_accounting.sql');
     this.assetSchemaFilePath = join(__dirname, '003_asset_register.sql');
     this.coreSchemaFileContent = null;
@@ -36,13 +38,24 @@ class TestFixture {
     await mkdir(tempDir, { recursive: true });
     this.dbPath = join(
       tempDir,
-      `${this.testRunId}_asset_register_${this.label}.db`,
+      `${this.testRunId}_${this.uniqueId}_asset_register_${this.label}.db`,
     );
-    this.db = new DatabaseSync(this.dbPath);
+    this.db = new DatabaseSync(this.dbPath);    // Execute schemas in order: core accounting first, then asset register
+    try {
+      this.db.exec(this.coreSchemaFileContent);
+      this.db.exec(this.assetSchemaFileContent);
 
-    // Execute schemas in order: core accounting first, then asset register
-    this.db.exec(this.coreSchemaFileContent);
-    this.db.exec(this.assetSchemaFileContent);
+      // Verify that the fixed_asset table was created
+      const tableExists = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='fixed_asset'
+      `).get();
+
+      if (!tableExists) {
+        throw new Error(`fixed_asset table was not created for test: ${this.label}`);
+      }
+    } catch (error) {
+      throw new Error(`Schema execution failed for ${this.label}: ${error.message}`);
+    }
 
     return this.db;
   }
@@ -519,4 +532,365 @@ await test('Asset Register Schema', async function (t) {
     t.assert.equal(!!stillPending, true, 'Asset should still need more depreciation');
     t.assert.equal(stillPending.current_accumulated_depreciation, 18000, 'Should show updated accumulated depreciation');
   });
+});
+
+test('Asset Register - Accounting Principles Validation', async function (t) {
+  await t.test('should validate asset cost and depreciation accounting treatment', async function (t) {
+    const fixture = new TestFixture('asset_cost_validation');
+    const db = await fixture.setup();
+
+    // Create an asset without the foreign key reference that doesn't exist yet
+    const assetResult = db.prepare(`
+      INSERT INTO fixed_asset (
+        asset_number, name, description, asset_category_id, purchase_date,
+        purchase_cost, salvage_value, useful_life_years, depreciation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'ACC-001',
+      'Test Asset for Accounting',
+      'Asset to test accounting principles',
+      1, // Buildings category
+      1672531200, // 2023-01-01
+      250000, // $2,500 cost
+      25000,  // $250 salvage
+      10,     // 10 years
+      'straight_line',
+    );
+
+    t.assert.equal(assetResult.changes, 1, 'Asset should be created successfully');
+
+    // Verify asset category account mappings are valid
+    const category = db.prepare(`
+      SELECT ac.*,
+             aa.name as asset_account_name,
+             ada.name as accum_dep_account_name,
+             dea.name as dep_exp_account_name
+      FROM asset_category ac
+      JOIN account aa ON ac.asset_account_code = aa.code
+      JOIN account ada ON ac.accumulated_depreciation_account_code = ada.code
+      JOIN account dea ON ac.depreciation_expense_account_code = dea.code
+      WHERE ac.id = 1
+    `).get();
+
+    t.assert.equal(!!category, true, 'Asset category should have valid account mappings');
+    t.assert.equal(String(category.asset_account_name).includes('Buildings'), true, 'Asset account should be appropriate');
+    t.assert.equal(String(category.accum_dep_account_name).includes('Accumulated Depreciation'), true, 'Accumulated depreciation account should be contra-asset');
+    t.assert.equal(String(category.dep_exp_account_name).includes('Depreciation'), true, 'Depreciation expense account should be expense');
+
+    // Verify account types are correct for asset accounting
+    const accountTypes = db.prepare(`
+      SELECT aa.account_type_name as asset_type,
+             ada.account_type_name as accum_dep_type,
+             dea.account_type_name as dep_exp_type
+      FROM asset_category ac
+      JOIN account aa ON ac.asset_account_code = aa.code
+      JOIN account ada ON ac.accumulated_depreciation_account_code = ada.code
+      JOIN account dea ON ac.depreciation_expense_account_code = dea.code
+      WHERE ac.id = 1
+    `).get();
+
+    t.assert.equal(accountTypes.asset_type, 'asset', 'Asset account should be asset type');
+    t.assert.equal(accountTypes.accum_dep_type, 'contra_asset', 'Accumulated depreciation should be contra-asset');
+    t.assert.equal(accountTypes.dep_exp_type, 'expense', 'Depreciation expense should be expense type');
+  });
+
+  await t.test('should validate depreciation method consistency', async function (t) {
+    const fixture = new TestFixture('dep_method_test');
+    const db = await fixture.setup();
+
+    // Test that assets use appropriate depreciation methods for their categories
+    const assets = db.prepare(`
+      SELECT fa.depreciation_method, fa.useful_life_years, fa.declining_balance_rate,
+             ac.default_depreciation_method, ac.useful_life_years as default_life
+      FROM fixed_asset fa
+      JOIN asset_category ac ON fa.asset_category_id = ac.id
+    `).all();
+
+    assets.forEach(asset => {
+      // Declining balance assets must have rate specified
+      if (asset.depreciation_method === 'declining_balance') {
+        t.assert.equal(!!asset.declining_balance_rate, true,
+          'Declining balance assets must have declining_balance_rate specified');
+        t.assert.equal(Number(asset.declining_balance_rate) > 0 && Number(asset.declining_balance_rate) <= 1, true,
+          'Declining balance rate must be between 0 and 1');
+      }
+
+      // Useful life should be reasonable
+      t.assert.equal(Number(asset.useful_life_years) > 0, true, 'Useful life must be positive');
+      t.assert.equal(Number(asset.useful_life_years) <= 50, true, 'Useful life should be reasonable (≤50 years)');
+    });
+  });
+
+  await t.test('should enforce asset cost and salvage value relationships', async function (t) {
+    const fixture = new TestFixture('cost_salvage_test');
+    const db = await fixture.setup();
+
+    // Try to create asset with salvage value >= purchase cost (should fail)
+    t.assert.throws(function () {
+
+      db.prepare(`
+        INSERT INTO fixed_asset (
+          asset_number, name, description, asset_category_id, purchase_date,
+          purchase_cost, salvage_value, useful_life_years, depreciation_method
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'INVALID-001',
+        'Invalid Asset',
+        'Asset with salvage >= cost',
+        1, // Buildings category
+        1672531200,
+        100000, // $1,000 cost
+        150000, // $1,500 salvage (invalid - higher than cost)
+        10,
+        'straight_line',
+      );
+    }, 'Should reject assets where salvage value >= purchase cost');
+
+    // Valid asset with salvage < cost should work
+    const validResult = db.prepare(`
+      INSERT INTO fixed_asset (
+        asset_number, name, description, asset_category_id, purchase_date,
+        purchase_cost, salvage_value, useful_life_years, depreciation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'VALID-001',
+      'Valid Asset',
+      'Asset with proper salvage value',
+      1,
+      1672531200,
+      100000, // $1,000 cost
+      10000,  // $100 salvage (valid)
+      10,
+      'straight_line',
+    );
+
+    t.assert.equal(validResult.changes, 1, 'Valid asset should be created successfully');
+  });  await t.test('should validate asset modification capitalization rules', async function (t) {
+    const fixture = new TestFixture('modification_capitalization');
+    const db = await fixture.setup();
+
+    // Create an asset first
+    const assetResult = db.prepare(`
+      INSERT INTO fixed_asset (
+        asset_number, name, description, asset_category_id, purchase_date,
+        purchase_cost, salvage_value, useful_life_years, depreciation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'MOD-001',
+      'Asset for Modifications',
+      'Test asset modifications',
+      2, // Office Equipment
+      1672531200,
+      50000, // $500
+      5000,  // $50 salvage
+      5,
+      'straight_line',
+    );
+
+    const assetId = assetResult.lastInsertRowid;
+
+    // Add capitalizable improvement
+    const improvementResult = db.prepare(`
+      INSERT INTO asset_modification (
+        fixed_asset_id, modification_date, modification_type,
+        description, cost, capitalizable
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      assetId,
+      1680307200, // 2023-04-01
+      'improvement',
+      'Major upgrade that extends useful life',
+      15000, // $150
+      1,     // Capitalizable
+    );
+
+    // Add non-capitalizable maintenance
+    const maintenanceResult = db.prepare(`
+      INSERT INTO asset_modification (
+        fixed_asset_id, modification_date, modification_type,
+        description, cost, capitalizable
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      assetId,
+      1680393600, // 2023-04-02
+      'maintenance',
+      'Routine maintenance and repairs',
+      2000, // $20
+      0,    // Not capitalizable
+    );
+
+    t.assert.equal(improvementResult.changes, 1, 'Improvement should be recorded');
+    t.assert.equal(maintenanceResult.changes, 1, 'Maintenance should be recorded');
+
+    // Check asset register summary includes capitalized modifications
+    const summary = db.prepare(`
+      SELECT * FROM asset_register_summary WHERE id = ?
+    `).get(assetId);
+
+    t.assert.equal(Number(summary.capitalized_modifications), 15000,
+      'Should include only capitalizable modifications in cost basis');
+    t.assert.equal(Number(summary.total_cost_basis), 65000,
+      'Total cost basis should be purchase cost + capitalizable modifications');
+  });
+
+  await t.test('should prevent modification of disposed assets', async function (t) {
+    const fixture = new TestFixture('disposed_mod_test');
+    const db = await fixture.setup();
+
+    // Create and dispose an asset
+    const assetResult = db.prepare(`
+      INSERT INTO fixed_asset (
+        asset_number, name, description, asset_category_id, purchase_date,
+        purchase_cost, salvage_value, useful_life_years, depreciation_method,
+        status, disposal_date, disposal_proceeds
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'DISPOSED-001',
+      'Disposed Asset',
+      'Asset that has been disposed',
+      3, // Vehicles
+      1672531200,
+      80000, // $800
+      8000,  // $80 salvage
+      8,
+      'straight_line',
+      'disposed',
+      1704067200, // 2024-01-01
+      10000,      // $100 disposal proceeds
+    );
+
+    const assetId = assetResult.lastInsertRowid;
+
+    // Try to modify key attributes of disposed asset (should fail)
+    t.assert.throws(function () {
+      db.prepare(`
+        UPDATE fixed_asset
+        SET purchase_cost = 90000
+        WHERE id = ?
+      `).run(assetId);
+    }, 'Should not allow modification of disposed asset cost');
+
+    t.assert.throws(function () {
+      db.prepare(`
+        UPDATE fixed_asset
+        SET useful_life_years = 10
+        WHERE id = ?
+      `).run(assetId);
+    }, 'Should not allow modification of disposed asset useful life');
+
+    // Should allow modification of non-key attributes like location
+    const locationUpdate = db.prepare(`
+      UPDATE fixed_asset
+      SET location = 'Archive Storage'
+      WHERE id = ?
+    `).run(assetId);
+
+    t.assert.equal(locationUpdate.changes, 1, 'Should allow updating location of disposed asset');
+  });
+
+  await t.test('should validate disposal date consistency', async function (t) {
+    const fixture = new TestFixture('disposal_date_test');
+    const db = await fixture.setup();
+
+    // Create asset first
+    const assetResult = db.prepare(`
+      INSERT INTO fixed_asset (
+        asset_number, name, description, asset_category_id, purchase_date,
+        purchase_cost, salvage_value, useful_life_years, depreciation_method
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'DISPOSAL-001',
+      'Asset for Disposal Testing',
+      'Test disposal validation',
+      1,
+      1672531200, // 2023-01-01 purchase
+      100000,
+      10000,
+      10,
+      'straight_line',
+    );
+
+    const assetId = assetResult.lastInsertRowid;
+
+    // Try to dispose with date before purchase (should fail)
+    t.assert.throws(function () {
+      db.prepare(`
+        UPDATE fixed_asset
+        SET status = 'disposed', disposal_date = ?
+        WHERE id = ?
+      `).run(1640995200, assetId); // 2022-01-01 (before purchase)
+    }, 'Should reject disposal date before purchase date');
+
+    // Valid disposal should work
+    const validDisposal = db.prepare(`
+      UPDATE fixed_asset
+      SET status = 'disposed', disposal_date = ?, disposal_proceeds = ?
+      WHERE id = ?
+    `).run(1704067200, 50000, assetId); // 2024-01-01, $500 proceeds
+
+    t.assert.equal(validDisposal.changes, 1, 'Valid disposal should succeed');
+  });
+
+  await t.test('should calculate depreciation accurately for different methods', async function (t) {
+    const fixture = new TestFixture('depreciation_accuracy');
+    const db = await fixture.setup();
+
+    // Test straight-line depreciation calculation
+    const slAsset = db.prepare(`
+      SELECT * FROM calculate_straight_line_depreciation
+      LIMIT 1
+    `).get();
+
+    if (slAsset) {
+      // Annual depreciation = (Cost - Salvage) / Useful Life
+      const expectedAnnual = (slAsset.fixed_asset_id) ?
+        db.prepare(`
+          SELECT (purchase_cost - salvage_value) / useful_life_years as expected_annual
+          FROM fixed_asset WHERE id = ?
+        `).get(slAsset.fixed_asset_id).expected_annual : 0;
+
+      const toleranceAmount = 1; // Allow 1 cent tolerance for rounding
+      t.assert.equal(
+        Math.abs(Number(slAsset.annual_depreciation) - Number(expectedAnnual)) <= toleranceAmount,
+        true,
+        'Straight-line depreciation calculation should be accurate',
+      );
+    }
+  });
+
+  await t.test('should maintain asset register data integrity', async function (t) {
+    const fixture = new TestFixture('data_integrity');
+    const db = await fixture.setup();
+
+    // Verify all assets have valid categories
+    const invalidAssets = db.prepare(`
+      SELECT fa.id, fa.asset_number
+      FROM fixed_asset fa
+      LEFT JOIN asset_category ac ON fa.asset_category_id = ac.id
+      WHERE ac.id IS NULL
+    `).all();
+
+    t.assert.equal(invalidAssets.length, 0, 'All assets should have valid categories');
+
+    // Verify all depreciation periods reference valid assets
+    const invalidDepPeriods = db.prepare(`
+      SELECT dp.id
+      FROM depreciation_period dp
+      LEFT JOIN fixed_asset fa ON dp.fixed_asset_id = fa.id
+      WHERE fa.id IS NULL
+    `).all();
+
+    t.assert.equal(invalidDepPeriods.length, 0, 'All depreciation periods should reference valid assets');
+
+    // Verify asset numbers are unique
+    const duplicateNumbers = db.prepare(`
+      SELECT asset_number, COUNT(*) as count
+      FROM fixed_asset
+      GROUP BY asset_number
+      HAVING COUNT(*) > 1
+    `).all();
+
+    t.assert.equal(duplicateNumbers.length, 0, 'Asset numbers should be unique');
+  });
+
 });

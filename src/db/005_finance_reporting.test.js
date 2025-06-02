@@ -935,4 +935,392 @@ await test('Finance Reporting Schema', async function (t) {
 
     t.assert.equal(totalAssets, totalLiabilities + totalEquity, 'Assets should equal Liabilities + Equity');
   });
+
+  await t.test('Finance Reporting - Accounting Principles Validation', async function (t) {
+    await t.test('should enforce period consistency in financial statements', async function (t) {
+      const fixture = new TestFixture('Period consistency validation');
+      const db = await fixture.setupWithSalesAndExpenses();
+
+      // Try to create income statement with invalid period (end before start)
+      t.assert.throws(function () {
+        db.prepare(`
+          INSERT INTO income_statement (period_begin_time, period_end_time, report_time)
+          VALUES (?, ?, ?)
+        `).run(2000000000, 1000000000, 2000000001); // end before start
+      }, 'Should reject income statement with end time before start time');
+
+      // Valid period should work
+      const validResult = db.prepare(`
+        INSERT INTO income_statement (period_begin_time, period_end_time, report_time)
+        VALUES (?, ?, ?)
+      `).run(1000000000, 2000000000, 2000000001);
+
+      t.assert.equal(validResult.changes, 1, 'Valid income statement period should be accepted');
+    });
+
+    await t.test('should validate revenue recognition principles', async function (t) {
+      const fixture = new TestFixture('Revenue recognition validation');
+      const db = await fixture.setupWithSalesAndExpenses();
+
+      // Generate income statement to check revenue recognition
+      db.prepare(`
+        INSERT INTO income_statement (period_begin_time, period_end_time, report_time)
+        VALUES (?, ?, ?)
+      `).run(1000000000, 1999999999, 1999999999);
+
+      const incomeReport = db.prepare(`
+        SELECT line_type, account_code, account_name, amount
+        FROM income_statement_report
+        WHERE period_begin_time = ? AND period_end_time = ?
+        ORDER BY line_order
+      `).all(1000000000, 1999999999);
+
+      // Check that revenue is properly reported gross, with returns/allowances shown separately
+      const revenueItems = incomeReport.filter(line => line.line_type === 'revenue');
+      const contraRevenueItems = incomeReport.filter(line => line.line_type === 'contra_revenue');
+
+      t.assert.equal(revenueItems.length >= 1, true, 'Should report gross revenue');
+      t.assert.equal(contraRevenueItems.length >= 1, true, 'Should report sales returns/allowances separately');
+
+      const salesRevenue = revenueItems.find(r => r.account_code === 40100);
+      const salesReturns = contraRevenueItems.find(r => r.account_code === 41000);
+
+      t.assert.equal(Number(salesRevenue?.amount), 100000, 'Gross sales should be reported at full amount');
+      t.assert.equal(Number(salesReturns?.amount), 5000, 'Sales returns should be shown as contra-revenue');
+
+      // Net revenue should be calculated correctly
+      const grossRevenue = revenueItems.reduce((sum, item) => sum + Number(item.amount), 0);
+      const totalContraRevenue = contraRevenueItems.reduce((sum, item) => sum + Number(item.amount), 0);
+      const netRevenue = grossRevenue - totalContraRevenue;
+
+      t.assert.equal(netRevenue, 95000, 'Net revenue should be gross revenue minus returns/allowances');
+    });
+
+    await t.test('should validate expense matching principle', async function (t) {
+      const fixture = new TestFixture('Expense matching validation');
+      const db = await fixture.setupWithSalesAndExpenses();
+
+      // Generate income statement for the period
+      db.prepare(`
+        INSERT INTO income_statement (period_begin_time, period_end_time, report_time)
+        VALUES (?, ?, ?)
+      `).run(1000000000, 1999999999, 1999999999);
+
+      const incomeReport = db.prepare(`
+        SELECT line_type, account_code, account_name, amount
+        FROM income_statement_report
+        WHERE period_begin_time = ? AND period_end_time = ?
+        ORDER BY line_order
+      `).all(1000000000, 1999999999);
+
+      // Verify COGS is matched with revenue in the same period
+      const cogsItems = incomeReport.filter(line => line.line_type === 'cogs');
+      const revenueItems = incomeReport.filter(line => line.line_type === 'revenue');
+
+      t.assert.equal(cogsItems.length >= 1, true, 'Should have cost of goods sold');
+      t.assert.equal(revenueItems.length >= 1, true, 'Should have revenue');
+
+      const cogs = cogsItems.find(c => c.account_code === 50700);
+      t.assert.equal(Number(cogs?.amount), 30000, 'COGS should be matched with sales in same period');
+
+      // Verify depreciation expense is recognized systematically
+      const expenseItems = incomeReport.filter(line => line.line_type === 'expense');
+      const depreciationExp = expenseItems.find(e => e.account_code === 61100);
+
+      t.assert.equal(Number(depreciationExp?.amount), 5000, 'Depreciation should be systematically allocated');
+
+      // Check gross profit calculation (Revenue - COGS)
+      const grossProfitLine = incomeReport.find(line => line.line_type === 'gross_profit');
+      if (grossProfitLine) {
+        // Gross Profit = Net Sales (95000) - COGS (30000) = 65000
+        t.assert.equal(Number(grossProfitLine.amount), 65000, 'Gross profit should be calculated correctly');
+      }
+    });
+
+    await t.test('should validate balance sheet classification principles', async function (t) {
+      const fixture = new TestFixture('Balance sheet classification validation');
+      const db = await fixture.setupWithSalesAndExpenses();
+
+      // Generate balance sheet
+      db.prepare(`
+        INSERT INTO balance_sheet (report_time) VALUES (?)
+      `).run(2000000000);
+
+      const balanceReport = db.prepare(`
+        SELECT line_type, account_code, account_name, amount, is_subtotal
+        FROM balance_sheet_report
+        WHERE report_time = ?
+        ORDER BY line_order
+      `).all(2000000000);
+
+      // Verify proper asset classification
+      const currentAssets = balanceReport.filter(line => line.line_type === 'current_asset');
+      const nonCurrentAssets = balanceReport.filter(line => line.line_type === 'non_current_asset');
+
+      // Cash should be classified as current asset
+      const cash = currentAssets.find(a => a.account_code === 10100);
+      t.assert.equal(!!cash, true, 'Cash should be classified as current asset');
+      t.assert.equal(Number(cash.amount) > 0, true, 'Cash should have positive balance');
+
+      // Inventory should be classified as current asset
+      const inventory = currentAssets.find(a => a.account_code === 10600);
+      t.assert.equal(!!inventory, true, 'Merchandise inventory should be classified as current asset');
+
+      // Accumulated depreciation should be shown as contra-asset (negative amount)
+      const accumDep = nonCurrentAssets.find(a => a.account_code === 12410);
+      if (accumDep) {
+        t.assert.equal(Number(accumDep.amount) < 0, true, 'Accumulated depreciation should show as negative (contra-asset)');
+      }
+
+      // Verify liability classification
+      const currentLiabilities = balanceReport.filter(line => line.line_type === 'current_liability');
+      const accountsPayable = currentLiabilities.find(l => l.account_code === 20100);
+
+      if (accountsPayable) {
+        t.assert.equal(Number(accountsPayable.amount) > 0, true, 'Accounts payable should have positive balance');
+      }
+
+      // Verify equity classification
+      const equity = balanceReport.filter(line => line.line_type === 'equity');
+      const commonStock = equity.find(e => e.account_code === 30100);
+
+      t.assert.equal(!!commonStock, true, 'Common stock should be classified as equity');
+      t.assert.equal(Number(commonStock.amount), 100000, 'Common stock should show correct amount');
+    });
+
+    await t.test('should validate trial balance mathematical accuracy', async function (t) {
+      const fixture = new TestFixture('Trial balance mathematical validation');
+      const db = await fixture.setupWithSalesAndExpenses();
+
+      // Generate trial balance
+      db.prepare(`
+        INSERT INTO trial_balance (report_time) VALUES (?)
+      `).run(1999999999);
+
+      const trialBalance = db.prepare(`
+        SELECT tba.account_code, tba.db, tba.cr, tba.db_functional, tba.cr_functional,
+               a.name as account_name, at.normal_balance
+        FROM trial_balance_account tba
+        JOIN trial_balance tb ON tba.trial_balance_id = tb.id
+        JOIN account a ON tba.account_code = a.code
+        JOIN account_type at ON a.account_type_name = at.name
+        WHERE tb.report_time = ?
+        ORDER BY tba.account_code
+      `).all(1999999999);
+
+      // Total debits must equal total credits
+      const totalDebits = trialBalance.reduce((sum, acc) => sum + Number(acc.db_functional), 0);
+      const totalCredits = trialBalance.reduce((sum, acc) => sum + Number(acc.cr_functional), 0);
+
+      t.assert.equal(totalDebits, totalCredits, 'Trial balance debits must equal credits');
+
+      // Each account should have balance in only one column (debit or credit, not both)
+      trialBalance.forEach(account => {
+        const hasDebitBalance = Number(account.db_functional) > 0;
+        const hasCreditBalance = Number(account.cr_functional) > 0;
+
+        t.assert.equal(hasDebitBalance && hasCreditBalance, false,
+          `Account ${account.account_code} (${account.account_name}) should not have both debit and credit balances`);
+      });
+
+      // Normal balance validation - assets/expenses should have debit balances, liabilities/equity/revenue should have credit balances
+      trialBalance.forEach(account => {
+        const actualBalance = Number(account.db_functional) > 0 ? 'db' : 'cr';
+
+        if (Number(account.db_functional) === 0 && Number(account.cr_functional) === 0) {
+          return; // Skip zero balance accounts
+        }
+
+        // Skip validation for contra accounts which have opposite normal balances
+        const accountNameStr = String(account.account_name).toLowerCase();
+        if (accountNameStr.includes('accumulated depreciation') ||
+            accountNameStr.includes('allowance') ||
+            accountNameStr.includes('returns')) {
+          return;
+        }
+
+        t.assert.equal(actualBalance, account.normal_balance,
+          `Account ${account.account_code} (${account.account_name}) should have ${account.normal_balance} balance but has ${actualBalance} balance`);
+      });
+    });
+
+    await t.test('should validate consistency between statements', async function (t) {
+      const fixture = new TestFixture('Statement consistency validation');
+      const db = await fixture.setupWithClosedFiscalYear();
+
+      // Generate all three statements for comparison
+      const reportTime = 2000000001;
+
+      db.prepare('INSERT INTO trial_balance (report_time) VALUES (?)').run(reportTime);
+      db.prepare('INSERT INTO balance_sheet (report_time) VALUES (?)').run(reportTime);
+      db.prepare('INSERT INTO income_statement (period_begin_time, period_end_time, report_time) VALUES (?, ?, ?)').run(1000000000, 1999999999, reportTime);
+
+      // Get retained earnings from balance sheet
+      const balanceSheetRE = db.prepare(`
+        SELECT amount FROM balance_sheet_report
+        WHERE report_time = ? AND account_code = 30200
+      `).get(reportTime);
+
+      // Get retained earnings from trial balance
+      const trialBalanceRE = db.prepare(`
+        SELECT cr_functional FROM trial_balance_account tba
+        JOIN trial_balance tb ON tba.trial_balance_id = tb.id
+        WHERE tb.report_time = ? AND tba.account_code = 30200
+      `).get(reportTime);
+
+      // Both should show the same retained earnings amount
+      if (balanceSheetRE && trialBalanceRE) {
+        t.assert.equal(Number(balanceSheetRE.amount), Number(trialBalanceRE.cr_functional),
+          'Retained earnings should be consistent between balance sheet and trial balance');
+      }
+
+      // Verify that balance sheet totals match trial balance totals
+      const bsAssets = db.prepare(`
+        SELECT SUM(CASE WHEN line_type LIKE '%asset%' THEN amount ELSE 0 END) as total_assets
+        FROM balance_sheet_report
+        WHERE report_time = ? AND is_subtotal = 0
+      `).get(reportTime);
+
+      const bsLiabEquity = db.prepare(`
+        SELECT SUM(CASE WHEN line_type IN ('current_liability', 'non_current_liability', 'equity') THEN amount ELSE 0 END) as total_liab_equity
+        FROM balance_sheet_report
+        WHERE report_time = ? AND is_subtotal = 0
+      `).get(reportTime);
+
+      if (bsAssets && bsLiabEquity) {
+        t.assert.equal(Number(bsAssets.total_assets), Number(bsLiabEquity.total_liab_equity),
+          'Balance sheet assets should equal liabilities plus equity');
+      }
+    });
+
+    await t.test('should validate fiscal year closing completeness', async function (t) {
+      const fixture = new TestFixture('Fiscal year closing completeness');
+      const db = await fixture.setupWithClosedFiscalYear();
+
+      // Verify all temporary accounts (revenue, expense, dividends) are closed
+      const temporaryAccounts = db.prepare(`
+        SELECT a.code, a.name, a.balance, at.name as account_type
+        FROM account a
+        JOIN account_type at ON a.account_type_name = at.name
+        WHERE at.name IN ('revenue', 'contra_revenue', 'expense', 'cogs', 'dividend')
+          AND a.balance != 0
+      `).all();
+
+      t.assert.equal(temporaryAccounts.length, 0,
+        `All temporary accounts should be closed to zero. Found: ${JSON.stringify(temporaryAccounts)}`);
+
+      // Verify retained earnings reflects net income minus dividends
+      const retainedEarnings = db.prepare(`
+        SELECT balance FROM account WHERE code = 30200
+      `).get();
+
+      // Expected: Net Income (25000) - Dividends (10000) = 15000
+      t.assert.equal(Number(retainedEarnings?.balance), 15000,
+        'Retained earnings should equal net income minus dividends');
+
+      // Verify closing entries were properly recorded
+      const closingEntries = db.prepare(`
+        SELECT je.ref, je.note, COUNT(jel.id) as line_count
+        FROM journal_entry je
+        JOIN journal_entry_line jel ON je.ref = jel.journal_entry_ref
+        WHERE je.note LIKE '%closing%' OR je.ref >= 900
+        GROUP BY je.ref, je.note
+        GROUP BY je.ref, je.note
+        ORDER BY je.ref
+      `).all();
+
+      t.assert.equal(closingEntries.length > 0, true, 'Should have closing entries recorded');
+
+      // Each closing entry should be balanced (debits = credits)
+      closingEntries.forEach(entry => {
+        const entryLines = db.prepare(`
+          SELECT SUM(db_functional) as total_debits, SUM(cr_functional) as total_credits
+          FROM journal_entry_line
+          WHERE journal_entry_ref = ?
+        `).get(entry.ref);
+
+        t.assert.equal(Number(entryLines.total_debits), Number(entryLines.total_credits),
+          `Closing entry ${entry.ref} should be balanced`);
+      });
+    });
+
+    await t.test('should validate materiality and disclosure principles', async function (t) {
+      const fixture = new TestFixture('Materiality and disclosure validation');
+      const db = await fixture.setupWithSalesAndExpenses();
+
+      // Generate balance sheet to check for proper disclosure of significant items
+      db.prepare('INSERT INTO balance_sheet (report_time) VALUES (?)').run(2000000000);
+
+      const balanceReport = db.prepare(`
+        SELECT line_type, account_code, account_name, amount, is_subtotal
+        FROM balance_sheet_report
+        WHERE report_time = ?
+        ORDER BY line_order
+      `).all(2000000000);
+
+      // Verify significant account balances are properly disclosed
+      const significantAccounts = balanceReport.filter(line =>
+        !line.is_subtotal && Math.abs(Number(line.amount)) >= 1000, // Material threshold
+      );
+
+      t.assert.equal(significantAccounts.length > 0, true, 'Should disclose material account balances');
+
+      // Check that contra-assets are properly presented
+      const accumDepreciation = balanceReport.find(line => line.account_code === 12410);
+      if (accumDepreciation) {
+        t.assert.equal(Number(accumDepreciation.amount) < 0, true,
+          'Accumulated depreciation should be presented as reduction to assets');
+      }
+
+      // Verify subtotals are calculated and presented
+      const subtotals = balanceReport.filter(line => line.is_subtotal === 1);
+      t.assert.equal(subtotals.length >= 2, true, 'Should have subtotals for major categories');
+
+      // Check for total assets and total liabilities + equity
+      const totalAssets = subtotals.find(s => s.line_type === 'total_asset');
+      const totalLiabEquity = subtotals.find(s => s.line_type === 'total_liability_equity');
+
+      t.assert.equal(!!totalAssets, true, 'Should present total assets');
+      t.assert.equal(!!totalLiabEquity, true, 'Should present total liabilities and equity');
+      t.assert.equal(totalAssets.amount, totalLiabEquity.amount,
+        'Total assets should equal total liabilities and equity');
+    });
+
+    await t.test('should validate conservative accounting principles', async function (t) {
+      const fixture = new TestFixture('Conservative accounting validation');
+      const db = await fixture.setupWithSalesAndExpenses();
+
+      // Generate income statement to check conservative revenue recognition
+      db.prepare(`
+        INSERT INTO income_statement (period_begin_time, period_end_time, report_time)
+        VALUES (?, ?, ?)
+      `).run(1000000000, 1999999999, 1999999999);
+
+      const incomeReport = db.prepare(`
+        SELECT line_type, account_code, account_name, amount
+        FROM income_statement_report
+        WHERE period_begin_time = ? AND period_end_time = ?
+      `).all(1000000000, 1999999999);
+
+      // Verify that sales returns and allowances are properly deducted from revenue
+      const contraRevenue = incomeReport.filter(line => line.line_type === 'contra_revenue');
+      t.assert.equal(contraRevenue.length >= 1, true, 'Should recognize sales returns/allowances conservatively');
+
+      // Check that expenses are fully recognized in the period
+      const expenses = incomeReport.filter(line => line.line_type === 'expense');
+      const totalExpenses = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
+
+      // Should include utilities (20000), rent (15000), depreciation (5000) = 40000
+      t.assert.equal(totalExpenses >= 40000, true, 'Should recognize all period expenses');
+
+      // Verify depreciation is recorded systematically (conservative asset valuation)
+      const depreciation = expenses.find(e => e.account_code === 61100);
+      t.assert.equal(Number(depreciation?.amount), 5000, 'Should record systematic depreciation');
+
+      // Check that COGS is properly matched (conservative inventory valuation)
+      const cogs = incomeReport.filter(line => line.line_type === 'cogs');
+      const totalCogs = cogs.reduce((sum, c) => sum + Number(c.amount), 0);
+      t.assert.equal(totalCogs, 30000, 'Should recognize cost of goods sold conservatively');
+    });
+  });
 });

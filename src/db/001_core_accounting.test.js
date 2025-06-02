@@ -409,4 +409,279 @@ await test('Core Accounting Schema', async function (t) {
       `).run(1000000000, 1);
     }, 'Should throw error for unbalanced functional currency amounts');
   });
+
+  await t.test('Accounting equation validation - Assets = Liabilities + Equity', async function (t) {
+    const fixture = new TestFixture('Accounting equation validation');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Add more transactions to test accounting equation
+    // Purchase equipment with cash
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000100, 'Purchase equipment');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 12400, 25000, 0, 25000, 0); // Office Equipment (Asset)
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 10100, 0, 25000, 0, 25000); // Cash (Asset)
+    db.exec('commit');
+    db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000100, 2);
+
+    // Calculate total assets, liabilities, and equity
+    const balances = db.prepare(`
+      select
+        sum(case when at.name in ('asset', 'contra_asset')
+            then case when at.normal_balance = 'db' then a.balance else -a.balance end
+            else 0 end) as total_assets,
+        sum(case when at.name in ('liability', 'contra_liability')
+            then case when at.normal_balance = 'cr' then a.balance else -a.balance end
+            else 0 end) as total_liabilities,
+        sum(case when at.name in ('equity', 'contra_equity', 'dividend')
+            then case when at.normal_balance = 'cr' then a.balance else -a.balance end
+            else 0 end) as total_equity
+      from account a
+      join account_type at on a.account_type_name = at.name
+    `).get();
+
+    // Assets should equal Liabilities + Equity
+    t.assert.equal(
+      Number(balances.total_assets),
+      Number(balances.total_liabilities) + Number(balances.total_equity),
+      'Assets must equal Liabilities + Equity',
+    );
+  });
+
+  await t.test('Account code ranges validation', async function (t) {
+    const fixture = new TestFixture('Account code ranges validation');
+    const db = await fixture.setup();
+
+    // Test account code ranges follow standard chart of accounts structure
+    const accounts = db.prepare(`
+      select code, account_type_name from account order by code
+    `).all();
+
+    // Assets should be 10000-19999
+    const assets = accounts.filter(a => a.account_type_name === 'asset');
+    assets.forEach(account => {
+      t.assert.equal(
+        Number(account.code) >= 10000 && Number(account.code) <= 19999,
+        true,
+        `Asset account ${account.code} should be in range 10000-19999`,
+      );
+    });
+
+    // Liabilities should be 20000-29999
+    const liabilities = accounts.filter(a => a.account_type_name === 'liability');
+    liabilities.forEach(account => {
+      t.assert.equal(
+        Number(account.code) >= 20000 && Number(account.code) <= 29999,
+        true,
+        `Liability account ${account.code} should be in range 20000-29999`,
+      );
+    });
+
+    // Equity should be 30000-39999
+    const equity = accounts.filter(a => a.account_type_name === 'equity');
+    equity.forEach(account => {
+      t.assert.equal(
+        Number(account.code) >= 30000 && Number(account.code) <= 39999,
+        true,
+        `Equity account ${account.code} should be in range 30000-39999`,
+      );
+    });
+
+    // Revenue should be 40000-49999
+    const revenue = accounts.filter(a => a.account_type_name === 'revenue');
+    revenue.forEach(account => {
+      t.assert.equal(
+        Number(account.code) >= 40000 && Number(account.code) <= 49999,
+        true,
+        `Revenue account ${account.code} should be in range 40000-49999`,
+      );
+    });
+
+    // Expenses should be 50000-99999
+    const expenses = accounts.filter(a => ['expense', 'cogs'].includes(String(a.account_type_name)));
+    expenses.forEach(account => {
+      t.assert.equal(
+        Number(account.code) >= 50000 && Number(account.code) <= 99999,
+        true,
+        `Expense account ${account.code} should be in range 50000-99999`,
+      );
+    });
+  });
+
+  await t.test('Contra account validation', async function (t) {
+    const fixture = new TestFixture('Contra account validation');
+    const db = await fixture.setup();
+
+    // Test that contra accounts have opposite normal balances
+    const contraAssets = db.prepare(`
+      select * from account
+      where account_type_name = 'contra_asset'
+    `).all();
+
+    const assetType = db.prepare(`
+      select normal_balance from account_type where name = 'asset'
+    `).get();
+
+    const contraAssetType = db.prepare(`
+      select normal_balance from account_type where name = 'contra_asset'
+    `).get();
+
+    t.assert.notEqual(assetType.normal_balance, contraAssetType.normal_balance,
+      'Contra asset accounts should have opposite normal balance to asset accounts');
+
+    // Verify specific contra asset accounts exist
+    const accumDepBuildings = contraAssets.find(a => a.code === 12210);
+    t.assert.equal(!!accumDepBuildings, true, 'Accumulated Depreciation - Buildings should exist');
+    t.assert.equal(String(accumDepBuildings.name).includes('Accumulated Depreciation'), true,
+      'Contra asset should be depreciation account');
+  });
+
+  await t.test('Trial balance validation', async function (t) {
+    const fixture = new TestFixture('Trial balance validation');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Add a few more transactions
+    // Purchase inventory on credit
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000200, 'Purchase inventory on credit');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 10300, 15000, 0, 15000, 0); // Inventory
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 20100, 0, 15000, 0, 15000); // Accounts Payable
+    db.exec('commit');
+    db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000200, 2);
+
+    // Check trial balance using the multicurrency view
+    const trialBalance = db.prepare(`
+      select
+        sum(debit_balance_functional) as total_debits,
+        sum(credit_balance_functional) as total_credits
+      from trial_balance_multicurrency
+    `).get();
+
+    t.assert.equal(
+      Number(trialBalance.total_debits),
+      Number(trialBalance.total_credits),
+      'Total debits must equal total credits in trial balance',
+    );
+  });
+
+  await t.test('Revenue recognition principle validation', async function (t) {
+    const fixture = new TestFixture('Revenue recognition principle validation');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Record a sale (revenue recognition)
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000300, 'Cash sale');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 10100, 10000, 0, 10000, 0); // Cash
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 40100, 0, 10000, 0, 10000); // Sales Revenue
+    db.exec('commit');
+    db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000300, 2);
+
+    // Verify revenue is recorded as a credit
+    const revenueAccount = db.prepare(`
+      select balance from account where code = 40100
+    `).get();
+
+    t.assert.equal(Number(revenueAccount.balance) > 0, true, 'Revenue should have positive balance');
+
+    // Verify revenue account type has credit normal balance
+    const revenueType = db.prepare(`
+      select at.normal_balance from account a
+      join account_type at on a.account_type_name = at.name
+      where a.code = 40100
+    `).get();
+
+    t.assert.equal(revenueType.normal_balance, 'cr', 'Revenue accounts should have credit normal balance');
+  });
+
+  await t.test('Expense matching principle validation', async function (t) {
+    const fixture = new TestFixture('Expense matching principle validation');
+    const db = await fixture.setupWithInitialCapital();
+
+    // Record cost of goods sold matching with revenue
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(2, 1000000400, 'Cost of goods sold');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 0, 50100, 6000, 0, 6000, 0); // Cost of Goods Sold
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(2, 1, 10300, 0, 6000, 0, 6000); // Inventory
+    db.exec('commit');
+    db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000400, 2);
+
+    // Verify COGS is recorded as a debit
+    const cogsAccount = db.prepare(`
+      select balance from account where code = 50100
+    `).get();
+
+    t.assert.equal(Number(cogsAccount.balance) > 0, true, 'COGS should have positive balance');
+
+    // Verify COGS account type has debit normal balance
+    const cogsType = db.prepare(`
+      select at.normal_balance from account a
+      join account_type at on a.account_type_name = at.name
+      where a.code = 50100
+    `).get();
+
+    t.assert.equal(cogsType.normal_balance, 'db', 'COGS accounts should have debit normal balance');
+  });
+
+  await t.test('Prevent zero amount journal entries', async function (t) {
+    const fixture = new TestFixture('Prevent zero amount journal entries');
+    const db = await fixture.setup();
+
+    // Try to create journal entry with zero amounts - should be allowed in creation but not posting
+    db.exec('begin');
+    db.prepare(`
+      insert into journal_entry (ref, transaction_time, note)
+      values (?, ?, ?)
+    `).run(1, 1000000000, 'Zero amount entry');
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 0, 10100, 0, 0, 0, 0);
+    db.prepare(`
+      insert into journal_entry_line (journal_entry_ref, line_order, account_code, db, cr, db_functional, cr_functional)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 1, 30100, 0, 0, 0, 0);
+    db.exec('commit');
+
+    // Try to post - should fail due to zero amounts
+    t.assert.throws(function () {
+      db.prepare(`
+        update journal_entry set post_time = ? where ref = ?
+      `).run(1000000000, 1);
+    }, 'Should not allow posting journal entries with zero amounts');
+  });
 });
