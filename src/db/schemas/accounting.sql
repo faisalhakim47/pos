@@ -2,6 +2,7 @@
 -- style: Use lower case for all SQL keywords
 -- style: Use snake_case for table, column, table view, trigger names, anything.
 -- logic: This application only handle one currency. Multi-currency is not supported.
+-- logic: All times are stored as Unix timestamp in seconds.
 -- logic: Use smallest currency denomination possible, e.g. cents, pennies, etc. Currency uses signed int 64. Truncation towards zero is acceptable.
 -- logic: Ensure ALL insert and update statements are atomic. Use transactions to ensure atomicity.
 -- logic: SQL Delete statements are not allowed in accounting schema. Use adjustment journal entries instead.
@@ -36,17 +37,6 @@ create index if not exists account_type_name_index on account (account_type_name
 create index if not exists account_name_index on account (name);
 create index if not exists account_parent_account_code_index on account (parent_account_code);
 
-drop trigger if exists account_insert_validation_trigger;
-create trigger account_insert_validation_trigger
-before insert on account for each row
-begin
-  select
-    case when new.account_type_name not in (select name from account_type) then
-      raise(rollback, 'account type must be one of the predefined account types')
-    end
-  from account;
-end;
-
 create table if not exists journal_entry (
   ref integer primary key,
   transaction_time integer not null,
@@ -65,20 +55,29 @@ create trigger journal_entry_insert_validation_trigger
 before insert on journal_entry for each row
 begin
   select
-    case when new.post_time is not null then
-      raise(rollback, 'post_time must be null')
+    case
+      when new.post_time is not null
+      then raise(rollback, 'journal entry must be unposted at the time of creation')
     end;
 end;
 
-drop trigger if exists journal_entry_unpost_preventation_trigger;
-create trigger journal_entry_unpost_preventation_trigger
+drop trigger if exists journal_entry_update_preventation_trigger;
+create trigger journal_entry_update_preventation_trigger
 before update on journal_entry for each row
 begin
   select
-    case when old.post_time is not null and new.post_time is null then
-      raise(rollback, 'cannot unpost journal entry after journal entry is posted')
+    case
+      when old.post_time is not null
+        and (
+          old.post_time != new.post_time
+          or old.transaction_time != new.transaction_time
+          or old.reversal_of_journal_entry_ref != new.reversal_of_journal_entry_ref
+          or old.correction_of_journal_entry_ref != new.correction_of_journal_entry_ref
+        )
+      then raise(rollback, 'make reversal/correction journal entry instead of updating posted journal entry')
     end;
 end;
+
 
 create table if not exists journal_entry_line (
   journal_entry_ref integer not null,
@@ -94,24 +93,23 @@ create table if not exists journal_entry_line (
 create index if not exists journal_entry_line_journal_entry_ref_index on journal_entry_line (journal_entry_ref);
 create index if not exists journal_entry_line_account_code_index on journal_entry_line (account_code);
 
-drop trigger if exists journal_entry_line_insert_validation_trigger;
-create trigger journal_entry_line_insert_validation_trigger
-before insert on journal_entry_line for each row
-begin
-  select
-    case when exists (select 1 from account as child where child.parent_account_code = new.account_code) then
-      raise(rollback, 'cannot use parent account, please use specific account.')
-    end;
-end;
-
 drop trigger if exists journal_entry_post_validation_trigger;
 create trigger journal_entry_post_validation_trigger
 before update on journal_entry for each row
 when old.post_time is null and new.post_time is not null
 begin
   select
-    case when sum(debit) != sum(credit) then
-      raise(rollback, 'debit and credit must balance')
+    case
+      when sum(debit) <= 0
+      then raise(rollback, 'sum of debit on journal entry must be greater than zero')
+    end,
+    case
+      when sum(credit) <= 0
+      then raise(rollback, 'sum of credit on journal entry must be greater than zero')
+    end,
+    case
+      when sum(debit) != sum(credit)
+      then raise(rollback, 'sum of debit and credit on journal entry must balance')
     end
   from journal_entry_line
   where journal_entry_ref = new.ref;
@@ -126,17 +124,22 @@ begin
   set balance = (
     select coalesce(sum(
       case
-        when account_type.increase_on_debit = 1 then jel.debit - jel.credit
-        else jel.credit - jel.debit
+        when increase_on_debit = 1
+        then debit - credit
+        when increase_on_credit = 1
+        then credit - debit
       end
     ), 0)
-    from journal_entry_line jel
-    join journal_entry je on je.ref = jel.journal_entry_ref
-    join account_type on account.account_type_name = account_type.name
-    where jel.account_code = account.code and je.post_time is not null
+    from journal_entry_line
+    join journal_entry on ref = journal_entry_ref
+    join account_type on account_type.name = account.account_type_name
+    where account_code = account.code
+      and journal_entry.post_time is not null
   )
   where code in (
-    select account_code from journal_entry_line where journal_entry_ref = new.ref
+    select account_code
+    from journal_entry_line
+    where journal_entry_ref = new.ref
   );
 end;
 
@@ -145,12 +148,25 @@ create trigger journal_entry_delete_preventation_trigger
 before delete on journal_entry_line for each row
 begin
   select
-    case when journal_entry.post_time is not null then
-      raise(rollback, 'Cannot delete journal entry line after journal entry is posted')
+    case
+      when journal_entry.post_time is not null
+      then raise(rollback, 'make reversal/correction journal entry instead of deleting posted journal entry')
     end
   from journal_entry
   where journal_entry.ref = old.journal_entry_ref;
 end;
+
+create view if not exists journal_entry_summary as
+select
+  je.ref,
+  je.transaction_time,
+  jel.line_number,
+  jel.account_code,
+  jel.debit,
+  jel.credit
+from journal_entry_line as jel
+join journal_entry as je on jel.journal_entry_ref = je.ref
+where je.post_time is not null;
 
 create table if not exists fiscal_year_config (
   id integer primary key default 1 check (id = 1),
@@ -168,53 +184,11 @@ create table if not exists fiscal_year_config (
   foreign key (retained_earnings_account_code) references account (code) on update restrict on delete restrict
 );
 
-drop trigger if exists fiscal_year_config_insert_validation_trigger;
-create trigger fiscal_year_config_insert_validation_trigger
-before insert on fiscal_year_config for each row
-begin
-  select
-    case when revenue_account.parent_account_code is not null then
-      raise(rollback, 'cannot use specific revenue account, please use parent account.')
-    end,
-    case when contra_revenue_account.parent_account_code is not null then
-      raise(rollback, 'cannot use specific contra-revenue account, please use parent account.')
-    end,
-    case when expense_account.parent_account_code is not null then
-      raise(rollback, 'cannot use specific expense account, please use parent account.')
-    end
-  from (
-    select parent_account_code
-    from account
-    where code = new.revenue_account_code
-  ) as revenue_account, (
-    select parent_account_code
-    from account
-    where code = new.contra_revenue_account_code
-  ) as contra_revenue_account, (
-    select parent_account_code
-    from account
-    where code = new.expense_account_code
-  ) as expense_account;
-end;
-
-drop trigger if exists fiscal_year_config_update_validation_trigger;
-create trigger fiscal_year_config_update_validation_trigger
-before update on fiscal_year_config for each row
-begin
-  select
-    case when new.id != old.id then
-      raise(rollback, 'fiscal year can only have one configuration')
-    end;
-end;
-
 drop trigger if exists fiscal_year_config_delete_preventation_trigger;
 create trigger fiscal_year_config_delete_preventation_trigger
 before delete on fiscal_year_config for each row
 begin
-  select
-    case when old.id != 1 then
-      raise(rollback, 'fiscal year can only have one configuration')
-    end;
+  select raise(rollback, 'fiscal year must have a configuration');
 end;
 
 -- In accounting principles, fiscal year must be 12 months long. In this app we dont enforce it.
@@ -229,40 +203,35 @@ create table if not exists fiscal_year (
 
 create view if not exists fiscal_year_account_mutation as
 select
-  account.code as account_code,
-  account.parent_account_code as parent_account_code,
-  begin_time,
-  end_time,
-  sum(journal_entry_line.debit) as debit,
-  sum(journal_entry_line.credit) as credit
-from fiscal_year
-left join (
-  select
-    journal_entry.transaction_time,
-    journal_entry_line.*
-  from journal_entry_line
-  left join journal_entry on journal_entry.ref = journal_entry_line.journal_entry_ref
-  where journal_entry.post_time is not null
-) as journal_entry_line
-  on journal_entry_line.transaction_time >= fiscal_year.begin_time
-  and journal_entry_line.transaction_time < fiscal_year.end_time
-left join account on account.code = journal_entry_line.account_code
-group by fiscal_year.begin_time, account.code;
+  fy.begin_time,
+  fy.end_time,
+  a.code as account_code,
+  a.parent_account_code,
+  sum(jes.debit) as sum_of_debit,
+  sum(jes.credit) as sum_of_credit
+from fiscal_year as fy
+join journal_entry_summary as jes
+  on jes.transaction_time >= fy.begin_time
+  and jes.transaction_time < fy.end_time
+join account as a on a.code = jes.account_code
+group by fy.begin_time, jes.account_code;
 
 drop trigger if exists fiscal_year_insert_validation_trigger;
 create trigger fiscal_year_insert_validation_trigger
 before insert on fiscal_year for each row
 begin
   select
-    case when new.post_time is not null then
-      raise(rollback, 'post_time must be null')
+    case
+      when new.post_time is not null
+      then raise(rollback, 'fiscal year must be unposted at the time of creation')
     end,
-    case when new.begin_time != coalesce(last_fiscal_year.end_time, default_fiscal_year.end_time) then
-      raise(rollback, 'begin_time must be the same as last fiscal year end_time')
+    case
+      when new.begin_time != coalesce(last_end_time, default_end_time)
+      then raise(rollback, 'begin_time must be the same as last fiscal year end_time')
     end
-  from (select 0 as end_time) as default_fiscal_year
-  left join (
-    select end_time
+  from (select 0 as default_end_time)
+  join (
+    select end_time as last_end_time
     from fiscal_year
     order by end_time desc
     limit 1
@@ -274,8 +243,9 @@ create trigger fiscal_year_post_preventation_trigger
 before update on fiscal_year for each row
 begin
   select
-    case when old.post_time is not null and old.post_time != new.post_time then
-      raise(rollback, 'cannot change post_time of fiscal year closing')
+    case
+      when old.post_time is not null
+      then raise(rollback, 'cannot update posted fiscal year')
     end;
 end;
 
@@ -295,137 +265,21 @@ begin
   )
   select
     last_insert_rowid(),
-    row_number() - 1,
+    0,
     account_code,
-    fiscal_year_account_mutation.credit - fiscal_year_account_mutation.debit,
+    sum_of_credit - sum_of_debit,
     0
-  from fiscal_year_account_mutation, fiscal_year_config
-  where parent_account_code in (
-    fiscal_year_config.revenue_account_code
-  )
-  union all
-  select
-    last_insert_rowid(),
-    count(account_code),
-    fiscal_year_config.income_summary_account_code,
-    0,
-    sum(fiscal_year_account_mutation.credit) - sum(fiscal_year_account_mutation.debit)
-  from fiscal_year_account_mutation, fiscal_year_config
-  where parent_account_code in (
-    fiscal_year_config.revenue_account_code
-  );
-  -- expense accounts closing
-  insert into journal_entry (transaction_time) values (new.end_time);
-  insert into journal_entry_line (
-    journal_entry_ref,
-    line_number,
-    account_code,
-    debit,
-    credit
-  )
-  select
-    last_insert_rowid(),
-    row_number() - 1,
-    account_code,
-    0,
-    fiscal_year_account_mutation.debit - fiscal_year_account_mutation.credit
-  from fiscal_year_account_mutation, fiscal_year_config
-  where parent_account_code in (
-    fiscal_year_config.expense_account_code,
-    fiscal_year_config.contra_revenue_account_code
-  )
-  union all
-  select
-    last_insert_rowid(),
-    count(account_code),
-    fiscal_year_config.income_summary_account_code,
-    sum(fiscal_year_account_mutation.debit) - sum(fiscal_year_account_mutation.credit),
-    0
-  from fiscal_year_account_mutation, fiscal_year_config
-  where parent_account_code in (
-    fiscal_year_config.expense_account_code,
-    fiscal_year_config.contra_revenue_account_code
-  );
-  -- dividend account rolling
-  insert into journal_entry (transaction_time) values (new.end_time);
-  insert into journal_entry_line (
-    journal_entry_ref,
-    line_number,
-    account_code,
-    debit,
-    credit
-  )
-  select
-    last_insert_rowid(),
-    0,
-    fiscal_year_config.dividend_account_code,
-    0,
-    sum(fiscal_year_account_mutation.debit) - sum(fiscal_year_account_mutation.credit)
-  from fiscal_year_account_mutation, fiscal_year_config
-  where parent_account_code in (
-    fiscal_year_config.dividend_account_code
-  )
+  from fiscal_year_config, fiscal_year_account_mutation
+  where parent_account_code = revenue_account_code and account_code is not null
   union all
   select
     last_insert_rowid(),
     1,
-    fiscal_year_config.retained_earnings_account_code,
-    fiscal_year_account_mutation.debit - fiscal_year_account_mutation.credit,
-    0
-  from fiscal_year_account_mutation, fiscal_year_config
-  where parent_account_code in (
-    fiscal_year_config.dividend_account_code
-  );
-  -- income summary account closing
-  insert into journal_entry (transaction_time) values (new.end_time);
-  insert into journal_entry_line (
-    journal_entry_ref,
-    line_number,
-    account_code,
-    debit,
-    credit
-  )
-  select
-    last_insert_rowid(),
+    income_summary_account_code,
     0,
-    fiscal_year_config.income_summary_account_code,
-    (
-      select sum(fiscal_year_account_mutation.credit) - sum(fiscal_year_account_mutation.debit)
-      from fiscal_year_account_mutation, fiscal_year_config
-      where account_code in (
-        fiscal_year_config.revenue_account_code
-      )
-    ) - (
-      select sum(fiscal_year_account_mutation.debit) - sum(fiscal_year_account_mutation.credit)
-      from fiscal_year_account_mutation, fiscal_year_config
-      where account_code in (
-        fiscal_year_config.expense_account_code,
-        fiscal_year_config.contra_revenue_account_code
-      )
-    ),
-    0
-  from fiscal_year_config
-  union all
-  select
-    last_insert_rowid(),
-    1,
-    fiscal_year_config.retained_earnings_account_code,
-    0,
-    (
-      select sum(fiscal_year_account_mutation.credit) - sum(fiscal_year_account_mutation.debit)
-      from fiscal_year_account_mutation, fiscal_year_config
-      where account_code in (
-        fiscal_year_config.revenue_account_code
-      )
-    ) - (
-      select sum(fiscal_year_account_mutation.debit) - sum(fiscal_year_account_mutation.credit)
-      from fiscal_year_account_mutation, fiscal_year_config
-      where account_code in (
-        fiscal_year_config.expense_account_code,
-        fiscal_year_config.contra_revenue_account_code
-      )
-    )
-  from fiscal_year_account_mutation, fiscal_year_config;
+    sum(sum_of_credit) - sum(sum_of_debit)
+  from fiscal_year_config, fiscal_year_account_mutation
+  where parent_account_code = revenue_account_code and account_code is not null;
   -- post fiscal year closing journal entries
   update journal_entry
   set post_time = new.post_time
@@ -474,9 +328,13 @@ values
   (3020, 'Retained Earnings', 'Equity', 0, 3000),
   (3030, 'Income Summary', 'Equity', 0, 3000),
   (3040, 'Dividends', 'Dividends', 0, null),
+  (3041, 'Owner Dividends', 'Dividends', 0, 3040),
   (4000, 'Revenue', 'Revenue', 0, null),
+  (4100, 'Sales Revenue', 'Revenue', 0, 4000),
   (4200, 'Contra-Revenue', 'Contra-Revenue', 0, null),
-  (5000, 'Expense', 'Expense', 0, null)
+  (4210, 'Sales Discounts', 'Contra-Revenue', 0, 4200),
+  (5000, 'Expense', 'Expense', 0, null),
+  (5020, 'Operating Expense', 'Expense', 0, 5000)
 on conflict do update set
   name = excluded.name,
   account_type_name = excluded.account_type_name,
