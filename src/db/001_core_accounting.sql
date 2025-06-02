@@ -414,7 +414,7 @@ insert into account (code, name, account_type_name) values
   (40300, 'Other Revenue', 'revenue'),
   (41000, 'Sales Returns and Allowances', 'contra_revenue'),
   
-  -- Expenses  
+  -- Expenses
   (50100, 'Cost of Goods Sold', 'cogs'),
   (50700, 'Cost of Goods Sold', 'cogs'),
   (60100, 'Salaries and Wages', 'expense'),

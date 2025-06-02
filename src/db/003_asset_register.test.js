@@ -533,7 +533,7 @@ await test('Asset Register Schema', async function (t) {
   });
 });
 
-test('Asset Register - Accounting Principles Validation', async function (t) {
+await test('Asset Register - Accounting Principles Validation', async function (t) {
   await t.test('should validate asset cost and depreciation accounting treatment', async function (t) {
     const fixture = new TestFixture('asset_cost_validation');
     const db = await fixture.setup();
