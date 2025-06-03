@@ -971,4 +971,287 @@ await test('Inventory Management Schema', async function (t) {
 
     fixture.cleanup();
   });
+
+  await t.test('Inventory transaction journal entry automation', async function (t) {
+    const fixture = new TestFixture('journal_entry_automation');
+    const db = await fixture.setup();
+
+    try {
+      // Create test data
+      // 1. Create a warehouse
+      db.exec(`
+        insert into warehouse (code, name, is_default) values ('MAIN', 'Main Warehouse', 1);
+      `);
+
+      const warehouseLocationQuery = db.prepare(`
+        insert into warehouse_location (warehouse_id, code, name, is_default)
+        values ((select id from warehouse where code = 'MAIN'), 'A001', 'Aisle A, Rack 1', 1)
+      `);
+      warehouseLocationQuery.run();
+
+      // 2. Create a product with inventory and COGS accounts
+      db.exec(`
+        insert into product (
+          sku, name, inventory_account_code, cogs_account_code, sales_account_code,
+          standard_cost, costing_method, currency_code
+        ) values (
+          'TEST001', 'Test Product 1', 10300, 50100, 40100,
+          1000, 'FIFO', 'USD'
+        );
+      `);
+
+      // Test PURCHASE_RECEIPT journal entry creation
+      console.log('Testing PURCHASE_RECEIPT journal entry automation...');
+
+      // Create purchase receipt transaction
+      db.exec(`
+        insert into inventory_transaction (
+          transaction_type_code, reference_number, transaction_date,
+          total_value, currency_code, status, created_by_user
+        ) values (
+          'PURCHASE_RECEIPT', 'PO-001', ${Date.now()},
+          5000, 'USD', 'PENDING', 'test_user'
+        );
+      `);
+
+      const transactionId = db.prepare('select last_insert_rowid() as id').get().id;
+
+      // Add transaction line
+      db.exec(`
+        insert into inventory_transaction_line (
+          inventory_transaction_id, line_number, product_id, warehouse_location_id,
+          quantity, unit_cost, reason_code
+        ) values (
+          ${transactionId}, 1,
+          (select id from product where sku = 'TEST001'),
+          (select id from warehouse_location where code = 'A001'),
+          5, 1000, 'PURCHASE'
+        );
+      `);
+
+      // Post the transaction to trigger journal entry creation
+      db.exec(`
+        update inventory_transaction
+        set status = 'POSTED'
+        where id = ${transactionId};
+      `);
+
+      // Verify journal entry was created
+      const journalEntryQuery = db.prepare(`
+        select * from journal_entry
+        where ref = (select journal_entry_ref from inventory_transaction where id = ?)
+      `);
+      const journalEntry = journalEntryQuery.get(transactionId);
+      console.assert(journalEntry, 'Journal entry should be created for purchase receipt');
+      console.assert(journalEntry.post_time, 'Journal entry should be automatically posted');
+
+      // Verify journal entry lines
+      const journalLinesQuery = db.prepare(`
+        select jel.*, a.name as account_name
+        from journal_entry_line jel
+        join account a on a.code = jel.account_code
+        where jel.journal_entry_ref = ?
+        order by jel.line_number
+      `);
+      const journalLines = journalLinesQuery.all(journalEntry.ref);
+      console.assert(journalLines.length === 2, 'Should have 2 journal entry lines for purchase receipt');
+
+      // First line should be DR Inventory
+      const inventoryLine = journalLines.find(line => line.account_code === 10300);
+      console.assert(inventoryLine, 'Should have inventory account debit');
+      console.assert(inventoryLine.db === 5000, 'Inventory debit should be 5000');
+      console.assert(inventoryLine.cr === 0, 'Inventory credit should be 0');
+
+      // Second line should be CR Accounts Payable
+      const apLine = journalLines.find(line => line.account_code === 20100);
+      console.assert(apLine, 'Should have accounts payable credit');
+      console.assert(apLine.cr === 5000, 'Accounts payable credit should be 5000');
+      console.assert(apLine.db === 0, 'Accounts payable debit should be 0');
+
+      // Test SALES_ISSUE journal entry creation
+      console.log('Testing SALES_ISSUE journal entry automation...');
+
+      // Create sales issue transaction
+      db.exec(`
+        insert into inventory_transaction (
+          transaction_type_code, reference_number, transaction_date,
+          total_value, currency_code, status, created_by_user
+        ) values (
+          'SALES_ISSUE', 'SO-001', ${Date.now()},
+          2000, 'USD', 'PENDING', 'test_user'
+        );
+      `);
+
+      const salesTransactionId = db.prepare('select last_insert_rowid() as id').get().id;
+
+      // Add transaction line (negative quantity for sales issue)
+      db.exec(`
+        insert into inventory_transaction_line (
+          inventory_transaction_id, line_number, product_id, warehouse_location_id,
+          quantity, unit_cost, reason_code
+        ) values (
+          ${salesTransactionId}, 1,
+          (select id from product where sku = 'TEST001'),
+          (select id from warehouse_location where code = 'A001'),
+          -2, 1000, 'SALE'
+        );
+      `);
+
+      // Post the sales transaction
+      db.exec(`
+        update inventory_transaction
+        set status = 'POSTED'
+        where id = ${salesTransactionId};
+      `);
+
+      // Verify sales journal entry was created
+      const salesJournalEntry = journalEntryQuery.get(salesTransactionId);
+      console.assert(salesJournalEntry, 'Journal entry should be created for sales issue');
+      console.assert(salesJournalEntry.post_time, 'Sales journal entry should be automatically posted');
+
+      // Verify sales journal entry lines (COGS and Inventory reduction)
+      const salesJournalLines = journalLinesQuery.all(salesJournalEntry.ref);
+      console.assert(salesJournalLines.length === 2, 'Should have 2 journal entry lines for sales issue');
+
+      // First line should be DR COGS
+      const cogsLine = salesJournalLines.find(line => line.account_code === 50100);
+      console.assert(cogsLine, 'Should have COGS account debit');
+      console.assert(cogsLine.db === 2000, 'COGS debit should be 2000');
+
+      // Second line should be CR Inventory
+      const inventoryCreditLine = salesJournalLines.find(line => line.account_code === 10300);
+      console.assert(inventoryCreditLine, 'Should have inventory account credit');
+      console.assert(inventoryCreditLine.cr === 2000, 'Inventory credit should be 2000');
+
+      // Test ADJUSTMENT_POSITIVE journal entry creation
+      console.log('Testing ADJUSTMENT_POSITIVE journal entry automation...');
+
+      db.exec(`
+        insert into inventory_transaction (
+          transaction_type_code, reference_number, transaction_date,
+          total_value, currency_code, status, created_by_user
+        ) values (
+          'ADJUSTMENT_POSITIVE', 'ADJ-001', ${Date.now()},
+          1000, 'USD', 'PENDING', 'test_user'
+        );
+      `);
+
+      const adjTransactionId = db.prepare('select last_insert_rowid() as id').get().id;
+
+      db.exec(`
+        insert into inventory_transaction_line (
+          inventory_transaction_id, line_number, product_id, warehouse_location_id,
+          quantity, unit_cost, reason_code
+        ) values (
+          ${adjTransactionId}, 1,
+          (select id from product where sku = 'TEST001'),
+          (select id from warehouse_location where code = 'A001'),
+          1, 1000, 'COUNT_VARIANCE'
+        );
+      `);
+
+      // Post the adjustment transaction
+      db.exec(`
+        update inventory_transaction
+        set status = 'POSTED'
+        where id = ${adjTransactionId};
+      `);
+
+      // Verify adjustment journal entry
+      const adjJournalEntry = journalEntryQuery.get(adjTransactionId);
+      console.assert(adjJournalEntry, 'Journal entry should be created for positive adjustment');
+
+      const adjJournalLines = journalLinesQuery.all(adjJournalEntry.ref);
+      console.assert(adjJournalLines.length === 2, 'Should have 2 journal entry lines for positive adjustment');
+
+      // Should have DR Inventory and CR Inventory Adjustment Gain
+      const adjInventoryLine = adjJournalLines.find(line => line.account_code === 10300);
+      const adjGainLine = adjJournalLines.find(line => line.account_code === 41200);
+      console.assert(adjInventoryLine && adjInventoryLine.db === 1000, 'Should debit inventory 1000');
+      console.assert(adjGainLine && adjGainLine.cr === 1000, 'Should credit inventory adjustment gain 1000');
+
+      // Test OBSOLESCENCE_WRITEOFF journal entry creation
+      console.log('Testing OBSOLESCENCE_WRITEOFF journal entry automation...');
+
+      db.exec(`
+        insert into inventory_transaction (
+          transaction_type_code, reference_number, transaction_date,
+          total_value, currency_code, status, created_by_user
+        ) values (
+          'OBSOLESCENCE_WRITEOFF', 'OBS-001', ${Date.now()},
+          500, 'USD', 'PENDING', 'test_user'
+        );
+      `);
+
+      const obsTransactionId = db.prepare('select last_insert_rowid() as id').get().id;
+
+      db.exec(`
+        insert into inventory_transaction_line (
+          inventory_transaction_id, line_number, product_id, warehouse_location_id,
+          quantity, unit_cost, reason_code
+        ) values (
+          ${obsTransactionId}, 1,
+          (select id from product where sku = 'TEST001'),
+          (select id from warehouse_location where code = 'A001'),
+          -1, 500, 'OBSOLETE'
+        );
+      `);
+
+      // Post the obsolescence transaction
+      db.exec(`
+        update inventory_transaction
+        set status = 'POSTED'
+        where id = ${obsTransactionId};
+      `);
+
+      // Verify obsolescence journal entry
+      const obsJournalEntry = journalEntryQuery.get(obsTransactionId);
+      console.assert(obsJournalEntry, 'Journal entry should be created for obsolescence writeoff');
+
+      const obsJournalLines = journalLinesQuery.all(obsJournalEntry.ref);
+      console.assert(obsJournalLines.length === 2, 'Should have 2 journal entry lines for obsolescence writeoff');
+
+      // Should have DR Obsolescence Loss and CR Inventory
+      const obsLossLine = obsJournalLines.find(line => line.account_code === 51300);
+      const obsInventoryLine = obsJournalLines.find(line => line.account_code === 10300);
+      console.assert(obsLossLine && obsLossLine.db === 500, 'Should debit obsolescence loss 500');
+      console.assert(obsInventoryLine && obsInventoryLine.cr === 500, 'Should credit inventory 500');
+
+      // Verify account balances are updated correctly
+      console.log('Verifying account balances...');
+
+      const accountBalanceQuery = db.prepare(`
+        select account_code, sum(db_functional - cr_functional) as balance
+        from journal_entry_line jel
+        join journal_entry je on je.ref = jel.journal_entry_ref
+        where je.post_time is not null
+        group by account_code
+        having balance != 0
+        order by account_code
+      `);
+
+      const balances = accountBalanceQuery.all();
+      console.log('Account balances:', balances.map(b => `${b.account_code}: ${b.balance}`).join(', '));
+
+      // Verify that debits equal credits for all posted journal entries
+      const balanceCheckQuery = db.prepare(`
+        select
+          sum(db_functional) as total_debits,
+          sum(cr_functional) as total_credits
+        from journal_entry_line jel
+        join journal_entry je on je.ref = jel.journal_entry_ref
+        where je.post_time is not null
+      `);
+
+      const balanceCheck = balanceCheckQuery.get();    console.assert(
+        balanceCheck.total_debits === balanceCheck.total_credits,
+        `Total debits (${balanceCheck.total_debits}) should equal total credits (${balanceCheck.total_credits})`,
+      );
+
+      console.log('✅ All inventory transaction journal entry automation tests passed!');
+
+    } finally {
+      db.close();
+    }
+  });
 });

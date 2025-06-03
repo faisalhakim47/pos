@@ -382,6 +382,9 @@ insert into account (code, name, account_type_name) values
   (10300, 'Inventory', 'asset'),
   (10400, 'Prepaid Expenses', 'asset'),
   (10600, 'Merchandise Inventory', 'asset'),
+  (13100, 'Raw Materials Inventory', 'asset'),
+  (13200, 'Work in Process Inventory', 'asset'),
+  (13300, 'Finished Goods Inventory', 'asset'),
   (12000, 'Property, Plant, and Equipment', 'asset'),
   (12100, 'Land', 'asset'),
   (12200, 'Buildings', 'asset'),
@@ -419,6 +422,8 @@ insert into account (code, name, account_type_name) values
   (50100, 'Cost of Goods Sold', 'cogs'),
   (50700, 'Cost of Goods Sold', 'cogs'),
   (51200, 'Inventory Adjustment Loss', 'expense'),
+  (51300, 'Obsolescence Loss', 'expense'),
+  (51400, 'Damage Loss', 'expense'),
   (60100, 'Salaries and Wages', 'expense'),
   (60200, 'Rent Expense', 'expense'),
   (60300, 'Utilities Expense', 'expense'),
@@ -441,6 +446,9 @@ insert into account_tag (account_code, tag) values
   (10300, 'balance_sheet_current_asset'), -- Inventory
   (10400, 'balance_sheet_current_asset'), -- Prepaid Expenses
   (10600, 'balance_sheet_current_asset'), -- Merchandise Inventory
+  (13100, 'balance_sheet_current_asset'), -- Raw Materials Inventory
+  (13200, 'balance_sheet_current_asset'), -- Work in Process Inventory
+  (13300, 'balance_sheet_current_asset'), -- Finished Goods Inventory
 
   -- Balance Sheet - Non-Current Assets
   (12000, 'balance_sheet_non_current_asset'), -- Property, Plant, and Equipment
@@ -481,6 +489,8 @@ insert into account_tag (account_code, tag) values
   (50100, 'income_statement_cogs'), -- Cost of Goods Sold
   (50700, 'income_statement_cogs'), -- Cost of Goods Sold
   (51200, 'income_statement_expense'), -- Inventory Adjustment Loss
+  (51300, 'income_statement_expense'), -- Obsolescence Loss
+  (51400, 'income_statement_expense'), -- Damage Loss
   (60100, 'income_statement_expense'), -- Salaries and Wages
   (60200, 'income_statement_expense'), -- Rent Expense
   (60300, 'income_statement_expense'), -- Utilities Expense
@@ -501,6 +511,8 @@ insert into account_tag (account_code, tag) values
   (50100, 'fiscal_year_closing_expense'), -- Cost of Goods Sold
   (50700, 'fiscal_year_closing_expense'), -- Cost of Goods Sold
   (51200, 'fiscal_year_closing_expense'), -- Inventory Adjustment Loss
+  (51300, 'fiscal_year_closing_expense'), -- Obsolescence Loss
+  (51400, 'fiscal_year_closing_expense'), -- Damage Loss
   (60100, 'fiscal_year_closing_expense'), -- Salaries and Wages
   (60200, 'fiscal_year_closing_expense'), -- Rent Expense
   (60300, 'fiscal_year_closing_expense'), -- Utilities Expense

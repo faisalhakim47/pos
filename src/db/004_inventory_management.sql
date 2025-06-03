@@ -796,6 +796,392 @@ begin
   where id = last_insert_rowid();
 end;
 
+-- COMPREHENSIVE INVENTORY JOURNAL ENTRY AUTOMATION --
+
+-- Create journal entries automatically for all inventory transactions when posted
+drop trigger if exists inventory_transaction_journal_entry_trigger;
+create trigger inventory_transaction_journal_entry_trigger
+after update on inventory_transaction for each row
+when old.status != 'POSTED' and new.status = 'POSTED'
+  and exists (
+    select 1 from inventory_transaction_type itt
+    where itt.code = new.transaction_type_code
+    and itt.creates_journal_entry = 1
+  )
+  and new.journal_entry_ref is null
+begin
+  -- Create journal entry header
+  insert into journal_entry (
+    ref,
+    transaction_time,
+    note
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0) + 1,
+    new.transaction_date,
+    itt.name || ' - Ref: ' || new.reference_number ||
+    ' - Total Value: ' || printf('%.2f', new.total_value / 100.0) || ' ' || new.currency_code
+  from inventory_transaction_type itt
+  where itt.code = new.transaction_type_code;
+
+  -- Get the journal entry reference that was just created
+  update inventory_transaction
+  set journal_entry_ref = coalesce((select max(ref) from journal_entry), 0)
+  where id = new.id;
+
+  -- Create journal entry lines based on transaction type
+  -- PURCHASE_RECEIPT: DR Inventory, CR Accounts Payable (or Cash if direct purchase)
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- DR Inventory
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'PURCHASE_RECEIPT'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    20100, -- CR Accounts Payable (assuming standard account code)
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'PURCHASE_RECEIPT'
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- SALES_ISSUE: DR COGS, CR Inventory
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.cogs_account_code, -- DR Cost of Goods Sold
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'SALES_ISSUE'
+  group by p.cogs_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- CR Inventory
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'SALES_ISSUE'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- ADJUSTMENT_POSITIVE: DR Inventory, CR Inventory Adjustment Gain
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- DR Inventory
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'ADJUSTMENT_POSITIVE'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    41200, -- CR Inventory Adjustment Gain (revenue account)
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'ADJUSTMENT_POSITIVE'
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- ADJUSTMENT_NEGATIVE: DR Inventory Adjustment Loss, CR Inventory
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    51200, -- DR Inventory Adjustment Loss (expense account)
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'ADJUSTMENT_NEGATIVE'
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- CR Inventory
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'ADJUSTMENT_NEGATIVE'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- MANUFACTURING_ISSUE: DR Work in Process, CR Raw Materials Inventory
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    13200, -- DR Work in Process Inventory
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'MANUFACTURING_ISSUE'
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- CR Raw Materials Inventory
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'MANUFACTURING_ISSUE'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- MANUFACTURING_RECEIPT: DR Finished Goods Inventory, CR Work in Process
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- DR Finished Goods Inventory
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'MANUFACTURING_RECEIPT'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    13200, -- CR Work in Process Inventory
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'MANUFACTURING_RECEIPT'
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- OBSOLESCENCE_WRITEOFF: DR Obsolescence Loss, CR Inventory
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    51300, -- DR Obsolescence Loss (expense account)
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'OBSOLESCENCE_WRITEOFF'
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- CR Inventory
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'OBSOLESCENCE_WRITEOFF'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- DAMAGE_WRITEOFF: DR Damage Loss, CR Inventory
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    51400, -- DR Damage Loss (expense account)
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0
+  from inventory_transaction_line itl
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'DAMAGE_WRITEOFF'
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    p.inventory_account_code, -- CR Inventory
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0),
+    0,
+    coalesce(sum(abs(itl.quantity * itl.unit_cost)), 0)
+  from inventory_transaction_line itl
+  join product p on p.id = itl.product_id
+  where itl.inventory_transaction_id = new.id
+    and new.transaction_type_code = 'DAMAGE_WRITEOFF'
+  group by p.inventory_account_code
+  having sum(abs(itl.quantity * itl.unit_cost)) > 0;
+
+  -- Post the journal entry immediately for automated transactions
+  update journal_entry
+  set post_time = unixepoch()
+  where ref = coalesce((select max(ref) from journal_entry), 0);
+end;
+
 --- REPORTING VIEWS ---
 
 -- Real-time inventory levels by product and location
