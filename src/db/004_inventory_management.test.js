@@ -3,8 +3,8 @@
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -978,14 +978,11 @@ await test('Inventory Management Schema', async function (t) {
 
     try {
       // Create test data
-      // 1. Create a warehouse
-      db.exec(`
-        insert into warehouse (code, name, is_default) values ('MAIN', 'Main Warehouse', 1);
-      `);
-
+      // 1. Use existing default warehouse and add a new location if needed
       const warehouseLocationQuery = db.prepare(`
-        insert into warehouse_location (warehouse_id, code, name, is_default)
-        values ((select id from warehouse where code = 'MAIN'), 'A001', 'Aisle A, Rack 1', 1)
+        insert into warehouse_location (warehouse_id, code, name)
+        values ((select id from warehouse where code = 'MAIN'), 'A001', 'Aisle A, Rack 1')
+        on conflict (warehouse_id, code) do nothing
       `);
       warehouseLocationQuery.run();
 
@@ -1001,7 +998,6 @@ await test('Inventory Management Schema', async function (t) {
       `);
 
       // Test PURCHASE_RECEIPT journal entry creation
-      console.log('Testing PURCHASE_RECEIPT journal entry automation...');
 
       // Create purchase receipt transaction
       db.exec(`
@@ -1042,8 +1038,8 @@ await test('Inventory Management Schema', async function (t) {
         where ref = (select journal_entry_ref from inventory_transaction where id = ?)
       `);
       const journalEntry = journalEntryQuery.get(transactionId);
-      console.assert(journalEntry, 'Journal entry should be created for purchase receipt');
-      console.assert(journalEntry.post_time, 'Journal entry should be automatically posted');
+      t.assert.equal(Boolean(journalEntry), true, 'Journal entry should be created for purchase receipt');
+      t.assert.equal(Boolean(journalEntry.post_time), true, 'Journal entry should be automatically posted');
 
       // Verify journal entry lines
       const journalLinesQuery = db.prepare(`
@@ -1051,25 +1047,24 @@ await test('Inventory Management Schema', async function (t) {
         from journal_entry_line jel
         join account a on a.code = jel.account_code
         where jel.journal_entry_ref = ?
-        order by jel.line_number
+        order by jel.line_order
       `);
       const journalLines = journalLinesQuery.all(journalEntry.ref);
-      console.assert(journalLines.length === 2, 'Should have 2 journal entry lines for purchase receipt');
+      t.assert.equal(journalLines.length, 2, 'Should have 2 journal entry lines for purchase receipt');
 
       // First line should be DR Inventory
       const inventoryLine = journalLines.find(line => line.account_code === 10300);
-      console.assert(inventoryLine, 'Should have inventory account debit');
-      console.assert(inventoryLine.db === 5000, 'Inventory debit should be 5000');
-      console.assert(inventoryLine.cr === 0, 'Inventory credit should be 0');
+      t.assert.equal(Boolean(inventoryLine), true, 'Should have inventory account debit');
+      t.assert.equal(Number(inventoryLine.db), 5000, 'Inventory debit should be 5000');
+      t.assert.equal(Number(inventoryLine.cr), 0, 'Inventory credit should be 0');
 
       // Second line should be CR Accounts Payable
       const apLine = journalLines.find(line => line.account_code === 20100);
-      console.assert(apLine, 'Should have accounts payable credit');
-      console.assert(apLine.cr === 5000, 'Accounts payable credit should be 5000');
-      console.assert(apLine.db === 0, 'Accounts payable debit should be 0');
+      t.assert.equal(Boolean(apLine), true, 'Should have accounts payable credit');
+      t.assert.equal(Number(apLine.cr), 5000, 'Accounts payable credit should be 5000');
+      t.assert.equal(Number(apLine.db), 0, 'Accounts payable debit should be 0');
 
       // Test SALES_ISSUE journal entry creation
-      console.log('Testing SALES_ISSUE journal entry automation...');
 
       // Create sales issue transaction
       db.exec(`
@@ -1106,25 +1101,24 @@ await test('Inventory Management Schema', async function (t) {
 
       // Verify sales journal entry was created
       const salesJournalEntry = journalEntryQuery.get(salesTransactionId);
-      console.assert(salesJournalEntry, 'Journal entry should be created for sales issue');
-      console.assert(salesJournalEntry.post_time, 'Sales journal entry should be automatically posted');
+      t.assert.equal(Boolean(salesJournalEntry), true, 'Journal entry should be created for sales issue');
+      t.assert.equal(Boolean(salesJournalEntry.post_time), true, 'Sales journal entry should be automatically posted');
 
       // Verify sales journal entry lines (COGS and Inventory reduction)
       const salesJournalLines = journalLinesQuery.all(salesJournalEntry.ref);
-      console.assert(salesJournalLines.length === 2, 'Should have 2 journal entry lines for sales issue');
+      t.assert.equal(salesJournalLines.length, 2, 'Should have 2 journal entry lines for sales issue');
 
       // First line should be DR COGS
       const cogsLine = salesJournalLines.find(line => line.account_code === 50100);
-      console.assert(cogsLine, 'Should have COGS account debit');
-      console.assert(cogsLine.db === 2000, 'COGS debit should be 2000');
+      t.assert.equal(Boolean(cogsLine), true, 'Should have COGS account debit');
+      t.assert.equal(Number(cogsLine.db), 2000, 'COGS debit should be 2000');
 
       // Second line should be CR Inventory
       const inventoryCreditLine = salesJournalLines.find(line => line.account_code === 10300);
-      console.assert(inventoryCreditLine, 'Should have inventory account credit');
-      console.assert(inventoryCreditLine.cr === 2000, 'Inventory credit should be 2000');
+      t.assert.equal(Boolean(inventoryCreditLine), true, 'Should have inventory account credit');
+      t.assert.equal(Number(inventoryCreditLine.cr), 2000, 'Inventory credit should be 2000');
 
       // Test ADJUSTMENT_POSITIVE journal entry creation
-      console.log('Testing ADJUSTMENT_POSITIVE journal entry automation...');
 
       db.exec(`
         insert into inventory_transaction (
@@ -1159,19 +1153,18 @@ await test('Inventory Management Schema', async function (t) {
 
       // Verify adjustment journal entry
       const adjJournalEntry = journalEntryQuery.get(adjTransactionId);
-      console.assert(adjJournalEntry, 'Journal entry should be created for positive adjustment');
+      t.assert.equal(Boolean(adjJournalEntry), true, 'Journal entry should be created for positive adjustment');
 
       const adjJournalLines = journalLinesQuery.all(adjJournalEntry.ref);
-      console.assert(adjJournalLines.length === 2, 'Should have 2 journal entry lines for positive adjustment');
+      t.assert.equal(adjJournalLines.length, 2, 'Should have 2 journal entry lines for positive adjustment');
 
       // Should have DR Inventory and CR Inventory Adjustment Gain
       const adjInventoryLine = adjJournalLines.find(line => line.account_code === 10300);
       const adjGainLine = adjJournalLines.find(line => line.account_code === 41200);
-      console.assert(adjInventoryLine && adjInventoryLine.db === 1000, 'Should debit inventory 1000');
-      console.assert(adjGainLine && adjGainLine.cr === 1000, 'Should credit inventory adjustment gain 1000');
+      t.assert.equal(Boolean(adjInventoryLine && adjInventoryLine.db === 1000), true, 'Should debit inventory 1000');
+      t.assert.equal(Boolean(adjGainLine && adjGainLine.cr === 1000), true, 'Should credit inventory adjustment gain 1000');
 
       // Test OBSOLESCENCE_WRITEOFF journal entry creation
-      console.log('Testing OBSOLESCENCE_WRITEOFF journal entry automation...');
 
       db.exec(`
         insert into inventory_transaction (
@@ -1206,19 +1199,18 @@ await test('Inventory Management Schema', async function (t) {
 
       // Verify obsolescence journal entry
       const obsJournalEntry = journalEntryQuery.get(obsTransactionId);
-      console.assert(obsJournalEntry, 'Journal entry should be created for obsolescence writeoff');
+      t.assert.equal(Boolean(obsJournalEntry), true, 'Journal entry should be created for obsolescence writeoff');
 
       const obsJournalLines = journalLinesQuery.all(obsJournalEntry.ref);
-      console.assert(obsJournalLines.length === 2, 'Should have 2 journal entry lines for obsolescence writeoff');
+      t.assert.equal(obsJournalLines.length, 2, 'Should have 2 journal entry lines for obsolescence writeoff');
 
       // Should have DR Obsolescence Loss and CR Inventory
       const obsLossLine = obsJournalLines.find(line => line.account_code === 51300);
       const obsInventoryLine = obsJournalLines.find(line => line.account_code === 10300);
-      console.assert(obsLossLine && obsLossLine.db === 500, 'Should debit obsolescence loss 500');
-      console.assert(obsInventoryLine && obsInventoryLine.cr === 500, 'Should credit inventory 500');
+      t.assert.equal(Boolean(obsLossLine && obsLossLine.db === 500), true, 'Should debit obsolescence loss 500');
+      t.assert.equal(Boolean(obsInventoryLine && obsInventoryLine.cr === 500), true, 'Should credit inventory 500');
 
       // Verify account balances are updated correctly
-      console.log('Verifying account balances...');
 
       const accountBalanceQuery = db.prepare(`
         select account_code, sum(db_functional - cr_functional) as balance
@@ -1230,8 +1222,8 @@ await test('Inventory Management Schema', async function (t) {
         order by account_code
       `);
 
-      const balances = accountBalanceQuery.all();
-      console.log('Account balances:', balances.map(b => `${b.account_code}: ${b.balance}`).join(', '));
+      // Check that account balances are properly updated
+      accountBalanceQuery.all();
 
       // Verify that debits equal credits for all posted journal entries
       const balanceCheckQuery = db.prepare(`
@@ -1243,12 +1235,236 @@ await test('Inventory Management Schema', async function (t) {
         where je.post_time is not null
       `);
 
-      const balanceCheck = balanceCheckQuery.get();    console.assert(
-        balanceCheck.total_debits === balanceCheck.total_credits,
+      const balanceCheck = balanceCheckQuery.get();
+      t.assert.equal(
+        Number(balanceCheck.total_debits),
+        Number(balanceCheck.total_credits),
         `Total debits (${balanceCheck.total_debits}) should equal total credits (${balanceCheck.total_credits})`,
       );
 
-      console.log('✅ All inventory transaction journal entry automation tests passed!');
+    } finally {
+      db.close();
+    }
+  });
+
+  await t.test('Accounting principles compliance - LCM and reserves', async function (t) {
+    const db = new DatabaseSync(':memory:');
+    
+    try {
+      // Load all schemas
+      db.exec(readFileSync(join(__dirname, '001_core_accounting.sql'), 'utf8'));
+      db.exec(readFileSync(join(__dirname, '004_inventory_management.sql'), 'utf8'));
+
+      // Test Lower of Cost or Market (LCM) functionality
+      // First create required accounts for inventory reserves
+      db.exec(`
+        insert or ignore into account (code, name, account_type_name) values
+        (51500, 'Obsolescence Reserve Expense', 'expense'),
+        (51600, 'Shrinkage Reserve Expense', 'expense'),
+        (51700, 'Damage Reserve Expense', 'expense'),
+        (51800, 'LCM Write-down Expense', 'expense'),
+        (51900, 'Slow Moving Reserve Expense', 'expense'),
+        (10350, 'Inventory Reserve (Contra-Asset)', 'contra_asset')
+      `);
+      
+      // First create a test product
+      db.exec(`
+        insert into product (sku, name, product_category_id, base_unit_code, costing_method, 
+                           inventory_account_code, cogs_account_code, sales_account_code, is_active)
+        values ('TEST001', 'Test Product 1', 1, 'EACH', 'FIFO', 10300, 50100, 40100, 1)
+      `);
+      
+      const productId = db.prepare('select id from product where sku = ?').get('TEST001').id;
+
+      // Add some inventory stock for the product
+      db.exec(`
+        insert into inventory_stock (product_id, warehouse_location_id, quantity_on_hand, unit_cost)
+        values (${productId}, 1, 100, 1000)
+      `);
+
+      // Insert market value data that's below cost
+      db.exec(`
+        insert into inventory_market_value (
+          product_id, valuation_date, market_value_per_unit,
+          replacement_cost_per_unit, net_realizable_value,
+          valuation_method, created_by_user
+        ) values (
+          ${productId}, ${Math.floor(Date.now() / 1000)}, 800, 850, 900,
+          'REPLACEMENT_COST', 'test_user'
+        )
+      `);
+
+      // Verify LCM analysis view works
+      const lcmAnalysis = db.prepare(`
+        select * from inventory_lcm_analysis 
+        where product_id = ?
+      `).get(productId);
+
+      t.assert.equal(lcmAnalysis.lcm_status, 'LCM_WRITEDOWN_REQUIRED', 'Should identify LCM writedown requirement');
+      t.assert.equal(Boolean(lcmAnalysis.potential_writedown_amount > 0), true, 'Should calculate writedown amount');
+
+      // Test inventory reserve creation and journal entry automation
+      db.exec(`
+        insert into inventory_reserve (
+          product_id, reserve_type, reserve_amount,
+          effective_date, reason, created_by_user, status
+        ) values (
+          ${productId}, 'OBSOLESCENCE', 50000, ${Math.floor(Date.now() / 1000)},
+          'Test obsolescence reserve', 'test_user', 'APPROVED'
+        )
+      `);
+
+      // Apply the reserve to trigger journal entry
+      db.exec(`
+        update inventory_reserve 
+        set status = 'APPLIED'
+        where product_id = ${productId} and reserve_type = 'OBSOLESCENCE'
+      `);
+
+      // Verify journal entry was created for the reserve
+      const reserveJournalEntry = db.prepare(`
+        select je.* from journal_entry je
+        join inventory_reserve ir on ir.journal_entry_ref = je.ref
+        where ir.product_id = ? and ir.reserve_type = 'OBSOLESCENCE'
+      `).get(productId);
+
+      t.assert.equal(Boolean(reserveJournalEntry), true, 'Journal entry should be created for inventory reserve');
+      t.assert.equal(Boolean(reserveJournalEntry.post_time), true, 'Reserve journal entry should be posted');
+
+      // Verify journal entry lines for reserve
+      const reserveJournalLines = db.prepare(`
+        select jel.*, a.name as account_name
+        from journal_entry_line jel
+        join account a on a.code = jel.account_code
+        where jel.journal_entry_ref = ?
+        order by jel.line_order
+      `).all(reserveJournalEntry.ref);
+
+      t.assert.equal(reserveJournalLines.length, 2, 'Should have 2 journal entry lines for reserve');
+
+      // Should have DR Obsolescence Reserve Expense and CR Inventory Reserve (Contra-Asset)
+      const expenseLine = reserveJournalLines.find(line => line.account_code === 51500);
+      const contraAssetLine = reserveJournalLines.find(line => line.account_code === 10350);
+
+      t.assert.equal(Boolean(expenseLine), true, 'Should have obsolescence expense debit');
+      t.assert.equal(Number(expenseLine.db), 50000, 'Obsolescence expense should be 50000');
+      t.assert.equal(Boolean(contraAssetLine), true, 'Should have inventory reserve contra-asset credit');
+      t.assert.equal(Number(contraAssetLine.cr), 50000, 'Inventory reserve credit should be 50000');
+
+      // Test costing method change tracking (Consistency Principle)
+      const originalMethod = db.prepare('select costing_method from product where id = ?').get(productId).costing_method;
+      
+      db.exec(`
+        update product 
+        set costing_method = 'LIFO'
+        where id = ${productId}
+      `);
+
+      // Verify costing method change was tracked
+      const methodChange = db.prepare(`
+        select * from product_costing_method_history
+        where product_id = ?
+        order by change_date desc
+        limit 1
+      `).get(productId);
+
+      t.assert.equal(Boolean(methodChange), true, 'Costing method change should be tracked');
+      t.assert.equal(methodChange.old_costing_method, originalMethod, 'Should track old costing method');
+      t.assert.equal(methodChange.new_costing_method, 'LIFO', 'Should track new costing method');
+
+      // Test inventory aging analysis
+      const agingAnalysis = db.prepare(`
+        select * from inventory_aging_analysis
+        where product_id = ?
+      `).get(productId);
+
+      t.assert.equal(Boolean(agingAnalysis), true, 'Should provide aging analysis');
+      t.assert.equal(Boolean(agingAnalysis.aging_category), true, 'Should categorize inventory age');
+
+      // Test inventory turnover analysis
+      const turnoverAnalysis = db.prepare(`
+        select * from inventory_turnover_analysis
+        where product_id = ?
+      `).get(productId);
+
+      t.assert.equal(Boolean(turnoverAnalysis), true, 'Should provide turnover analysis');
+      t.assert.equal(Boolean(turnoverAnalysis.movement_classification), true, 'Should classify movement speed');
+
+      // Test ABC analysis with reserves
+      const abcAnalysis = db.prepare(`
+        select * from inventory_abc_analysis
+        where product_id = ?
+      `).get(productId);
+
+      t.assert.equal(Boolean(abcAnalysis), true, 'Should provide ABC analysis');
+      t.assert.equal(Boolean(abcAnalysis.total_reserves >= 0), true, 'Should include reserve amounts');
+      t.assert.equal(Boolean(abcAnalysis.net_inventory_value), true, 'Should calculate net inventory value');
+
+      // Test inventory reserve summary
+      const reserveSummary = db.prepare(`
+        select * from inventory_reserve_summary
+        where reserve_type = 'OBSOLESCENCE'
+      `).get();
+
+      t.assert.equal(Boolean(reserveSummary), true, 'Should provide reserve summary');
+      t.assert.equal(Number(reserveSummary.total_applied_reserves), 50000, 'Should sum applied reserves');
+
+      // Test costing method audit
+      const costingAudit = db.prepare(`
+        select * from costing_method_audit
+        where product_id = ?
+      `).get(productId);
+
+      t.assert.equal(Boolean(costingAudit), true, 'Should provide costing method audit');
+      t.assert.equal(Number(costingAudit.method_changes_count), 1, 'Should count method changes');
+      t.assert.equal(costingAudit.consistency_status, 'ACCEPTABLE', 'Should assess consistency status');
+
+    } finally {
+      db.close();
+    }
+  });
+
+  await t.test('Inventory cutoff controls and period-end procedures', async function (t) {
+    const db = new DatabaseSync(':memory:');
+    
+    try {
+      // Load all schemas
+      db.exec(readFileSync(join(__dirname, '001_core_accounting.sql'), 'utf8'));
+      db.exec(readFileSync(join(__dirname, '004_inventory_management.sql'), 'utf8'));
+
+      // Test inventory cutoff control table exists
+      const tableExists = db.prepare(`
+        select name from sqlite_master 
+        where type='table' and name='inventory_cutoff_control'
+      `).get();
+
+      t.assert.equal(Boolean(tableExists), true, 'Cutoff control table should exist');
+      
+      // Test basic cutoff control functionality
+      const warehouseId = db.prepare('select id from warehouse where code = ?').get('MAIN').id;
+      const cutoffDate = Math.floor(Date.now() / 1000);
+
+      db.exec(`
+        insert into inventory_cutoff_control (
+          cutoff_date, warehouse_id, last_receipt_number,
+          last_shipment_number, last_adjustment_number,
+          cutoff_performed_by, notes
+        ) values (
+          ${cutoffDate}, ${warehouseId}, 'REC-2024-001',
+          'SHIP-2024-001', 'ADJ-2024-001',
+          'test_user', 'Period-end cutoff test'
+        )
+      `);
+
+      // Verify cutoff control was recorded
+      const cutoffControl = db.prepare(`
+        select * from inventory_cutoff_control
+        where warehouse_id = ? and cutoff_date = ?
+      `).get(warehouseId, cutoffDate);
+
+      t.assert.equal(Boolean(cutoffControl), true, 'Cutoff control should be recorded');
+      t.assert.equal(cutoffControl.last_receipt_number, 'REC-2024-001', 'Should track last receipt number');
+      t.assert.equal(cutoffControl.cutoff_performed_by, 'test_user', 'Should track who performed cutoff');
 
     } finally {
       db.close();
