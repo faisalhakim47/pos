@@ -177,11 +177,11 @@ create index if not exists journal_entry_line_journal_entry_ref_account_code_ind
 
 drop view if exists journal_entry_line_auto_number;
 create view journal_entry_line_auto_number as
-select 
-  journal_entry_line.journal_entry_ref, 
-  journal_entry_line.line_order, 
-  journal_entry_line.account_code, 
-  journal_entry_line.db, 
+select
+  journal_entry_line.journal_entry_ref,
+  journal_entry_line.line_order,
+  journal_entry_line.account_code,
+  journal_entry_line.db,
   journal_entry_line.cr,
   journal_entry_line.db_functional,
   journal_entry_line.cr_functional,
@@ -255,14 +255,14 @@ begin
   set balance = balance + (
     select
       case
-        when account_type.normal_balance = 'db' then 
-          case 
+        when account_type.normal_balance = 'db' then
+          case
             when account.currency_code = (select code from currency where is_functional_currency = 1)
             then sum(journal_entry_line.db_functional) - sum(journal_entry_line.cr_functional)
             else sum(journal_entry_line.db) - sum(journal_entry_line.cr)
           end
-        when account_type.normal_balance = 'cr' then 
-          case 
+        when account_type.normal_balance = 'cr' then
+          case
             when account.currency_code = (select code from currency where is_functional_currency = 1)
             then sum(journal_entry_line.cr_functional) - sum(journal_entry_line.db_functional)
             else sum(journal_entry_line.cr) - sum(journal_entry_line.db)
@@ -394,29 +394,31 @@ insert into account (code, name, account_type_name) values
   (12510, 'Accumulated Depreciation - Vehicles', 'contra_asset'),
   (12600, 'Other Fixed Assets', 'asset'),
   (12610, 'Accumulated Depreciation - Other Fixed Assets', 'contra_asset'),
-  
+
   -- Liabilities
   (20100, 'Accounts Payable', 'liability'),
   (20200, 'Accrued Expenses', 'liability'),
   (20300, 'Short-term Debt', 'liability'),
   (21000, 'Long-term Debt', 'liability'),
-  
+
   -- Equity
   (30100, 'Common Stock', 'equity'),
   (30200, 'Retained Earnings', 'equity'),
   (30300, 'Dividends', 'equity'),
   (30400, 'Income Summary', 'equity'),
   (30600, 'Dividends/Withdrawals', 'contra_equity'),
-  
+
   -- Revenue
   (40100, 'Sales Revenue', 'revenue'),
   (40200, 'Service Revenue', 'revenue'),
   (40300, 'Other Revenue', 'revenue'),
   (41000, 'Sales Returns and Allowances', 'contra_revenue'),
-  
+  (41200, 'Inventory Adjustment Gain', 'revenue'),
+
   -- Expenses
   (50100, 'Cost of Goods Sold', 'cogs'),
   (50700, 'Cost of Goods Sold', 'cogs'),
+  (51200, 'Inventory Adjustment Loss', 'expense'),
   (60100, 'Salaries and Wages', 'expense'),
   (60200, 'Rent Expense', 'expense'),
   (60300, 'Utilities Expense', 'expense'),
@@ -439,7 +441,7 @@ insert into account_tag (account_code, tag) values
   (10300, 'balance_sheet_current_asset'), -- Inventory
   (10400, 'balance_sheet_current_asset'), -- Prepaid Expenses
   (10600, 'balance_sheet_current_asset'), -- Merchandise Inventory
-  
+
   -- Balance Sheet - Non-Current Assets
   (12000, 'balance_sheet_non_current_asset'), -- Property, Plant, and Equipment
   (12100, 'balance_sheet_non_current_asset'), -- Land
@@ -453,30 +455,32 @@ insert into account_tag (account_code, tag) values
   (12510, 'balance_sheet_non_current_asset'), -- Accumulated Depreciation - Vehicles
   (12600, 'balance_sheet_non_current_asset'), -- Other Fixed Assets
   (12610, 'balance_sheet_non_current_asset'), -- Accumulated Depreciation - Other Fixed Assets
-  
+
   -- Balance Sheet - Current Liabilities
   (20100, 'balance_sheet_current_liability'), -- Accounts Payable
   (20200, 'balance_sheet_current_liability'), -- Accrued Expenses
   (20300, 'balance_sheet_current_liability'), -- Short-term Debt
-  
+
   -- Balance Sheet - Non-Current Liabilities
   (21000, 'balance_sheet_non_current_liability'), -- Long-term Debt
-  
+
   -- Balance Sheet - Equity
   (30100, 'balance_sheet_equity'), -- Common Stock
   (30200, 'balance_sheet_equity'), -- Retained Earnings
   (30300, 'balance_sheet_equity'), -- Dividends
   (30400, 'balance_sheet_equity'), -- Income Summary
-  
+
   -- Income Statement - Revenue
   (40100, 'income_statement_revenue'), -- Sales Revenue
   (40200, 'income_statement_revenue'), -- Service Revenue
   (40300, 'income_statement_other_revenue'), -- Other Revenue
   (41000, 'income_statement_contra_revenue'), -- Sales Returns and Allowances
-  
+  (41200, 'income_statement_other_revenue'), -- Inventory Adjustment Gain
+
   -- Income Statement - Expenses
   (50100, 'income_statement_cogs'), -- Cost of Goods Sold
   (50700, 'income_statement_cogs'), -- Cost of Goods Sold
+  (51200, 'income_statement_expense'), -- Inventory Adjustment Loss
   (60100, 'income_statement_expense'), -- Salaries and Wages
   (60200, 'income_statement_expense'), -- Rent Expense
   (60300, 'income_statement_expense'), -- Utilities Expense
@@ -487,14 +491,16 @@ insert into account_tag (account_code, tag) values
   (60800, 'income_statement_expense'), -- Travel Expense
   (61000, 'income_statement_other_expense'), -- Other Operating Expenses
   (61100, 'income_statement_expense'), -- Depreciation Expense
-  
+
   -- Fiscal Year Closing
   (40100, 'fiscal_year_closing_revenue'), -- Sales Revenue
   (40200, 'fiscal_year_closing_revenue'), -- Service Revenue
   (40300, 'fiscal_year_closing_revenue'), -- Other Revenue
   (41000, 'fiscal_year_closing_revenue'), -- Sales Returns and Allowances
+  (41200, 'fiscal_year_closing_revenue'), -- Inventory Adjustment Gain
   (50100, 'fiscal_year_closing_expense'), -- Cost of Goods Sold
   (50700, 'fiscal_year_closing_expense'), -- Cost of Goods Sold
+  (51200, 'fiscal_year_closing_expense'), -- Inventory Adjustment Loss
   (60100, 'fiscal_year_closing_expense'), -- Salaries and Wages
   (60200, 'fiscal_year_closing_expense'), -- Rent Expense
   (60300, 'fiscal_year_closing_expense'), -- Utilities Expense
@@ -514,7 +520,7 @@ on conflict (account_code, tag) do nothing;
 -- View to get the latest exchange rate between any two currencies
 drop view if exists latest_exchange_rate;
 create view latest_exchange_rate as
-select 
+select
   from_currency_code,
   to_currency_code,
   rate,
@@ -531,21 +537,21 @@ where rate_date = (
 -- Function to get exchange rate (implemented as view due to SQLite limitations)
 drop view if exists exchange_rate_lookup;
 create view exchange_rate_lookup as
-select 
+select
   from_currency_code,
   to_currency_code,
   rate,
   rate_date
 from latest_exchange_rate
 union all
-select 
+select
   to_currency_code as from_currency_code,
   from_currency_code as to_currency_code,
   1.0 / rate as rate,
   rate_date
 from latest_exchange_rate
 union all
-select 
+select
   code as from_currency_code,
   code as to_currency_code,
   1.0 as rate,
@@ -558,13 +564,13 @@ from currency;
 -- instead of relying on a default rate of 1.0 which could lead to incorrect calculations
 drop view if exists account_balance_multicurrency;
 create view account_balance_multicurrency as
-select 
+select
   a.code,
   a.name,
   a.account_type_name,
   a.currency_code,
   a.balance as balance_original_currency,
-  case 
+  case
     when a.currency_code = fc.code then a.balance
     when erl.rate is not null then cast(a.balance * erl.rate as integer)
     else null -- Return null instead of defaulting to 1.0, let application handle missing rates
@@ -574,13 +580,13 @@ select
   erl.rate_date as exchange_rate_date
 from account a
 cross join (select code from currency where is_functional_currency = 1) fc
-left join exchange_rate_lookup erl on erl.from_currency_code = a.currency_code 
+left join exchange_rate_lookup erl on erl.from_currency_code = a.currency_code
   and erl.to_currency_code = fc.code;
 
 -- Multi-currency trial balance
 drop view if exists trial_balance_multicurrency;
 create view trial_balance_multicurrency as
-select 
+select
   abmc.code,
   abmc.name,
   abmc.account_type_name,
@@ -588,21 +594,21 @@ select
   abmc.balance_original_currency,
   abmc.balance_functional_currency,
   at.normal_balance,
-  case 
-    when at.normal_balance = 'db' and abmc.balance_functional_currency >= 0 
+  case
+    when at.normal_balance = 'db' and abmc.balance_functional_currency >= 0
     then abmc.balance_functional_currency
-    when at.normal_balance = 'db' and abmc.balance_functional_currency < 0 
+    when at.normal_balance = 'db' and abmc.balance_functional_currency < 0
     then 0
-    when at.normal_balance = 'cr' and abmc.balance_functional_currency <= 0 
+    when at.normal_balance = 'cr' and abmc.balance_functional_currency <= 0
     then abs(abmc.balance_functional_currency)
     else 0
   end as debit_balance_functional,
-  case 
-    when at.normal_balance = 'cr' and abmc.balance_functional_currency >= 0 
+  case
+    when at.normal_balance = 'cr' and abmc.balance_functional_currency >= 0
     then abmc.balance_functional_currency
-    when at.normal_balance = 'cr' and abmc.balance_functional_currency < 0 
+    when at.normal_balance = 'cr' and abmc.balance_functional_currency < 0
     then 0
-    when at.normal_balance = 'db' and abmc.balance_functional_currency <= 0 
+    when at.normal_balance = 'db' and abmc.balance_functional_currency <= 0
     then abs(abmc.balance_functional_currency)
     else 0
   end as credit_balance_functional
@@ -616,7 +622,7 @@ order by abmc.code;
 -- View to create reversal entries automatically
 drop view if exists journal_entry_reversal;
 create view journal_entry_reversal as
-select 
+select
   'reversal' as operation_type,
   je.ref as original_ref,
   je.transaction_time as original_transaction_time,
@@ -648,7 +654,7 @@ begin
       when (select count(*) from journal_entry where note like '%[Corrects Entry #' || printf('%.0f', new.original_ref) || ']%') > 0
       then raise(rollback, 'journal entry has already been corrected, cannot reverse')
     end;
-  
+
   -- Create the reversal journal entry with the tracking note
   insert into journal_entry (
     transaction_time,
@@ -663,7 +669,7 @@ begin
     je.exchange_rate_to_functional
   from journal_entry je
   where je.ref = new.original_ref;
-  
+
   -- Create reversal journal entry lines (flip debit/credit)
   insert into journal_entry_line (
     journal_entry_ref,
@@ -691,9 +697,9 @@ begin
   from journal_entry_line jel
   where jel.journal_entry_ref = new.original_ref
   order by jel.line_order;
-  
+
   -- Post the reversal entry immediately
-  update journal_entry 
+  update journal_entry
   set post_time = unixepoch()
   where ref = (select max(ref) from journal_entry);
 end;
@@ -701,7 +707,7 @@ end;
 -- View to create correction entries
 drop view if exists journal_entry_correction;
 create view journal_entry_correction as
-select 
+select
   'correction' as operation_type,
   je.ref as original_ref,
   je.transaction_time as original_transaction_time,
@@ -733,7 +739,7 @@ begin
       when (select count(*) from journal_entry where note like '%[Corrects Entry #' || printf('%.0f', new.original_ref) || ']%') > 0
       then raise(rollback, 'journal entry has already been corrected')
     end;
-  
+
   -- Create the correction journal entry (reversal part)
   insert into journal_entry (
     transaction_time,
@@ -748,7 +754,7 @@ begin
     je.exchange_rate_to_functional
   from journal_entry je
   where je.ref = new.original_ref;
-  
+
   -- Create correction journal entry lines (flip debit/credit to reverse)
   insert into journal_entry_line (
     journal_entry_ref,
@@ -776,9 +782,9 @@ begin
   from journal_entry_line jel
   where jel.journal_entry_ref = new.original_ref
   order by jel.line_order;
-  
+
   -- Post the correction entry
-  update journal_entry 
+  update journal_entry
   set post_time = unixepoch()
   where ref = (select max(ref) from journal_entry);
 end;
@@ -786,13 +792,13 @@ end;
 -- Helper view to find entries that can be reversed or corrected
 drop view if exists journal_entry_reversible;
 create view journal_entry_reversible as
-select 
+select
   je.ref,
   je.transaction_time,
   je.note,
   je.transaction_currency_code,
   je.post_time,
-  case 
+  case
     when exists(select 1 from journal_entry je2 where je2.note like '%[Reverses Entry #' || printf('%.0f', je.ref) || ']%') then 'reversed'
     when exists(select 1 from journal_entry je2 where je2.note like '%[Corrects Entry #' || printf('%.0f', je.ref) || ']%') then 'corrected'
     else 'reversible'

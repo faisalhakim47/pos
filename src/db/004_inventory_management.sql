@@ -650,6 +650,152 @@ begin
   select raise(abort, 'Negative inventory not allowed for this transaction type');
 end;
 
+-- PHYSICAL INVENTORY ADJUSTMENT AUTOMATION --
+
+-- Auto-create inventory transactions and journal entries when physical count discrepancies are adjusted
+drop trigger if exists physical_inventory_adjustment_trigger;
+create trigger physical_inventory_adjustment_trigger
+after update on physical_inventory_count for each row
+when old.count_status != 'ADJUSTED' and new.count_status = 'ADJUSTED'
+  and new.variance_quantity != 0
+begin
+  -- Create inventory transaction for the adjustment
+  insert into inventory_transaction (
+    transaction_type_code,
+    reference_number,
+    transaction_date,
+    notes,
+    total_value,
+    currency_code,
+    status,
+    created_by_user,
+    approved_by_user,
+    approved_time
+  )
+  select
+    'PHYSICAL_COUNT',
+    'PI-ADJ-' || pi.count_number || '-' || new.id,
+    pi.count_date,
+    'Physical inventory adjustment for count #' || pi.count_number ||
+    ' - Product: ' || p.sku ||
+    ' - System: ' || new.system_quantity ||
+    ' - Counted: ' || coalesce(new.counted_quantity, 0) ||
+    ' - Variance: ' || new.variance_quantity,
+    abs(new.variance_value),
+    'USD',
+    'APPROVED', -- Auto-approve physical count adjustments
+    coalesce(new.verified_by_user, new.counted_by_user, 'system'),
+    coalesce(new.verified_by_user, new.counted_by_user, 'system'),
+    unixepoch()
+  from physical_inventory pi
+  join product p on p.id = new.product_id
+  where pi.id = new.physical_inventory_id;
+
+  -- Create inventory transaction line for the adjustment
+  insert into inventory_transaction_line (
+    inventory_transaction_id,
+    line_number,
+    product_id,
+    product_variant_id,
+    warehouse_location_id,
+    lot_id,
+    quantity,
+    unit_cost,
+    reason_code,
+    notes
+  )
+  select
+    last_insert_rowid(),
+    1,
+    new.product_id,
+    new.product_variant_id,
+    new.warehouse_location_id,
+    new.lot_id,
+    new.variance_quantity,
+    new.unit_cost,
+    'PHYSICAL_COUNT_ADJUSTMENT',
+    'Physical count variance adjustment'
+  from physical_inventory pi
+  where pi.id = new.physical_inventory_id;
+
+  -- Create journal entry for the adjustment
+  insert into journal_entry (
+    ref,
+    transaction_time,
+    note
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0) + 1,
+    pi.count_date,
+    'Physical inventory adjustment - Count #' || pi.count_number ||
+    ' - Product: ' || p.sku || ' - Variance: ' || new.variance_quantity || ' units'
+  from physical_inventory pi
+  join product p on p.id = new.product_id
+  where pi.id = new.physical_inventory_id;
+
+  -- Add journal entry lines based on variance type
+  -- For positive variance (found more than expected): DR Inventory, CR Inventory Adjustment Gain
+  -- For negative variance (found less than expected): DR Inventory Adjustment Loss, CR Inventory
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    case
+      when new.variance_quantity > 0 then p.inventory_account_code -- DR Inventory for positive variance
+      else 51200 -- DR Inventory Adjustment Loss for negative variance (assuming account exists)
+    end,
+    case
+      when new.variance_quantity > 0 then abs(new.variance_value)
+      else abs(new.variance_value)
+    end,
+    0,
+    case
+      when new.variance_quantity > 0 then abs(new.variance_value)
+      else abs(new.variance_value)
+    end,
+    0
+  from product p
+  where p.id = new.product_id;
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    coalesce((select max(ref) from journal_entry), 0),
+    case
+      when new.variance_quantity > 0 then 41200 -- CR Inventory Adjustment Gain for positive variance (assuming account exists)
+      else p.inventory_account_code -- CR Inventory for negative variance
+    end,
+    0,
+    abs(new.variance_value),
+    0,
+    abs(new.variance_value)
+  from product p
+  where p.id = new.product_id;
+
+  -- Post the journal entry immediately for physical count adjustments
+  update journal_entry
+  set post_time = unixepoch()
+  where ref = coalesce((select max(ref) from journal_entry), 0);
+
+  -- Link the journal entry to the inventory transaction
+  update inventory_transaction
+  set journal_entry_ref = coalesce((select max(ref) from journal_entry), 0),
+      status = 'POSTED'
+  where id = last_insert_rowid();
+end;
+
 --- REPORTING VIEWS ---
 
 -- Real-time inventory levels by product and location
@@ -910,7 +1056,7 @@ insert into inventory_transaction_type (code, name, affects_quantity, affects_va
   ('TRANSFER_IN', 'Transfer In', 'INCREASE', 'NONE', 0, 0),
   ('MANUFACTURING_ISSUE', 'Manufacturing Issue', 'DECREASE', 'DECREASE', 0, 1),
   ('MANUFACTURING_RECEIPT', 'Manufacturing Receipt', 'INCREASE', 'INCREASE', 0, 1),
-  ('PHYSICAL_COUNT', 'Physical Count Adjustment', 'NONE', 'NONE', 1, 1),
+  ('PHYSICAL_COUNT', 'Physical Count Adjustment', 'INCREASE', 'INCREASE', 1, 1),
   ('OBSOLESCENCE_WRITEOFF', 'Obsolescence Write-off', 'DECREASE', 'DECREASE', 1, 1),
   ('DAMAGE_WRITEOFF', 'Damage Write-off', 'DECREASE', 'DECREASE', 1, 1)
 on conflict (code) do update set

@@ -782,4 +782,193 @@ await test('Inventory Management Schema', async function (t) {
 
     fixture.cleanup();
   });
+
+  await t.test('Physical inventory adjustment automatically creates journal entries', async function (t) {
+    const fixture = new TestFixture('Physical inventory adjustment automatically creates journal entries');
+    const db = await fixture.setup();
+
+    // Create test product
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const productId = db.prepare(`
+      INSERT INTO product (sku, name, product_category_id, standard_cost, inventory_account_code, cogs_account_code, sales_account_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('TEST-ADJ-001', 'Test Adjustment Product', category.id, 1000, 10300, 50100, 40100).lastInsertRowid;
+
+    const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = ? LIMIT 1').get(warehouse.id);
+
+    // Test Case 1: Positive variance (more inventory found than expected)
+    const physicalInventoryId1 = db.prepare(`
+      INSERT INTO physical_inventory (
+        count_number, count_date, warehouse_id, count_type, status, planned_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PI-ADJ-001', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', 'IN_PROGRESS', 'test_user').lastInsertRowid;
+
+    const countId1 = db.prepare(`
+      INSERT INTO physical_inventory_count (
+        physical_inventory_id, product_id, warehouse_location_id,
+        system_quantity, counted_quantity, unit_cost, count_status,
+        counted_by_user, counted_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(physicalInventoryId1, productId, warehouseLocation.id, 100, 110, 1000, 'COUNTED', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
+
+    // Count initial number of journal entries and inventory transactions
+    const initialJournalEntries = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
+    const initialInventoryTransactions = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
+
+    // Trigger the adjustment by changing status to ADJUSTED (this should create journal entry)
+    db.prepare(`
+      UPDATE physical_inventory_count
+      SET count_status = 'ADJUSTED',
+          verified_by_user = 'test_supervisor',
+          verified_time = ?
+      WHERE id = ?
+    `).run(Math.floor(Date.now() / 1000), countId1);
+
+    // Verify inventory transaction was created
+    const newInventoryTransactions = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
+    t.assert.equal(Number(newInventoryTransactions), Number(initialInventoryTransactions) + 1, 'Should create one inventory transaction for positive variance');
+
+    // Get the created inventory transaction
+    const inventoryTransaction = db.prepare(`
+      SELECT * FROM inventory_transaction
+      WHERE transaction_type_code = 'PHYSICAL_COUNT'
+      ORDER BY id DESC LIMIT 1
+    `).get();
+    t.assert.equal(Boolean(inventoryTransaction), true, 'Inventory transaction should exist');
+    t.assert.equal(String(inventoryTransaction.status), 'POSTED', 'Transaction should be posted');
+    t.assert.equal(Number(inventoryTransaction.total_value), 10000, 'Total value should be 10 units * $10.00'); // 10 units * 1000 cents
+
+    // Verify journal entry was created
+    const newJournalEntries = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
+    t.assert.equal(Number(newJournalEntries), Number(initialJournalEntries) + 1, 'Should create one journal entry for positive variance');
+
+    // Get the created journal entry
+    const journalEntry = db.prepare(`
+      SELECT * FROM journal_entry
+      ORDER BY ref DESC LIMIT 1
+    `).get();
+    t.assert.equal(Boolean(journalEntry), true, 'Journal entry should exist');
+    t.assert.equal(Boolean(journalEntry.post_time), true, 'Journal entry should be posted');
+
+    // Verify journal entry lines for positive variance
+    const journalLines = db.prepare(`
+      SELECT account_code, db, cr FROM journal_entry_line
+      WHERE journal_entry_ref = ?
+      ORDER BY account_code
+    `).all(journalEntry.ref);
+
+    t.assert.equal(journalLines.length, 2, 'Should have 2 journal entry lines');
+
+    // Should have DR Inventory (10300) and CR Inventory Adjustment Gain (41200)
+    const inventoryDebit = journalLines.find(line => line.account_code === 10300);
+    const adjustmentGainCredit = journalLines.find(line => line.account_code === 41200);
+
+    t.assert.equal(Boolean(inventoryDebit), true, 'Should have inventory account debit');
+    t.assert.equal(Number(inventoryDebit.db), 10000, 'Inventory debit should be 10000 cents');
+    t.assert.equal(Number(inventoryDebit.cr), 0, 'Inventory should not have credit amount');
+
+    t.assert.equal(Boolean(adjustmentGainCredit), true, 'Should have inventory adjustment gain credit');
+    t.assert.equal(Number(adjustmentGainCredit.cr), 10000, 'Adjustment gain credit should be 10000 cents');
+    t.assert.equal(Number(adjustmentGainCredit.db), 0, 'Adjustment gain should not have debit amount');
+
+    // Test Case 2: Negative variance (less inventory found than expected)
+    const physicalInventoryId2 = db.prepare(`
+      INSERT INTO physical_inventory (
+        count_number, count_date, warehouse_id, count_type, status, planned_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PI-ADJ-002', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', 'IN_PROGRESS', 'test_user').lastInsertRowid;
+
+    const countId2 = db.prepare(`
+      INSERT INTO physical_inventory_count (
+        physical_inventory_id, product_id, warehouse_location_id,
+        system_quantity, counted_quantity, unit_cost, count_status,
+        counted_by_user, counted_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(physicalInventoryId2, productId, warehouseLocation.id, 100, 90, 1000, 'COUNTED', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
+
+    // Get count before adjustment
+    const beforeJournalEntries2 = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
+    const beforeInventoryTransactions2 = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
+
+    // Trigger the adjustment by changing status to ADJUSTED
+    db.prepare(`
+      UPDATE physical_inventory_count
+      SET count_status = 'ADJUSTED',
+          verified_by_user = 'test_supervisor',
+          verified_time = ?
+      WHERE id = ?
+    `).run(Math.floor(Date.now() / 1000), countId2);
+
+    // Verify new transaction and journal entry created
+    const afterInventoryTransactions2 = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
+    t.assert.equal(Number(afterInventoryTransactions2), Number(beforeInventoryTransactions2) + 1, 'Should create one inventory transaction for negative variance');
+
+    const afterJournalEntries2 = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
+    t.assert.equal(Number(afterJournalEntries2), Number(beforeJournalEntries2) + 1, 'Should create one journal entry for negative variance');
+
+    // Get the latest journal entry
+    const journalEntry2 = db.prepare(`
+      SELECT * FROM journal_entry
+      ORDER BY ref DESC LIMIT 1
+    `).get();
+
+    // Verify journal entry lines for negative variance
+    const journalLines2 = db.prepare(`
+      SELECT account_code, db, cr FROM journal_entry_line
+      WHERE journal_entry_ref = ?
+      ORDER BY account_code
+    `).all(journalEntry2.ref);
+
+    t.assert.equal(journalLines2.length, 2, 'Should have 2 journal entry lines for negative variance');
+
+    // Should have DR Inventory Adjustment Loss (51200) and CR Inventory (10300)
+    const inventoryCredit = journalLines2.find(line => line.account_code === 10300);
+    const adjustmentLossDebit = journalLines2.find(line => line.account_code === 51200);
+
+    t.assert.equal(Boolean(inventoryCredit), true, 'Should have inventory account credit');
+    t.assert.equal(Number(inventoryCredit.cr), 10000, 'Inventory credit should be 10000 cents');
+    t.assert.equal(Number(inventoryCredit.db), 0, 'Inventory should not have debit amount');
+
+    t.assert.equal(Boolean(adjustmentLossDebit), true, 'Should have inventory adjustment loss debit');
+    t.assert.equal(Number(adjustmentLossDebit.db), 10000, 'Adjustment loss debit should be 10000 cents');
+    t.assert.equal(Number(adjustmentLossDebit.cr), 0, 'Adjustment loss should not have credit amount');
+
+    // Test Case 3: No variance (no journal entry should be created)
+    const physicalInventoryId3 = db.prepare(`
+      INSERT INTO physical_inventory (
+        count_number, count_date, warehouse_id, count_type, status, planned_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PI-ADJ-003', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', 'IN_PROGRESS', 'test_user').lastInsertRowid;
+
+    const countId3 = db.prepare(`
+      INSERT INTO physical_inventory_count (
+        physical_inventory_id, product_id, warehouse_location_id,
+        system_quantity, counted_quantity, unit_cost, count_status,
+        counted_by_user, counted_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(physicalInventoryId3, productId, warehouseLocation.id, 100, 100, 1000, 'COUNTED', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
+
+    // Get count before adjustment
+    const beforeJournalEntries3 = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
+    const beforeInventoryTransactions3 = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
+
+    // Trigger the adjustment by changing status to ADJUSTED
+    db.prepare(`
+      UPDATE physical_inventory_count
+      SET count_status = 'ADJUSTED',
+          verified_by_user = 'test_supervisor',
+          verified_time = ?
+      WHERE id = ?
+    `).run(Math.floor(Date.now() / 1000), countId3);
+
+    // Verify no new transaction or journal entry created for zero variance
+    const afterInventoryTransactions3 = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
+    t.assert.equal(Number(afterInventoryTransactions3), Number(beforeInventoryTransactions3), 'Should not create inventory transaction for zero variance');
+
+    const afterJournalEntries3 = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
+    t.assert.equal(Number(afterJournalEntries3), Number(beforeJournalEntries3), 'Should not create journal entry for zero variance');
+
+    fixture.cleanup();
+  });
 });
