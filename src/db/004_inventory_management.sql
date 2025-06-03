@@ -239,6 +239,23 @@ create table if not exists inventory_stock (
   unique (product_id, product_variant_id, warehouse_location_id, lot_id)
 ) strict;
 
+-- Handle NULL values in unique constraint with partial indexes
+create unique index if not exists inventory_stock_unique_all_null on inventory_stock
+  (product_id, warehouse_location_id)
+  where product_variant_id is null and lot_id is null;
+
+create unique index if not exists inventory_stock_unique_variant_null on inventory_stock
+  (product_id, warehouse_location_id, lot_id)
+  where product_variant_id is null and lot_id is not null;
+
+create unique index if not exists inventory_stock_unique_lot_null on inventory_stock
+  (product_id, warehouse_location_id, product_variant_id)
+  where product_variant_id is not null and lot_id is null;
+
+create unique index if not exists inventory_stock_unique_none_null on inventory_stock
+  (product_id, warehouse_location_id, product_variant_id, lot_id)
+  where product_variant_id is not null and lot_id is not null;
+
 create index if not exists inventory_stock_product_id_index on inventory_stock (product_id);
 create index if not exists inventory_stock_warehouse_location_id_index on inventory_stock (warehouse_location_id);
 create index if not exists inventory_stock_quantity_available_index on inventory_stock (quantity_available);
@@ -434,32 +451,62 @@ create trigger inventory_transaction_post_trigger
 after update on inventory_transaction for each row
 when old.status != 'POSTED' and new.status = 'POSTED'
 begin
-  -- Update inventory stock levels for each transaction line
-  insert into inventory_stock (
+  -- For each unique product/location/lot combination in this transaction
+  -- Check if stock record exists and update, or insert new one
+
+  -- Handle each transaction line
+  insert or replace into inventory_stock (
+    id,
     product_id,
     product_variant_id,
     warehouse_location_id,
     lot_id,
     quantity_on_hand,
-    unit_cost
+    unit_cost,
+    quantity_reserved,
+    last_movement_time
   )
   select
-    itl.product_id,
-    itl.product_variant_id,
-    itl.warehouse_location_id,
-    itl.lot_id,
-    itl.quantity,
-    itl.unit_cost
-  from inventory_transaction_line itl
-  where itl.inventory_transaction_id = new.id
-  on conflict (product_id, product_variant_id, warehouse_location_id, lot_id) do update set
-    quantity_on_hand = inventory_stock.quantity_on_hand + excluded.quantity_on_hand,
-    unit_cost = case 
-      when excluded.quantity_on_hand > 0 then excluded.unit_cost
-      else inventory_stock.unit_cost
-    end,
-    last_movement_time = unixepoch();
-  
+    coalesce(existing.id, NULL) as id,
+    grouped.product_id,
+    grouped.product_variant_id,
+    grouped.warehouse_location_id,
+    grouped.lot_id,
+    coalesce(existing.quantity_on_hand, 0) + grouped.total_quantity as quantity_on_hand,
+    case
+      when grouped.total_quantity > 0 then
+        case
+          when coalesce(existing.quantity_on_hand, 0) > 0 then
+            ((coalesce(existing.quantity_on_hand, 0) * coalesce(existing.unit_cost, 0)) +
+             (grouped.total_quantity * grouped.weighted_unit_cost)) /
+            (coalesce(existing.quantity_on_hand, 0) + grouped.total_quantity)
+          else grouped.weighted_unit_cost
+        end
+      else coalesce(existing.unit_cost, grouped.weighted_unit_cost)
+    end as unit_cost,
+    coalesce(existing.quantity_reserved, 0) as quantity_reserved,
+    unixepoch() as last_movement_time
+  from (
+    select
+      itl.product_id,
+      itl.product_variant_id,
+      itl.warehouse_location_id,
+      itl.lot_id,
+      sum(itl.quantity) as total_quantity,
+      case
+        when sum(itl.quantity) > 0 then sum(itl.quantity * itl.unit_cost) / sum(itl.quantity)
+        else max(itl.unit_cost)
+      end as weighted_unit_cost
+    from inventory_transaction_line itl
+    where itl.inventory_transaction_id = new.id
+    group by itl.product_id, itl.product_variant_id, itl.warehouse_location_id, itl.lot_id
+  ) grouped
+  left join inventory_stock existing on
+    existing.product_id = grouped.product_id
+    and (existing.product_variant_id is grouped.product_variant_id or (existing.product_variant_id is null and grouped.product_variant_id is null))
+    and existing.warehouse_location_id = grouped.warehouse_location_id
+    and (existing.lot_id is grouped.lot_id or (existing.lot_id is null and grouped.lot_id is null));
+
   -- Create cost layers for receipts
   insert into inventory_cost_layer (
     product_id,
@@ -489,6 +536,118 @@ begin
   where itl.inventory_transaction_id = new.id
     and itt.affects_quantity = 'INCREASE'
     and itl.quantity > 0;
+
+  -- Process cost layer decreases for issues using FIFO (simplified approach)
+  -- Note: This is a basic implementation that reduces from the oldest cost layer first
+  -- A complete FIFO implementation would require iterative processing
+  update inventory_cost_layer
+  set quantity_remaining = case
+    when quantity_remaining > 0 and exists (
+      select 1 from inventory_transaction_line itl
+      join inventory_transaction_type itt on itt.code = new.transaction_type_code
+      where itl.inventory_transaction_id = new.id
+        and itt.affects_quantity = 'DECREASE'
+        and itl.quantity < 0
+        and itl.product_id = inventory_cost_layer.product_id
+        and (itl.product_variant_id is inventory_cost_layer.product_variant_id
+             or (itl.product_variant_id is null and inventory_cost_layer.product_variant_id is null))
+        and itl.warehouse_location_id = inventory_cost_layer.warehouse_location_id
+        and (itl.lot_id is inventory_cost_layer.lot_id
+             or (itl.lot_id is null and inventory_cost_layer.lot_id is null))
+    ) then case
+      when quantity_remaining >= abs((
+        select itl.quantity from inventory_transaction_line itl
+        join inventory_transaction_type itt on itt.code = new.transaction_type_code
+        where itl.inventory_transaction_id = new.id
+          and itt.affects_quantity = 'DECREASE'
+          and itl.quantity < 0
+          and itl.product_id = inventory_cost_layer.product_id
+          and (itl.product_variant_id is inventory_cost_layer.product_variant_id
+               or (itl.product_variant_id is null and inventory_cost_layer.product_variant_id is null))
+          and itl.warehouse_location_id = inventory_cost_layer.warehouse_location_id
+          and (itl.lot_id is inventory_cost_layer.lot_id
+               or (itl.lot_id is null and inventory_cost_layer.lot_id is null))
+        limit 1
+      )) then quantity_remaining - abs((
+        select itl.quantity from inventory_transaction_line itl
+        join inventory_transaction_type itt on itt.code = new.transaction_type_code
+        where itl.inventory_transaction_id = new.id
+          and itt.affects_quantity = 'DECREASE'
+          and itl.quantity < 0
+          and itl.product_id = inventory_cost_layer.product_id
+          and (itl.product_variant_id is inventory_cost_layer.product_variant_id
+               or (itl.product_variant_id is null and inventory_cost_layer.product_variant_id is null))
+          and itl.warehouse_location_id = inventory_cost_layer.warehouse_location_id
+          and (itl.lot_id is inventory_cost_layer.lot_id
+               or (itl.lot_id is null and inventory_cost_layer.lot_id is null))
+        limit 1
+      ))
+      else 0
+    end
+    else quantity_remaining
+  end
+  where exists (
+    select 1 from inventory_transaction_line itl
+    join inventory_transaction_type itt on itt.code = new.transaction_type_code
+    where itl.inventory_transaction_id = new.id
+      and itt.affects_quantity = 'DECREASE'
+      and itl.quantity < 0
+      and itl.product_id = inventory_cost_layer.product_id
+      and (itl.product_variant_id is inventory_cost_layer.product_variant_id
+           or (itl.product_variant_id is null and inventory_cost_layer.product_variant_id is null))
+      and itl.warehouse_location_id = inventory_cost_layer.warehouse_location_id
+      and (itl.lot_id is inventory_cost_layer.lot_id
+           or (itl.lot_id is null and inventory_cost_layer.lot_id is null))
+  );
+end;
+
+-- Validate lot tracking requirements
+drop trigger if exists inventory_lot_validation_trigger;
+create trigger inventory_lot_validation_trigger
+before insert on inventory_transaction_line for each row
+when new.product_id in (select id from product where is_lot_tracked = 1)
+  and new.lot_id is null
+begin
+  select raise(abort, 'Lot ID is required for lot-tracked products');
+end;
+
+-- Validate serial number requirements
+drop trigger if exists inventory_serial_validation_trigger;
+create trigger inventory_serial_validation_trigger
+before insert on inventory_transaction_line for each row
+when new.product_id in (select id from product where is_serialized = 1)
+  and (new.serial_numbers is null or json_array_length(new.serial_numbers) != abs(new.quantity))
+begin
+  select raise(abort, 'Serial numbers must be provided for serialized products and match quantity');
+end;
+
+-- Validate reserved quantity constraints
+drop trigger if exists inventory_stock_reserved_validation_trigger;
+create trigger inventory_stock_reserved_validation_trigger
+before update on inventory_stock for each row
+when new.quantity_reserved > new.quantity_on_hand
+begin
+  select raise(abort, 'Reserved quantity cannot exceed quantity on hand');
+end;
+
+-- Validate negative stock for non-allowed transactions
+drop trigger if exists inventory_negative_stock_validation_trigger;
+create trigger inventory_negative_stock_validation_trigger
+before update on inventory_stock for each row
+when new.quantity_on_hand < 0
+  and not exists (
+    select 1 from inventory_transaction it
+    join inventory_transaction_line itl on itl.inventory_transaction_id = it.id
+    join inventory_transaction_type itt on itt.code = it.transaction_type_code
+    where itl.product_id = new.product_id
+      and itl.warehouse_location_id = new.warehouse_location_id
+      and (itl.lot_id is new.lot_id or (itl.lot_id is null and new.lot_id is null))
+      and itt.code in ('ADJUSTMENT_NEGATIVE', 'PHYSICAL_COUNT', 'DAMAGE_WRITEOFF', 'OBSOLESCENCE_WRITEOFF', 'SALES_ISSUE', 'MANUFACTURING_ISSUE', 'TRANSFER_OUT')
+      and it.status = 'POSTED'
+      and it.transaction_date >= unixepoch() - 60  -- Allow recent transactions (within 1 minute)
+  )
+begin
+  select raise(abort, 'Negative inventory not allowed for this transaction type');
 end;
 
 --- REPORTING VIEWS ---
@@ -511,19 +670,27 @@ select
   coalesce(sum(ist.total_value), 0) as total_inventory_value,
   p.minimum_stock_level,
   p.reorder_point,
-  case 
+  case
+    when coalesce(sum(ist.quantity_available), 0) <= 0 then 'OUT_OF_STOCK'
+    when coalesce(sum(ist.quantity_available), 0) <= p.minimum_stock_level then 'CRITICAL_LOW'
     when coalesce(sum(ist.quantity_available), 0) <= p.reorder_point then 'REORDER'
-    when coalesce(sum(ist.quantity_available), 0) <= p.minimum_stock_level then 'LOW_STOCK'
     else 'ADEQUATE'
-  end as stock_status
+  end as stock_status,
+  case p.costing_method
+    when 'WEIGHTED_AVERAGE' then
+      case when sum(ist.quantity_on_hand) > 0
+      then sum(ist.total_value) / sum(ist.quantity_on_hand)
+      else p.standard_cost end
+    else p.standard_cost
+  end as current_unit_cost
 from product p
 left join product_category pc on pc.id = p.product_category_id
 cross join warehouse w
 cross join warehouse_location wl on wl.warehouse_id = w.id
-left join inventory_stock ist on ist.product_id = p.id 
+left join inventory_stock ist on ist.product_id = p.id
   and ist.warehouse_location_id = wl.id
-where p.is_active = 1 
-  and w.is_active = 1 
+where p.is_active = 1
+  and w.is_active = 1
   and wl.is_active = 1
 group by p.id, w.id, wl.id
 order by p.sku, w.code, wl.code;
@@ -540,8 +707,8 @@ select
   sum(ist.quantity_on_hand) as total_quantity,
   case p.costing_method
     when 'STANDARD_COST' then sum(ist.quantity_on_hand) * p.standard_cost
-    when 'WEIGHTED_AVERAGE' then 
-      case when sum(ist.quantity_on_hand) > 0 
+    when 'WEIGHTED_AVERAGE' then
+      case when sum(ist.quantity_on_hand) > 0
       then sum(ist.total_value)
       else 0 end
     else sum(ist.total_value)
@@ -569,7 +736,7 @@ select
   p.minimum_stock_level,
   p.reorder_point,
   p.reorder_quantity,
-  case 
+  case
     when sum(ist.quantity_available) <= 0 then 'OUT_OF_STOCK'
     when sum(ist.quantity_available) <= p.minimum_stock_level then 'CRITICAL_LOW'
     when sum(ist.quantity_available) <= p.reorder_point then 'REORDER_NEEDED'
@@ -584,6 +751,125 @@ where p.is_active = 1
 group by p.id, w.id
 having sum(ist.quantity_available) <= p.reorder_point
 order by alert_type, p.sku;
+
+-- Cost layer tracking for FIFO/LIFO accuracy
+drop view if exists cost_layer_summary;
+create view cost_layer_summary as
+select
+  p.sku,
+  p.name as product_name,
+  w.code as warehouse_code,
+  count(icl.id) as active_cost_layers,
+  sum(icl.quantity_remaining) as total_quantity_in_layers,
+  min(icl.received_date) as oldest_receipt_date,
+  max(icl.received_date) as newest_receipt_date,
+  avg(icl.unit_cost) as average_unit_cost,
+  min(icl.unit_cost) as lowest_unit_cost,
+  max(icl.unit_cost) as highest_unit_cost
+from inventory_cost_layer icl
+join product p on p.id = icl.product_id
+join warehouse_location wl on wl.id = icl.warehouse_location_id
+join warehouse w on w.id = wl.warehouse_id
+where icl.quantity_remaining > 0
+group by p.id, w.id
+order by p.sku, w.code;
+
+-- Inventory movement audit trail
+drop view if exists inventory_movement_audit;
+create view inventory_movement_audit as
+select
+  it.reference_number,
+  it.transaction_date,
+  it.transaction_type_code,
+  itt.name as transaction_type_name,
+  p.id as product_id,
+  p.sku,
+  p.name as product_name,
+  w.code as warehouse_code,
+  wl.code as location_code,
+  itl.quantity,
+  itl.unit_cost,
+  itl.total_cost,
+  il.lot_number,
+  itl.serial_numbers,
+  it.created_by_user,
+  it.status,
+  it.notes
+from inventory_transaction it
+join inventory_transaction_type itt on itt.code = it.transaction_type_code
+join inventory_transaction_line itl on itl.inventory_transaction_id = it.id
+join product p on p.id = itl.product_id
+join warehouse_location wl on wl.id = itl.warehouse_location_id
+join warehouse w on w.id = wl.warehouse_id
+left join inventory_lot il on il.id = itl.lot_id
+order by it.transaction_date desc, it.reference_number, itl.line_number;
+
+-- Lot expiration tracking
+drop view if exists lot_expiration_alert;
+create view lot_expiration_alert as
+select
+  p.id as product_id,
+  p.sku,
+  p.name as product_name,
+  il.lot_number,
+  il.expiration_date,
+  w.code as warehouse_code,
+  sum(ist.quantity_on_hand) as quantity_on_hand,
+  case
+    when il.expiration_date <= unixepoch() then 'EXPIRED'
+    when il.expiration_date <= unixepoch() + (7 * 24 * 3600) then 'EXPIRES_THIS_WEEK'
+    when il.expiration_date <= unixepoch() + (30 * 24 * 3600) then 'EXPIRES_THIS_MONTH'
+    else 'OK'
+  end as expiration_status,
+  (il.expiration_date - unixepoch()) / (24 * 3600) as days_until_expiry
+from inventory_lot il
+join product p on p.id = il.product_id
+join inventory_stock ist on ist.lot_id = il.id
+join warehouse_location wl on wl.id = ist.warehouse_location_id
+join warehouse w on w.id = wl.warehouse_id
+where il.expiration_date is not null
+  and ist.quantity_on_hand > 0
+  and il.is_active = 1
+order by il.expiration_date;
+
+-- Inventory ABC analysis view
+drop view if exists inventory_abc_analysis;
+create view inventory_abc_analysis as
+with product_value_stats as (
+  select
+    p.id as product_id,
+    p.sku,
+    p.name as product_name,
+    sum(ist.total_value) as total_inventory_value,
+    sum(ist.quantity_on_hand) as total_quantity
+  from product p
+  join inventory_stock ist on ist.product_id = p.id
+  where ist.quantity_on_hand > 0
+  group by p.id
+),
+value_percentiles as (
+  select
+    *,
+    sum(total_inventory_value) over () as grand_total_value,
+    100.0 * total_inventory_value / sum(total_inventory_value) over () as value_percentage,
+    100.0 * sum(total_inventory_value) over (order by total_inventory_value desc) / sum(total_inventory_value) over () as cumulative_value_percentage
+  from product_value_stats
+)
+select
+  product_id,
+  sku,
+  product_name,
+  total_inventory_value,
+  total_quantity,
+  round(value_percentage, 2) as value_percentage,
+  round(cumulative_value_percentage, 2) as cumulative_value_percentage,
+  case
+    when cumulative_value_percentage <= 80 then 'A'
+    when cumulative_value_percentage <= 95 then 'B'
+    else 'C'
+  end as abc_category
+from value_percentiles
+order by total_inventory_value desc;
 
 --- DEFAULT DATA ---
 
@@ -666,8 +952,8 @@ on conflict (vendor_code) do update set
   payment_terms_days = excluded.payment_terms_days;
 
 -- Insert default warehouse locations
-insert into warehouse_location (warehouse_id, code, name, zone, aisle, shelf, bin) 
-select 
+insert into warehouse_location (warehouse_id, code, name, zone, aisle, shelf, bin)
+select
   w.id,
   loc_data.code,
   loc_data.name,
