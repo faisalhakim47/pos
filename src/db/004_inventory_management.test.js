@@ -123,9 +123,9 @@ await test('Inventory Management Schema', async function (t) {
     const productId = db.prepare(`
       INSERT INTO product (
         sku, name, product_category_id, standard_cost, costing_method,
-        inventory_account_code, cogs_account_code, sales_account_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('TEST-001', 'Test Product', category.id, 1000, 'FIFO', 10300, 50100, 40100).lastInsertRowid;
+        inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('TEST-001', 'Test Product', category.id, 1000, 'FIFO', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify product was created
     const product = db.prepare('SELECT * FROM product WHERE id = ?').get(productId);
@@ -147,9 +147,9 @@ await test('Inventory Management Schema', async function (t) {
 
     // Add new warehouse (not default)
     db.prepare(`
-      INSERT INTO warehouse (code, name, is_default)
-      VALUES (?, ?, ?)
-    `).run('SECOND', 'Second Warehouse', 0);
+      INSERT INTO warehouse (code, name, is_default, created_time)
+      VALUES (?, ?, ?, ?)
+    `).run('SECOND', 'Second Warehouse', 0, Math.floor(Date.now() / 1000));
 
     // Should still have only one default
     const stillOneDefault = db.prepare('SELECT COUNT(*) as count FROM warehouse WHERE is_default = 1').get();
@@ -177,9 +177,9 @@ await test('Inventory Management Schema', async function (t) {
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
-        inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run('TEST-002', 'Test Product 2', category.id, 1500, 10300, 50100, 40100).lastInsertRowid;
+        inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('TEST-002', 'Test Product 2', category.id, 1500, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Get warehouse location
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
@@ -187,9 +187,9 @@ await test('Inventory Management Schema', async function (t) {
     // Create inventory transaction
     const transactionId = db.prepare(`
       INSERT INTO inventory_transaction (
-        transaction_type_code, reference_number, transaction_date, notes, created_by_user
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run('PURCHASE_RECEIPT', 'REC-001', Math.floor(Date.now() / 1000), 'Test receipt', 'test_user').lastInsertRowid;
+        transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PURCHASE_RECEIPT', 'REC-001', Math.floor(Date.now() / 1000), 'Test receipt', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Add transaction line
     db.prepare(`
@@ -218,24 +218,23 @@ await test('Inventory Management Schema', async function (t) {
 
     // Create vendor
     const vendorId = db.prepare(`
-      INSERT INTO vendor (vendor_code, name, contact_person, is_active)
-      VALUES (?, ?, ?, ?)
-    `).run('VEN-001', 'Test Vendor Inc.', 'John Smith', 1).lastInsertRowid;
+      INSERT INTO vendor (vendor_code, name, contact_person, is_active, created_time)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('VEN-001', 'Test Vendor Inc.', 'John Smith', 1, Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Create product
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run('VEN-PROD-001', 'Vendor Product', category.id, 10300, 50100, 40100).lastInsertRowid;
+      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('VEN-PROD-001', 'Vendor Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Link vendor to product
     db.prepare(`
       INSERT INTO vendor_product (
         vendor_id, product_id, vendor_sku, unit_price,
-        minimum_order_quantity, lead_time_days, is_preferred
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(vendorId, productId, 'VEN-SKU-001', 1500, 10, 7, 1);
+        minimum_order_quantity, lead_time_days, is_preferred, last_updated_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(vendorId, productId, 'VEN-SKU-001', 1500, 10, 7, 1, Math.floor(Date.now() / 1000));
 
     // Verify vendor-product relationship
     const vendorProduct = db.prepare(`
@@ -262,18 +261,17 @@ await test('Inventory Management Schema', async function (t) {
     // Create test product
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, standard_cost, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run('TEST-004', 'Test Product 4', category.id, 1000, 10300, 50100, 40100).lastInsertRowid;
+      INSERT INTO product (sku, name, product_category_id, standard_cost, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('TEST-004', 'Test Product 4', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?').get('MAIN');
 
     // Create physical inventory count
     const physicalInventoryId = db.prepare(`
       INSERT INTO physical_inventory (
-        count_number, count_date, warehouse_id, count_type, status, planned_by_user
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run('PI-001', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', 'IN_PROGRESS', 'test_user').lastInsertRowid;
+        count_number, count_date, warehouse_id, count_type, planned_time, started_time, planned_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('PI-001', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), 'test_user').lastInsertRowid;
 
     // Get a warehouse location
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = ? LIMIT 1').get(warehouse.id);
@@ -282,14 +280,14 @@ await test('Inventory Management Schema', async function (t) {
     const countId = db.prepare(`
       INSERT INTO physical_inventory_count (
         physical_inventory_id, product_id, warehouse_location_id,
-        system_quantity, counted_quantity, unit_cost
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(physicalInventoryId, productId, warehouseLocation.id, 100, 95, 1000).lastInsertRowid;
+        system_quantity, counted_quantity, unit_cost, pending_time, counted_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(physicalInventoryId, productId, warehouseLocation.id, 100, 95, 1000, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify physical inventory was created
     const physicalInventory = db.prepare('SELECT * FROM physical_inventory WHERE id = ?').get(physicalInventoryId);
     t.assert.equal(Boolean(physicalInventory), true, 'Physical inventory should be created');
-    t.assert.equal(String(physicalInventory.status), 'IN_PROGRESS', 'Status should match');
+    t.assert.equal(Boolean(physicalInventory.started_time), true, 'Should have started_time set');
 
     const count = db.prepare('SELECT * FROM physical_inventory_count WHERE id = ?').get(countId);
     t.assert.equal(Boolean(count), true, 'Physical inventory count should be created');
@@ -306,14 +304,12 @@ await test('Inventory Management Schema', async function (t) {
     // Create test products with stock
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const product1Id = db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, standard_cost, reorder_point, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('LOW-001', 'Low Stock Product', category.id, 1000, 10, 10300, 50100, 40100).lastInsertRowid;
+      INSERT INTO product (sku, name, product_category_id, standard_cost, reorder_point, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('LOW-001', 'Low Stock Product', category.id, 1000, 10, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const product2Id = db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, standard_cost, reorder_point, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('OK-001', 'Adequate Stock Product', category.id, 1200, 10, 10300, 50100, 40100).lastInsertRowid;
+      INSERT INTO product (sku, name, product_category_id, standard_cost, reorder_point, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('OK-001', 'Adequate Stock Product', category.id, 1200, 10, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?').get('MAIN');
 
@@ -324,16 +320,16 @@ await test('Inventory Management Schema', async function (t) {
     db.prepare(`
       INSERT INTO inventory_stock (
         product_id, warehouse_location_id, quantity_on_hand,
-        quantity_reserved, unit_cost
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(product1Id, warehouseLocation.id, 5, 0, 1000); // Below reorder point
+        quantity_reserved, unit_cost, last_movement_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(product1Id, warehouseLocation.id, 5, 0, 1000, Math.floor(Date.now() / 1000)); // Below reorder point
 
     db.prepare(`
       INSERT INTO inventory_stock (
         product_id, warehouse_location_id, quantity_on_hand,
-        quantity_reserved, unit_cost
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(product2Id, warehouseLocation.id, 50, 0, 1200); // Adequate stock
+        quantity_reserved, unit_cost, last_movement_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(product2Id, warehouseLocation.id, 50, 0, 1200, Math.floor(Date.now() / 1000)); // Adequate stock
 
     // Test inventory summary view - filter for products with actual stock
     const summary = db.prepare(`
@@ -377,24 +373,21 @@ await test('Inventory Management Schema', async function (t) {
 
     // Test unique SKU constraint
     db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run('UNIQUE-001', 'Test Product', category.id, 10300, 50100, 40100);
+      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('UNIQUE-001', 'Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000));
 
     // This should throw due to unique constraint on SKU
     t.assert.throws(function () {
       db.prepare(`
-        INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run('UNIQUE-001', 'Duplicate SKU', category.id, 10300, 50100, 40100);
+        INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('UNIQUE-001', 'Duplicate SKU', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000));
     }, 'Should throw error for duplicate SKU');
 
     // Test check constraint on standard_cost (should not allow negative)
     t.assert.throws(function () {
       db.prepare(`
-        INSERT INTO product (sku, name, category_id, standard_cost)
-        VALUES (?, ?, ?, ?)
-      `).run('CHECK-001', 'Test Product', category.id, -100);
+        INSERT INTO product (sku, name, product_category_id, standard_cost, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?)
+      `).run('CHECK-001', 'Test Product', category.id, -100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000));
     }, 'Should throw error for negative standard cost');
 
     fixture.cleanup();
@@ -449,9 +442,9 @@ await test('Inventory Management Schema', async function (t) {
     const transactionId = db.prepare(`
       INSERT INTO inventory_transaction (
         transaction_type_code, reference_number, transaction_date,
-        notes, journal_entry_ref, created_by_user
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run('PURCHASE_RECEIPT', 'PUR-999', Math.floor(Date.now() / 1000), 'Purchase receipt', journalEntryId, 'test_user').lastInsertRowid;
+        notes, journal_entry_ref, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('PURCHASE_RECEIPT', 'PUR-999', Math.floor(Date.now() / 1000), 'Purchase receipt', journalEntryId, 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify the linkage
     const transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(transactionId);
@@ -473,18 +466,17 @@ await test('Inventory Management Schema', async function (t) {
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost, costing_method,
-        inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('FIFO-001', 'FIFO Test Product', category.id, 1000, 'FIFO', 10300, 50100, 40100).lastInsertRowid;
+        inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('FIFO-001', 'FIFO Test Product', category.id, 1000, 'FIFO', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
 
     // Create first receipt transaction (older, cheaper)
     const transaction1Id = db.prepare(`
       INSERT INTO inventory_transaction (
-        transaction_type_code, reference_number, transaction_date, notes, created_by_user
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run('PURCHASE_RECEIPT', 'REC-FIFO-001', Math.floor(Date.now() / 1000) - 86400, 'First receipt', 'test_user').lastInsertRowid;
+        transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PURCHASE_RECEIPT', 'REC-FIFO-001', Math.floor(Date.now() / 1000) - 86400, 'First receipt', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     db.prepare(`
       INSERT INTO inventory_transaction_line (
@@ -494,14 +486,14 @@ await test('Inventory Management Schema', async function (t) {
     `).run(transaction1Id, 1, productId, warehouseLocation.id, 100, 1000);
 
     // Post first transaction
-    db.prepare('UPDATE inventory_transaction SET status = ? WHERE id = ?').run('POSTED', transaction1Id);
+    db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), transaction1Id);
 
     // Create second receipt transaction (newer, more expensive)
     const transaction2Id = db.prepare(`
       INSERT INTO inventory_transaction (
-        transaction_type_code, reference_number, transaction_date, notes, created_by_user
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run('PURCHASE_RECEIPT', 'REC-FIFO-002', Math.floor(Date.now() / 1000), 'Second receipt', 'test_user').lastInsertRowid;
+        transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PURCHASE_RECEIPT', 'REC-FIFO-002', Math.floor(Date.now() / 1000), 'Second receipt', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     db.prepare(`
       INSERT INTO inventory_transaction_line (
@@ -519,7 +511,7 @@ await test('Inventory Management Schema', async function (t) {
     t.assert.equal(Number(stock.quantity_on_hand), 100, 'Total quantity should be 100 after first transaction');
 
     // Post second transaction
-    db.prepare('UPDATE inventory_transaction SET status = ? WHERE id = ?').run('POSTED', transaction2Id);
+    db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), transaction2Id);
 
     // Verify final stock after both transactions
     const finalStock = db.prepare(`
@@ -541,24 +533,23 @@ await test('Inventory Management Schema', async function (t) {
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, is_lot_tracked, shelf_life_days,
-        inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('LOT-001', 'Lot Tracked Product', category.id, 1, 30, 10300, 50100, 40100).lastInsertRowid;
+        inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('LOT-001', 'Lot Tracked Product', category.id, 1, 30, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Create lot
     const lotId = db.prepare(`
-      INSERT INTO inventory_lot (product_id, lot_number, expiration_date)
-      VALUES (?, ?, ?)
-    `).run(productId, 'LOT-20250601', Math.floor(Date.now() / 1000) + (30 * 24 * 3600)).lastInsertRowid;
+      INSERT INTO inventory_lot (product_id, lot_number, expiration_date, received_date)
+      VALUES (?, ?, ?, ?)
+    `).run(productId, 'LOT-20250601', Math.floor(Date.now() / 1000) + (30 * 24 * 3600), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
 
     // Create transaction
     const transactionId = db.prepare(`
       INSERT INTO inventory_transaction (
-        transaction_type_code, reference_number, transaction_date, notes, created_by_user
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run('PURCHASE_RECEIPT', 'REC-LOT-001', Math.floor(Date.now() / 1000), 'Lot receipt', 'test_user').lastInsertRowid;
+        transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PURCHASE_RECEIPT', 'REC-LOT-001', Math.floor(Date.now() / 1000), 'Lot receipt', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Valid transaction line with lot ID
     db.prepare(`
@@ -569,7 +560,7 @@ await test('Inventory Management Schema', async function (t) {
     `).run(transactionId, 1, productId, warehouseLocation.id, lotId, 100, 1200);
 
     // Should succeed when posting
-    db.prepare('UPDATE inventory_transaction SET status = ? WHERE id = ?').run('POSTED', transactionId);
+    db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), transactionId);
 
     // Verify lot expiration view
     const expiringLots = db.prepare('SELECT * FROM lot_expiration_alert WHERE product_id = ?').all(productId);
@@ -586,18 +577,17 @@ await test('Inventory Management Schema', async function (t) {
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, is_serialized,
-        inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run('SERIAL-001', 'Serialized Product', category.id, 1, 10300, 50100, 40100).lastInsertRowid;
+        inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('SERIAL-001', 'Serialized Product', category.id, 1, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
 
     // Create transaction
     const transactionId = db.prepare(`
       INSERT INTO inventory_transaction (
-        transaction_type_code, reference_number, transaction_date, notes, created_by_user
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run('PURCHASE_RECEIPT', 'REC-SERIAL-001', Math.floor(Date.now() / 1000), 'Serial receipt', 'test_user').lastInsertRowid;
+        transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PURCHASE_RECEIPT', 'REC-SERIAL-001', Math.floor(Date.now() / 1000), 'Serial receipt', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Valid transaction line with serial numbers matching quantity
     db.prepare(`
@@ -608,7 +598,7 @@ await test('Inventory Management Schema', async function (t) {
     `).run(transactionId, 1, productId, warehouseLocation.id, 2, 1500, JSON.stringify(['SN001', 'SN002']));
 
     // Should succeed when posting
-    db.prepare('UPDATE inventory_transaction SET status = ? WHERE id = ?').run('POSTED', transactionId);
+    db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), transactionId);
 
     // Verify stock was updated
     const stock = db.prepare(`
@@ -629,18 +619,17 @@ await test('Inventory Management Schema', async function (t) {
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost, costing_method,
-        inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('WA-001', 'Weighted Average Product', category.id, 1000, 'WEIGHTED_AVERAGE', 10300, 50100, 40100).lastInsertRowid;
+        inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('WA-001', 'Weighted Average Product', category.id, 1000, 'WEIGHTED_AVERAGE', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
 
     // Add stock with different costs
     db.prepare(`
       INSERT INTO inventory_stock (
-        product_id, warehouse_location_id, quantity_on_hand, unit_cost
-      ) VALUES (?, ?, ?, ?)
-    `).run(productId, warehouseLocation.id, 100, 1000);
+        product_id, warehouse_location_id, quantity_on_hand, unit_cost, last_movement_time
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(productId, warehouseLocation.id, 100, 1000, Math.floor(Date.now() / 1000));
 
     db.prepare(`
       UPDATE inventory_stock SET
@@ -676,18 +665,17 @@ await test('Inventory Management Schema', async function (t) {
     // Create test scenario with multiple movements
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run('AUDIT-001', 'Audit Trail Product', category.id, 10300, 50100, 40100).lastInsertRowid;
+      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('AUDIT-001', 'Audit Trail Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
 
     // Receipt transaction
     const receiptId = db.prepare(`
       INSERT INTO inventory_transaction (
-        transaction_type_code, reference_number, transaction_date, notes, created_by_user
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run('PURCHASE_RECEIPT', 'REC-AUDIT-001', Math.floor(Date.now() / 1000), 'Test receipt', 'test_user').lastInsertRowid;
+        transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('PURCHASE_RECEIPT', 'REC-AUDIT-001', Math.floor(Date.now() / 1000), 'Test receipt', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     db.prepare(`
       INSERT INTO inventory_transaction_line (
@@ -696,14 +684,14 @@ await test('Inventory Management Schema', async function (t) {
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run(receiptId, 1, productId, warehouseLocation.id, 100, 1000);
 
-    db.prepare('UPDATE inventory_transaction SET status = ? WHERE id = ?').run('POSTED', receiptId);
+    db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), receiptId);
 
     // Issue transaction
     const issueId = db.prepare(`
       INSERT INTO inventory_transaction (
-        transaction_type_code, reference_number, transaction_date, notes, created_by_user
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run('SALES_ISSUE', 'ISS-AUDIT-001', Math.floor(Date.now() / 1000), 'Test issue', 'test_user').lastInsertRowid;
+        transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run('SALES_ISSUE', 'ISS-AUDIT-001', Math.floor(Date.now() / 1000), 'Test issue', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     db.prepare(`
       INSERT INTO inventory_transaction_line (
@@ -712,7 +700,7 @@ await test('Inventory Management Schema', async function (t) {
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run(issueId, 1, productId, warehouseLocation.id, -30, 1000);
 
-    db.prepare('UPDATE inventory_transaction SET status = ? WHERE id = ?').run('POSTED', issueId);
+    db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), issueId);
 
     // Test audit trail view
     const auditTrail = db.prepare(`
@@ -745,18 +733,17 @@ await test('Inventory Management Schema', async function (t) {
     // Create test product and stock
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run('RESERVE-001', 'Reserve Test Product', category.id, 10300, 50100, 40100).lastInsertRowid;
+      INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('RESERVE-001', 'Reserve Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
 
     // Add stock
     db.prepare(`
       INSERT INTO inventory_stock (
-        product_id, warehouse_location_id, quantity_on_hand, unit_cost
-      ) VALUES (?, ?, ?, ?)
-    `).run(productId, warehouseLocation.id, 100, 1000);
+        product_id, warehouse_location_id, quantity_on_hand, unit_cost, last_movement_time
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(productId, warehouseLocation.id, 100, 1000, Math.floor(Date.now() / 1000));
 
     // Valid reservation
     db.prepare(`
@@ -790,9 +777,8 @@ await test('Inventory Management Schema', async function (t) {
     // Create test product
     const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
     const productId = db.prepare(`
-      INSERT INTO product (sku, name, product_category_id, standard_cost, inventory_account_code, cogs_account_code, sales_account_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run('TEST-ADJ-001', 'Test Adjustment Product', category.id, 1000, 10300, 50100, 40100).lastInsertRowid;
+      INSERT INTO product (sku, name, product_category_id, standard_cost, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('TEST-ADJ-001', 'Test Adjustment Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?').get('MAIN');
     const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = ? LIMIT 1').get(warehouse.id);
@@ -800,17 +786,17 @@ await test('Inventory Management Schema', async function (t) {
     // Test Case 1: Positive variance (more inventory found than expected)
     const physicalInventoryId1 = db.prepare(`
       INSERT INTO physical_inventory (
-        count_number, count_date, warehouse_id, count_type, status, planned_by_user
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run('PI-ADJ-001', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', 'IN_PROGRESS', 'test_user').lastInsertRowid;
+        count_number, count_date, warehouse_id, count_type, planned_time, started_time, planned_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('PI-ADJ-001', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), 'test_user').lastInsertRowid;
 
     const countId1 = db.prepare(`
       INSERT INTO physical_inventory_count (
         physical_inventory_id, product_id, warehouse_location_id,
-        system_quantity, counted_quantity, unit_cost, count_status,
-        counted_by_user, counted_time
+        system_quantity, counted_quantity, unit_cost, pending_time, counted_time,
+        counted_by_user
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(physicalInventoryId1, productId, warehouseLocation.id, 100, 110, 1000, 'COUNTED', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
+    `).run(physicalInventoryId1, productId, warehouseLocation.id, 100, 110, 1000, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), 'test_user').lastInsertRowid;
 
     // Count initial number of journal entries and inventory transactions
     const initialJournalEntries = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
@@ -819,11 +805,11 @@ await test('Inventory Management Schema', async function (t) {
     // Trigger the adjustment by changing status to ADJUSTED (this should create journal entry)
     db.prepare(`
       UPDATE physical_inventory_count
-      SET count_status = 'ADJUSTED',
+      SET adjusted_time = ?,
           verified_by_user = 'test_supervisor',
           verified_time = ?
       WHERE id = ?
-    `).run(Math.floor(Date.now() / 1000), countId1);
+    `).run(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), countId1);
 
     // Verify inventory transaction was created
     const newInventoryTransactions = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
@@ -836,7 +822,7 @@ await test('Inventory Management Schema', async function (t) {
       ORDER BY id DESC LIMIT 1
     `).get();
     t.assert.equal(Boolean(inventoryTransaction), true, 'Inventory transaction should exist');
-    t.assert.equal(String(inventoryTransaction.status), 'POSTED', 'Transaction should be posted');
+    t.assert.equal(Boolean(inventoryTransaction.posted_time), true, 'Transaction should be posted');
     t.assert.equal(Number(inventoryTransaction.total_value), 10000, 'Total value should be 10 units * $10.00'); // 10 units * 1000 cents
 
     // Verify journal entry was created
@@ -875,17 +861,17 @@ await test('Inventory Management Schema', async function (t) {
     // Test Case 2: Negative variance (less inventory found than expected)
     const physicalInventoryId2 = db.prepare(`
       INSERT INTO physical_inventory (
-        count_number, count_date, warehouse_id, count_type, status, planned_by_user
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run('PI-ADJ-002', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', 'IN_PROGRESS', 'test_user').lastInsertRowid;
+        count_number, count_date, warehouse_id, count_type, planned_time, started_time, planned_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('PI-ADJ-002', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), 'test_user').lastInsertRowid;
 
     const countId2 = db.prepare(`
       INSERT INTO physical_inventory_count (
         physical_inventory_id, product_id, warehouse_location_id,
-        system_quantity, counted_quantity, unit_cost, count_status,
-        counted_by_user, counted_time
+        system_quantity, counted_quantity, unit_cost, pending_time, counted_time,
+        counted_by_user
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(physicalInventoryId2, productId, warehouseLocation.id, 100, 90, 1000, 'COUNTED', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
+    `).run(physicalInventoryId2, productId, warehouseLocation.id, 100, 90, 1000, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), 'test_user').lastInsertRowid;
 
     // Get count before adjustment
     const beforeJournalEntries2 = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
@@ -894,11 +880,11 @@ await test('Inventory Management Schema', async function (t) {
     // Trigger the adjustment by changing status to ADJUSTED
     db.prepare(`
       UPDATE physical_inventory_count
-      SET count_status = 'ADJUSTED',
+      SET adjusted_time = ?,
           verified_by_user = 'test_supervisor',
           verified_time = ?
       WHERE id = ?
-    `).run(Math.floor(Date.now() / 1000), countId2);
+    `).run(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), countId2);
 
     // Verify new transaction and journal entry created
     const afterInventoryTransactions2 = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
@@ -937,17 +923,17 @@ await test('Inventory Management Schema', async function (t) {
     // Test Case 3: No variance (no journal entry should be created)
     const physicalInventoryId3 = db.prepare(`
       INSERT INTO physical_inventory (
-        count_number, count_date, warehouse_id, count_type, status, planned_by_user
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run('PI-ADJ-003', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', 'IN_PROGRESS', 'test_user').lastInsertRowid;
+        count_number, count_date, warehouse_id, count_type, planned_time, started_time, planned_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('PI-ADJ-003', Math.floor(Date.now() / 1000), warehouse.id, 'SPOT', Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), 'test_user').lastInsertRowid;
 
     const countId3 = db.prepare(`
       INSERT INTO physical_inventory_count (
         physical_inventory_id, product_id, warehouse_location_id,
-        system_quantity, counted_quantity, unit_cost, count_status,
-        counted_by_user, counted_time
+        system_quantity, counted_quantity, unit_cost, pending_time, counted_time,
+        counted_by_user
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(physicalInventoryId3, productId, warehouseLocation.id, 100, 100, 1000, 'COUNTED', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
+    `).run(physicalInventoryId3, productId, warehouseLocation.id, 100, 100, 1000, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), 'test_user').lastInsertRowid;
 
     // Get count before adjustment
     const beforeJournalEntries3 = db.prepare('SELECT COUNT(*) as count FROM journal_entry').get().count;
@@ -956,11 +942,11 @@ await test('Inventory Management Schema', async function (t) {
     // Trigger the adjustment by changing status to ADJUSTED
     db.prepare(`
       UPDATE physical_inventory_count
-      SET count_status = 'ADJUSTED',
+      SET adjusted_time = ?,
           verified_by_user = 'test_supervisor',
           verified_time = ?
       WHERE id = ?
-    `).run(Math.floor(Date.now() / 1000), countId3);
+    `).run(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), countId3);
 
     // Verify no new transaction or journal entry created for zero variance
     const afterInventoryTransactions3 = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction').get().count;
@@ -990,10 +976,10 @@ await test('Inventory Management Schema', async function (t) {
       db.exec(`
         insert into product (
           sku, name, inventory_account_code, cogs_account_code, sales_account_code,
-          standard_cost, costing_method, currency_code
+          standard_cost, costing_method, currency_code, created_time, updated_time
         ) values (
           'TEST001', 'Test Product 1', 10300, 50100, 40100,
-          1000, 'FIFO', 'USD'
+          1000, 'FIFO', 'USD', ${Math.floor(Date.now() / 1000)}, ${Math.floor(Date.now() / 1000)}
         );
       `);
 
@@ -1003,10 +989,10 @@ await test('Inventory Management Schema', async function (t) {
       db.exec(`
         insert into inventory_transaction (
           transaction_type_code, reference_number, transaction_date,
-          total_value, currency_code, status, created_by_user
+          total_value, currency_code, created_time, created_by_user
         ) values (
           'PURCHASE_RECEIPT', 'PO-001', ${Date.now()},
-          5000, 'USD', 'PENDING', 'test_user'
+          5000, 'USD', ${Math.floor(Date.now() / 1000)}, 'test_user'
         );
       `);
 
@@ -1028,7 +1014,7 @@ await test('Inventory Management Schema', async function (t) {
       // Post the transaction to trigger journal entry creation
       db.exec(`
         update inventory_transaction
-        set status = 'POSTED'
+        set posted_time = ${Math.floor(Date.now() / 1000)}
         where id = ${transactionId};
       `);
 
@@ -1070,10 +1056,10 @@ await test('Inventory Management Schema', async function (t) {
       db.exec(`
         insert into inventory_transaction (
           transaction_type_code, reference_number, transaction_date,
-          total_value, currency_code, status, created_by_user
+          total_value, currency_code, created_time, created_by_user
         ) values (
           'SALES_ISSUE', 'SO-001', ${Date.now()},
-          2000, 'USD', 'PENDING', 'test_user'
+          2000, 'USD', ${Math.floor(Date.now() / 1000)}, 'test_user'
         );
       `);
 
@@ -1095,7 +1081,7 @@ await test('Inventory Management Schema', async function (t) {
       // Post the sales transaction
       db.exec(`
         update inventory_transaction
-        set status = 'POSTED'
+        set posted_time = ${Math.floor(Date.now() / 1000)}
         where id = ${salesTransactionId};
       `);
 
@@ -1123,10 +1109,10 @@ await test('Inventory Management Schema', async function (t) {
       db.exec(`
         insert into inventory_transaction (
           transaction_type_code, reference_number, transaction_date,
-          total_value, currency_code, status, created_by_user
+          total_value, currency_code, created_time, created_by_user
         ) values (
           'ADJUSTMENT_POSITIVE', 'ADJ-001', ${Date.now()},
-          1000, 'USD', 'PENDING', 'test_user'
+          1000, 'USD', ${Math.floor(Date.now() / 1000)}, 'test_user'
         );
       `);
 
@@ -1147,7 +1133,7 @@ await test('Inventory Management Schema', async function (t) {
       // Post the adjustment transaction
       db.exec(`
         update inventory_transaction
-        set status = 'POSTED'
+        set posted_time = ${Math.floor(Date.now() / 1000)}
         where id = ${adjTransactionId};
       `);
 
@@ -1169,10 +1155,10 @@ await test('Inventory Management Schema', async function (t) {
       db.exec(`
         insert into inventory_transaction (
           transaction_type_code, reference_number, transaction_date,
-          total_value, currency_code, status, created_by_user
+          total_value, currency_code, created_time, created_by_user
         ) values (
           'OBSOLESCENCE_WRITEOFF', 'OBS-001', ${Date.now()},
-          500, 'USD', 'PENDING', 'test_user'
+          500, 'USD', ${Math.floor(Date.now() / 1000)}, 'test_user'
         );
       `);
 
@@ -1193,7 +1179,7 @@ await test('Inventory Management Schema', async function (t) {
       // Post the obsolescence transaction
       db.exec(`
         update inventory_transaction
-        set status = 'POSTED'
+        set posted_time = ${Math.floor(Date.now() / 1000)}
         where id = ${obsTransactionId};
       `);
 
@@ -1270,16 +1256,18 @@ await test('Inventory Management Schema', async function (t) {
       // First create a test product
       db.exec(`
         insert into product (sku, name, product_category_id, base_unit_code, costing_method, 
-                           inventory_account_code, cogs_account_code, sales_account_code, is_active)
-        values ('TEST001', 'Test Product 1', 1, 'EACH', 'FIFO', 10300, 50100, 40100, 1)
+                           inventory_account_code, cogs_account_code, sales_account_code, is_active,
+                           created_time, updated_time)
+        values ('TEST001', 'Test Product 1', 1, 'EACH', 'FIFO', 10300, 50100, 40100, 1,
+                ${Math.floor(Date.now() / 1000)}, ${Math.floor(Date.now() / 1000)})
       `);
       
       const productId = db.prepare('select id from product where sku = ?').get('TEST001').id;
 
       // Add some inventory stock for the product
       db.exec(`
-        insert into inventory_stock (product_id, warehouse_location_id, quantity_on_hand, unit_cost)
-        values (${productId}, 1, 100, 1000)
+        insert into inventory_stock (product_id, warehouse_location_id, quantity_on_hand, unit_cost, last_movement_time)
+        values (${productId}, 1, 100, 1000, ${Math.floor(Date.now() / 1000)})
       `);
 
       // Insert market value data that's below cost
@@ -1287,10 +1275,10 @@ await test('Inventory Management Schema', async function (t) {
         insert into inventory_market_value (
           product_id, valuation_date, market_value_per_unit,
           replacement_cost_per_unit, net_realizable_value,
-          valuation_method, created_by_user
+          valuation_method, created_by_user, created_time
         ) values (
           ${productId}, ${Math.floor(Date.now() / 1000)}, 800, 850, 900,
-          'REPLACEMENT_COST', 'test_user'
+          'REPLACEMENT_COST', 'test_user', ${Math.floor(Date.now() / 1000)}
         )
       `);
 
@@ -1307,17 +1295,17 @@ await test('Inventory Management Schema', async function (t) {
       db.exec(`
         insert into inventory_reserve (
           product_id, reserve_type, reserve_amount,
-          effective_date, reason, created_by_user, status
+          effective_date, reason, created_by_user, created_time, approved_time
         ) values (
           ${productId}, 'OBSOLESCENCE', 50000, ${Math.floor(Date.now() / 1000)},
-          'Test obsolescence reserve', 'test_user', 'APPROVED'
+          'Test obsolescence reserve', 'test_user', ${Math.floor(Date.now() / 1000)}, ${Math.floor(Date.now() / 1000)}
         )
       `);
 
       // Apply the reserve to trigger journal entry
       db.exec(`
         update inventory_reserve 
-        set status = 'APPLIED'
+        set applied_time = ${Math.floor(Date.now() / 1000)}
         where product_id = ${productId} and reserve_type = 'OBSOLESCENCE'
       `);
 
@@ -1448,11 +1436,11 @@ await test('Inventory Management Schema', async function (t) {
         insert into inventory_cutoff_control (
           cutoff_date, warehouse_id, last_receipt_number,
           last_shipment_number, last_adjustment_number,
-          cutoff_performed_by, notes
+          cutoff_performed_by, notes, cutoff_time
         ) values (
           ${cutoffDate}, ${warehouseId}, 'REC-2024-001',
           'SHIP-2024-001', 'ADJ-2024-001',
-          'test_user', 'Period-end cutoff test'
+          'test_user', 'Period-end cutoff test', ${Math.floor(Date.now() / 1000)}
         )
       `);
 

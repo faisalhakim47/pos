@@ -100,8 +100,8 @@ create table if not exists product (
   currency_code text not null default 'USD',
   costing_method text not null default 'FIFO' check (costing_method in ('FIFO', 'LIFO', 'WEIGHTED_AVERAGE', 'SPECIFIC_IDENTIFICATION', 'STANDARD_COST')),
   is_active integer not null default 1 check (is_active in (0, 1)),
-  created_time integer not null default (unixepoch()),
-  updated_time integer not null default (unixepoch()),
+  created_time integer not null,
+  updated_time integer not null,
   foreign key (product_category_id) references product_category (id) on update restrict on delete restrict,
   foreign key (base_unit_code) references unit_of_measure (code) on update restrict on delete restrict,
   foreign key (inventory_account_code) references account (code) on update restrict on delete restrict,
@@ -124,7 +124,7 @@ create table if not exists product_variant (
   variant_attributes text, -- JSON: {"color": "red", "size": "L"}
   standard_cost integer not null default 0 check (standard_cost >= 0),
   is_active integer not null default 1 check (is_active in (0, 1)),
-  created_time integer not null default (unixepoch()),
+  created_time integer not null,
   foreign key (product_id) references product (id) on update restrict on delete restrict
 ) strict;
 
@@ -143,7 +143,7 @@ create table if not exists warehouse (
   email text,
   is_default integer not null default 0 check (is_default in (0, 1)),
   is_active integer not null default 1 check (is_active in (0, 1)),
-  created_time integer not null default (unixepoch())
+  created_time integer not null
 ) strict;
 
 create index if not exists warehouse_code_index on warehouse (code);
@@ -189,7 +189,7 @@ create table if not exists inventory_lot (
   product_id integer not null,
   lot_number text not null,
   expiration_date integer,
-  received_date integer not null default (unixepoch()),
+  received_date integer not null,
   vendor_lot_number text,
   is_active integer not null default 1 check (is_active in (0, 1)),
   foreign key (product_id) references product (id) on update restrict on delete restrict,
@@ -206,8 +206,12 @@ create table if not exists inventory_serial (
   serial_number text not null,
   lot_id integer,
   warehouse_location_id integer,
-  status text not null default 'AVAILABLE' check (status in ('AVAILABLE', 'RESERVED', 'SOLD', 'DAMAGED', 'RETURNED')),
-  received_date integer not null default (unixepoch()),
+  -- Timestamp-based status tracking instead of text status
+  received_time integer not null,
+  reserved_time integer,
+  sold_time integer,
+  damaged_time integer,
+  returned_time integer,
   is_active integer not null default 1 check (is_active in (0, 1)),
   foreign key (product_id) references product (id) on update restrict on delete restrict,
   foreign key (lot_id) references inventory_lot (id) on update restrict on delete restrict,
@@ -217,7 +221,10 @@ create table if not exists inventory_serial (
 
 create index if not exists inventory_serial_product_id_index on inventory_serial (product_id);
 create index if not exists inventory_serial_serial_number_index on inventory_serial (serial_number);
-create index if not exists inventory_serial_status_index on inventory_serial (status);
+-- Indexes for timestamp-based status tracking
+create index if not exists inventory_serial_received_time_index on inventory_serial (received_time);
+create index if not exists inventory_serial_reserved_time_index on inventory_serial (reserved_time);
+create index if not exists inventory_serial_sold_time_index on inventory_serial (sold_time);
 
 -- Main inventory stock table - tracks quantity and value by location
 create table if not exists inventory_stock (
@@ -231,7 +238,7 @@ create table if not exists inventory_stock (
   quantity_available integer generated always as (quantity_on_hand - quantity_reserved) stored,
   unit_cost integer not null default 0 check (unit_cost >= 0),
   total_value integer generated always as (quantity_on_hand * unit_cost) stored,
-  last_movement_time integer not null default (unixepoch()),
+  last_movement_time integer not null,
   foreign key (product_id) references product (id) on update restrict on delete restrict,
   foreign key (product_variant_id) references product_variant (id) on update restrict on delete restrict,
   foreign key (warehouse_location_id) references warehouse_location (id) on update restrict on delete restrict,
@@ -281,11 +288,13 @@ create table if not exists inventory_transaction (
   currency_code text not null default 'USD',
   exchange_rate real,
   journal_entry_ref integer,
-  status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'POSTED', 'CANCELLED')),
-  approved_by_user text,
+  -- Timestamp-based status tracking instead of text status
+  created_time integer not null,
   approved_time integer,
+  posted_time integer,
+  cancelled_time integer,
+  approved_by_user text,
   created_by_user text not null,
-  created_time integer not null default (unixepoch()),
   foreign key (transaction_type_code) references inventory_transaction_type (code) on update restrict on delete restrict,
   foreign key (currency_code) references currency (code) on update restrict on delete restrict,
   foreign key (journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
@@ -294,7 +303,11 @@ create table if not exists inventory_transaction (
 create index if not exists inventory_transaction_transaction_type_code_index on inventory_transaction (transaction_type_code);
 create index if not exists inventory_transaction_reference_number_index on inventory_transaction (reference_number);
 create index if not exists inventory_transaction_transaction_date_index on inventory_transaction (transaction_date);
-create index if not exists inventory_transaction_status_index on inventory_transaction (status);
+-- Indexes for timestamp-based status tracking
+create index if not exists inventory_transaction_created_time_index on inventory_transaction (created_time);
+create index if not exists inventory_transaction_approved_time_index on inventory_transaction (approved_time);
+create index if not exists inventory_transaction_posted_time_index on inventory_transaction (posted_time);
+create index if not exists inventory_transaction_cancelled_time_index on inventory_transaction (cancelled_time);
 
 create table if not exists inventory_transaction_line (
   id integer primary key,
@@ -362,7 +375,7 @@ create table if not exists vendor (
   payment_terms_days integer not null default 30,
   currency_code text not null default 'USD',
   is_active integer not null default 1 check (is_active in (0, 1)),
-  created_time integer not null default (unixepoch()),
+  created_time integer not null,
   foreign key (currency_code) references currency (code) on update restrict on delete restrict
 ) strict;
 
@@ -381,7 +394,7 @@ create table if not exists vendor_product (
   lead_time_days integer not null default 0,
   is_preferred integer not null default 0 check (is_preferred in (0, 1)),
   is_active integer not null default 1 check (is_active in (0, 1)),
-  last_updated_time integer not null default (unixepoch()),
+  last_updated_time integer not null,
   foreign key (vendor_id) references vendor (id) on update restrict on delete restrict,
   foreign key (product_id) references product (id) on update restrict on delete restrict,
   foreign key (currency_code) references currency (code) on update restrict on delete restrict,
@@ -399,20 +412,25 @@ create table if not exists physical_inventory (
   count_date integer not null,
   warehouse_id integer not null,
   count_type text not null check (count_type in ('FULL', 'CYCLE', 'SPOT')),
-  status text not null default 'PLANNED' check (status in ('PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED')),
-  planned_by_user text not null,
-  planned_time integer not null default (unixepoch()),
-  started_by_user text,
+  -- Timestamp-based status tracking instead of text status
+  planned_time integer not null,
   started_time integer,
-  completed_by_user text,
   completed_time integer,
+  cancelled_time integer,
+  planned_by_user text not null,
+  started_by_user text,
+  completed_by_user text,
   notes text,
   foreign key (warehouse_id) references warehouse (id) on update restrict on delete restrict
 ) strict;
 
 create index if not exists physical_inventory_count_number_index on physical_inventory (count_number);
 create index if not exists physical_inventory_warehouse_id_index on physical_inventory (warehouse_id);
-create index if not exists physical_inventory_status_index on physical_inventory (status);
+-- Indexes for timestamp-based status tracking
+create index if not exists physical_inventory_planned_time_index on physical_inventory (planned_time);
+create index if not exists physical_inventory_started_time_index on physical_inventory (started_time);
+create index if not exists physical_inventory_completed_time_index on physical_inventory (completed_time);
+create index if not exists physical_inventory_cancelled_time_index on physical_inventory (cancelled_time);
 
 create table if not exists physical_inventory_count (
   id integer primary key,
@@ -426,11 +444,13 @@ create table if not exists physical_inventory_count (
   variance_quantity integer generated always as (coalesce(counted_quantity, 0) - system_quantity) stored,
   unit_cost integer not null default 0,
   variance_value integer generated always as (variance_quantity * unit_cost) stored,
-  count_status text not null default 'PENDING' check (count_status in ('PENDING', 'COUNTED', 'VERIFIED', 'ADJUSTED')),
-  counted_by_user text,
+  -- Timestamp-based status tracking instead of text status
+  pending_time integer not null, -- when count was created/pending
   counted_time integer,
-  verified_by_user text,
   verified_time integer,
+  adjusted_time integer,
+  counted_by_user text,
+  verified_by_user text,
   notes text,
   foreign key (physical_inventory_id) references physical_inventory (id) on update restrict on delete restrict,
   foreign key (product_id) references product (id) on update restrict on delete restrict,
@@ -449,7 +469,7 @@ create index if not exists physical_inventory_count_variance_quantity_index on p
 drop trigger if exists inventory_transaction_post_trigger;
 create trigger inventory_transaction_post_trigger
 after update on inventory_transaction for each row
-when old.status != 'POSTED' and new.status = 'POSTED'
+when old.posted_time is null and new.posted_time is not null
 begin
   -- For each unique product/location/lot combination in this transaction
   -- Check if stock record exists and update, or insert new one
@@ -485,7 +505,7 @@ begin
       else coalesce(existing.unit_cost, grouped.weighted_unit_cost)
     end as unit_cost,
     coalesce(existing.quantity_reserved, 0) as quantity_reserved,
-    unixepoch() as last_movement_time
+    new.posted_time as last_movement_time
   from (
     select
       itl.product_id,
@@ -643,7 +663,7 @@ when new.quantity_on_hand < 0
       and itl.warehouse_location_id = new.warehouse_location_id
       and (itl.lot_id is new.lot_id or (itl.lot_id is null and new.lot_id is null))
       and itt.code in ('ADJUSTMENT_NEGATIVE', 'PHYSICAL_COUNT', 'DAMAGE_WRITEOFF', 'OBSOLESCENCE_WRITEOFF', 'SALES_ISSUE', 'MANUFACTURING_ISSUE', 'TRANSFER_OUT')
-      and it.status = 'POSTED'
+      and it.posted_time is not null
       and it.transaction_date >= unixepoch() - 60  -- Allow recent transactions (within 1 minute)
   )
 begin
@@ -656,7 +676,7 @@ end;
 drop trigger if exists physical_inventory_adjustment_trigger;
 create trigger physical_inventory_adjustment_trigger
 after update on physical_inventory_count for each row
-when old.count_status != 'ADJUSTED' and new.count_status = 'ADJUSTED'
+when old.adjusted_time is null and new.adjusted_time is not null
   and new.variance_quantity != 0
 begin
   -- Create inventory transaction for the adjustment
@@ -667,9 +687,9 @@ begin
     notes,
     total_value,
     currency_code,
-    status,
     created_by_user,
     approved_by_user,
+    created_time,
     approved_time
   )
   select
@@ -683,10 +703,10 @@ begin
     ' - Variance: ' || new.variance_quantity,
     abs(new.variance_value),
     'USD',
-    'APPROVED', -- Auto-approve physical count adjustments
     coalesce(new.verified_by_user, new.counted_by_user, 'system'),
     coalesce(new.verified_by_user, new.counted_by_user, 'system'),
-    unixepoch()
+    new.adjusted_time,
+    new.adjusted_time
   from physical_inventory pi
   join product p on p.id = new.product_id
   where pi.id = new.physical_inventory_id;
@@ -786,13 +806,13 @@ begin
 
   -- Post the journal entry immediately for physical count adjustments
   update journal_entry
-  set post_time = unixepoch()
+  set post_time = new.adjusted_time
   where ref = coalesce((select max(ref) from journal_entry), 0);
 
-  -- Link the journal entry to the inventory transaction
+  -- Link the journal entry to the inventory transaction and mark as posted
   update inventory_transaction
   set journal_entry_ref = coalesce((select max(ref) from journal_entry), 0),
-      status = 'POSTED'
+      posted_time = new.adjusted_time
   where id = last_insert_rowid();
 end;
 
@@ -802,7 +822,7 @@ end;
 drop trigger if exists inventory_transaction_journal_entry_trigger;
 create trigger inventory_transaction_journal_entry_trigger
 after update on inventory_transaction for each row
-when old.status != 'POSTED' and new.status = 'POSTED'
+when old.posted_time is null and new.posted_time is not null
   and exists (
     select 1 from inventory_transaction_type itt
     where itt.code = new.transaction_type_code
@@ -1178,7 +1198,7 @@ begin
 
   -- Post the journal entry immediately for automated transactions
   update journal_entry
-  set post_time = unixepoch()
+  set post_time = new.posted_time
   where ref = coalesce((select max(ref) from journal_entry), 0);
 end;
 
@@ -1194,7 +1214,7 @@ create table if not exists inventory_market_value (
   net_realizable_value integer not null check (net_realizable_value >= 0),
   valuation_method text not null check (valuation_method in ('REPLACEMENT_COST', 'NET_REALIZABLE_VALUE', 'NET_REALIZABLE_VALUE_LESS_PROFIT')),
   created_by_user text not null,
-  created_time integer not null default (unixepoch()),
+  created_time integer not null,
   foreign key (product_id) references product (id) on update restrict on delete restrict
 ) strict;
 
@@ -1213,17 +1233,23 @@ create table if not exists inventory_reserve (
   reason text not null,
   created_by_user text not null,
   approved_by_user text,
-  approved_time integer,
-  status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'APPLIED', 'REVERSED')),
   journal_entry_ref integer,
-  created_time integer not null default (unixepoch()),
+  -- Timestamp-based status tracking instead of text status
+  created_time integer not null,
+  approved_time integer,
+  applied_time integer,
+  reversed_time integer,
   foreign key (product_id) references product (id) on update restrict on delete restrict,
   foreign key (journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
 ) strict;
 
 create index if not exists inventory_reserve_product_id_index on inventory_reserve (product_id);
 create index if not exists inventory_reserve_reserve_type_index on inventory_reserve (reserve_type);
-create index if not exists inventory_reserve_status_index on inventory_reserve (status);
+-- Indexes for timestamp-based status tracking
+create index if not exists inventory_reserve_created_time_index on inventory_reserve (created_time);
+create index if not exists inventory_reserve_approved_time_index on inventory_reserve (approved_time);
+create index if not exists inventory_reserve_applied_time_index on inventory_reserve (applied_time);
+create index if not exists inventory_reserve_reversed_time_index on inventory_reserve (reversed_time);
 
 -- Inventory aging for obsolescence analysis
 create table if not exists inventory_aging_category (
@@ -1263,7 +1289,7 @@ create table if not exists inventory_cutoff_control (
   last_shipment_number text,
   last_adjustment_number text,
   cutoff_performed_by text not null,
-  cutoff_time integer not null default (unixepoch()),
+  cutoff_time integer not null,
   notes text,
   foreign key (warehouse_id) references warehouse (id) on update restrict on delete restrict
 ) strict;
@@ -1309,15 +1335,17 @@ begin
     effective_date,
     reason,
     created_by_user,
-    status
+    created_time,
+    approved_time
   ) values (
     new.product_id,
     'OBSOLESCENCE',
     100.0, -- 100% reserve for expired items
-    unixepoch(),
+    new.expiration_date,
     'Automatic reserve for expired lot: ' || new.lot_number,
     'system',
-    'APPROVED'
+    new.expiration_date,
+    new.expiration_date
   );
 end;
 
@@ -1338,7 +1366,7 @@ begin
     effective_date,
     reason,
     created_by_user,
-    status
+    created_time
   ) values (
     new.product_id,
     'LCM_WRITEDOWN',
@@ -1348,7 +1376,7 @@ begin
     new.valuation_date,
     'LCM write-down required - market value below cost',
     new.created_by_user,
-    'PENDING'
+    new.valuation_date
   );
 end;
 
@@ -1356,7 +1384,7 @@ end;
 drop trigger if exists inventory_reserve_journal_entry_trigger;
 create trigger inventory_reserve_journal_entry_trigger
 after update on inventory_reserve for each row
-when old.status != 'APPLIED' and new.status = 'APPLIED'
+when old.applied_time is null and new.applied_time is not null
   and new.reserve_amount > 0
 begin
   -- Create journal entry for inventory reserve
@@ -1366,7 +1394,7 @@ begin
     note
   ) values (
     coalesce((select max(ref) from journal_entry), 0) + 1,
-    unixepoch(),
+    new.applied_time,
     'Inventory Reserve - ' || new.reserve_type || ' for Product ID: ' || new.product_id ||
     ' - Amount: ' || printf('%.2f', new.reserve_amount / 100.0)
   );
@@ -1413,7 +1441,7 @@ begin
 
   -- Post the journal entry immediately
   update journal_entry
-  set post_time = unixepoch()
+  set post_time = new.applied_time
   where ref = coalesce((select max(ref) from journal_entry), 0);
 
   -- Link the journal entry to the reserve
@@ -1565,7 +1593,13 @@ select
   il.lot_number,
   itl.serial_numbers,
   it.created_by_user,
-  it.status,
+  case 
+    when it.posted_time is not null then 'POSTED'
+    when it.cancelled_time is not null then 'CANCELLED'
+    when it.approved_time is not null then 'APPROVED'
+    when it.created_time is not null then 'CREATED'
+    else 'UNKNOWN'
+  end as status,
   it.notes
 from inventory_transaction it
 join inventory_transaction_type itt on itt.code = it.transaction_type_code
@@ -1614,7 +1648,7 @@ with product_value_stats as (
     p.name as product_name,
     sum(ist.total_value) as total_inventory_value,
     sum(ist.quantity_on_hand) as total_quantity,
-    coalesce(sum(case when ir.status = 'APPLIED' then ir.reserve_amount else 0 end), 0) as total_reserves
+    coalesce(sum(case when ir.applied_time is not null then ir.reserve_amount else 0 end), 0) as total_reserves
   from product p
   join inventory_stock ist on ist.product_id = p.id
   left join inventory_reserve ir on ir.product_id = p.id
@@ -1682,7 +1716,7 @@ from product p
 left join inventory_stock ist on ist.product_id = p.id and ist.quantity_on_hand > 0
 left join inventory_market_value imv on imv.product_id = p.id 
   and imv.valuation_date = (select max(valuation_date) from inventory_market_value where product_id = p.id)
-left join inventory_reserve ir on ir.product_id = p.id and ir.reserve_type = 'LCM_WRITEDOWN' and ir.status = 'APPLIED'
+left join inventory_reserve ir on ir.product_id = p.id and ir.reserve_type = 'LCM_WRITEDOWN' and ir.applied_time is not null
 where p.is_active = 1
 group by p.id, imv.market_value_per_unit, imv.replacement_cost_per_unit, imv.net_realizable_value, 
          imv.valuation_method, imv.valuation_date, ir.reserve_amount
@@ -1728,7 +1762,7 @@ join inventory_stock ist on ist.product_id = p.id and ist.quantity_on_hand > 0
 join warehouse_location wl on wl.id = ist.warehouse_location_id
 join warehouse w on w.id = wl.warehouse_id
 left join inventory_cost_layer icl on icl.product_id = p.id and icl.quantity_remaining > 0
-left join inventory_reserve ir on ir.product_id = p.id and ir.reserve_type = 'OBSOLESCENCE' and ir.status = 'APPLIED'
+left join inventory_reserve ir on ir.product_id = p.id and ir.reserve_type = 'OBSOLESCENCE' and ir.applied_time is not null
 where p.is_active = 1
 group by p.id, w.id, ir.reserve_amount
 order by days_since_oldest_receipt desc;
@@ -1744,7 +1778,7 @@ with cogs_data as (
   join inventory_transaction it on it.id = itl.inventory_transaction_id
   join inventory_transaction_type itt on itt.code = it.transaction_type_code
   where itt.affects_quantity = 'DECREASE'
-    and it.status = 'POSTED'
+    and it.posted_time is not null
     and it.transaction_date >= unixepoch() - (365 * 24 * 3600) -- Last 12 months
   group by itl.product_id
 ),
@@ -1792,10 +1826,10 @@ create view inventory_reserve_summary as
 select
   ir.reserve_type,
   count(distinct ir.product_id) as products_with_reserves,
-  sum(case when ir.status = 'APPLIED' then ir.reserve_amount else 0 end) as total_applied_reserves,
-  sum(case when ir.status = 'PENDING' then ir.reserve_amount else 0 end) as total_pending_reserves,
-  sum(case when ir.status = 'APPROVED' then ir.reserve_amount else 0 end) as total_approved_reserves,
-  avg(case when ir.status = 'APPLIED' then ir.reserve_amount else null end) as average_reserve_amount,
+  sum(case when ir.applied_time is not null then ir.reserve_amount else 0 end) as total_applied_reserves,
+  sum(case when ir.created_time is not null and ir.approved_time is null then ir.reserve_amount else 0 end) as total_pending_reserves,
+  sum(case when ir.approved_time is not null and ir.applied_time is null then ir.reserve_amount else 0 end) as total_approved_reserves,
+  avg(case when ir.applied_time is not null then ir.reserve_amount else null end) as average_reserve_amount,
   min(ir.effective_date) as earliest_reserve_date,
   max(ir.effective_date) as latest_reserve_date
 from inventory_reserve ir
@@ -1889,16 +1923,16 @@ on conflict (code) do update set
   description = excluded.description;
 
 -- Insert default warehouse
-insert into warehouse (code, name, address, is_default) values
-  ('MAIN', 'Main Warehouse', 'Main facility warehouse', 1)
+insert into warehouse (code, name, address, is_default, created_time) values
+  ('MAIN', 'Main Warehouse', 'Main facility warehouse', 1, unixepoch())
 on conflict (code) do update set
   name = excluded.name,
   address = excluded.address,
   is_default = excluded.is_default;
 
 -- Insert default vendor
-insert into vendor (vendor_code, name, contact_person, email, phone, payment_terms_days) values
-  ('SUPPLIER001', 'Default Supplier', 'John Smith', 'supplier@example.com', '+1-555-0123', 30)
+insert into vendor (vendor_code, name, contact_person, email, phone, payment_terms_days, created_time) values
+  ('SUPPLIER001', 'Default Supplier', 'John Smith', 'supplier@example.com', '+1-555-0123', 30, unixepoch())
 on conflict (vendor_code) do update set
   name = excluded.name,
   contact_person = excluded.contact_person,
