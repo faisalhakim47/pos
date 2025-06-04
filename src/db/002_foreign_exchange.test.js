@@ -386,12 +386,12 @@ await test('Foreign Exchange - Rate Trends', async function (t) {
   await fixture.setup();
 
   await t.test('should calculate rate change percentages', async function (t) {
-    // Add a second rate for EUR/USD to create a trend (use yesterday instead of tomorrow)
-    const yesterday = Math.floor(Date.now() / 1000) - 86400;
+    // Add a second rate for EUR/USD to create a trend (use a date in 2024)
+    const rateDate = 1704153600; // 2024-01-02 00:00:00 UTC
     fixture.db.prepare(`
-      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
-      values ('EUR', 'USD', ?, 1.1100, 'Manual Entry')
-    `).run(yesterday);
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source, created_time)
+      values ('EUR', 'USD', ?, 1.1100, 'Manual Entry', ?)
+    `).run(rateDate, rateDate);
 
     const trends = fixture.db.prepare(`
       select from_currency_code, to_currency_code, rate, previous_rate, rate_change_percent
@@ -429,12 +429,12 @@ await test('Foreign Exchange - FX Revaluation Calculations', async function (t) 
     fixture.addForeignCurrencyLine(entryRef1, 30100, 0, 110000, 0, 110000, 0, 'USD', 1.1000);
     fixture.postEntry(entryRef1);
 
-    // Update exchange rate to 1.1500 (EUR strengthened)
-    const newRateDate = Math.floor(Date.now() / 1000);
+    // Update exchange rate to 1.1500 (EUR strengthened) - use a date in 2024
+    const newRateDate = 1704153600; // 2024-01-02 00:00:00 UTC
     fixture.db.prepare(`
-      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
-      values ('EUR', 'USD', ?, 1.1500, 'Manual Entry')
-    `).run(newRateDate);
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source, created_time)
+      values ('EUR', 'USD', ?, 1.1500, 'Manual Entry', ?)
+    `).run(newRateDate, newRateDate);
 
     // Check revaluation candidates after rate change
     const candidates = fixture.db.prepare(`
@@ -455,10 +455,11 @@ await test('Foreign Exchange - FX Revaluation Calculations', async function (t) 
 
   await t.test('should track revaluation runs properly', async function (t) {
     // Create a revaluation run
+    const revalDate = 1704153600; // 2024-01-02 00:00:00 UTC
     const revalRunResult = fixture.db.prepare(`
-      insert into fx_revaluation_run (revaluation_date, functional_currency_code, total_unrealized_gain_loss, notes)
-      values (?, 'USD', 5000, 'Monthly FX revaluation')
-    `).run(Math.floor(Date.now() / 1000));
+      insert into fx_revaluation_run (revaluation_date, functional_currency_code, total_unrealized_gain_loss, notes, created_time)
+      values (?, 'USD', 5000, 'Monthly FX revaluation', ?)
+    `).run(revalDate, revalDate);
 
     const revalRunId = revalRunResult.lastInsertRowid;
 
@@ -539,11 +540,11 @@ await test('Foreign Exchange - Rate Import Validation', async function (t) {
 
   await t.test('should prevent modification of exchange rate key fields', async function (t) {
     // Insert a valid rate first
-    const rateDate = Math.floor(Date.now() / 1000) - 86400; // Yesterday
+    const rateDate = 1704153600; // 2024-01-02 00:00:00 UTC
     fixture.db.prepare(`
-      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
-      values ('GBP', 'USD', ?, 1.2500, 'Manual Entry')
-    `).run(rateDate);
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source, created_time)
+      values ('GBP', 'USD', ?, 1.2500, 'Manual Entry', ?)
+    `).run(rateDate, rateDate);
 
     // Try to modify currency codes - should fail
     t.assert.throws(function () {
@@ -781,12 +782,13 @@ await test('Foreign Exchange - Rate Source Management', async function (t) {
   await t.test('should track rate import logs', async function (t) {
     // Create a sample import log
     const sourceId = 1; // Manual Entry source
+    const importTime = 1704153600; // 2024-01-02 00:00:00 UTC
     const logResult = fixture.db.prepare(`
       insert into fx_rate_import_log (
-        source_id, rates_imported, rates_updated, rates_failed,
-        import_status, error_message
-      ) values (?, 10, 2, 0, 'success', null)
-    `).run(sourceId);
+        source_id, import_time, rates_imported, rates_updated, rates_failed,
+        success_time, error_message
+      ) values (?, ?, 10, 2, 0, ?, null)
+    `).run(sourceId, importTime, importTime);
 
     const importLog = fixture.db.prepare(`
       select * from fx_rate_import_log where id = ?
@@ -794,8 +796,8 @@ await test('Foreign Exchange - Rate Source Management', async function (t) {
 
     t.assert.equal(importLog.rates_imported, 10, 'Should track imported rates count');
     t.assert.equal(importLog.rates_updated, 2, 'Should track updated rates count');
-    t.assert.equal(importLog.import_status, 'success', 'Should track import status');
-    t.assert.equal(Number(importLog.import_time) > 0, true, 'Should have import timestamp');
+    t.assert.equal(importLog.success_time, importTime, 'Should track success timestamp');
+    t.assert.equal(importLog.failed_time, null, 'Should not have failed timestamp for successful import');
   });
 
   fixture.cleanup();
