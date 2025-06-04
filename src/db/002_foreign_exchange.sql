@@ -50,7 +50,7 @@ create table if not exists fx_revaluation_run (
   functional_currency_code text not null,
   total_unrealized_gain_loss integer not null default 0,
   journal_entry_ref integer,
-  created_time integer not null default (unixepoch()),
+  created_time integer not null,
   notes text,
   foreign key (functional_currency_code) references currency (code) on update restrict on delete restrict,
   foreign key (journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
@@ -86,17 +86,19 @@ create table if not exists fx_rate_source (
   api_key_required integer not null default 0 check (api_key_required in (0, 1)),
   is_active integer not null default 1 check (is_active in (0, 1)),
   last_sync_time integer,
-  created_time integer not null default (unixepoch())
+  created_time integer not null
 ) strict;
 
 create table if not exists fx_rate_import_log (
   id integer primary key,
   source_id integer not null,
-  import_time integer not null default (unixepoch()),
+  import_time integer not null,
   rates_imported integer not null default 0,
   rates_updated integer not null default 0,
   rates_failed integer not null default 0,
-  import_status text not null check (import_status in ('success', 'partial', 'failed')),
+  success_time integer, -- When import completed successfully
+  partial_time integer, -- When import completed with some failures
+  failed_time integer,  -- When import failed completely
   error_message text,
   foreign key (source_id) references fx_rate_source (id) on update restrict on delete restrict
 ) strict;
@@ -195,14 +197,14 @@ order by er.from_currency_code, er.to_currency_code, er.rate_date desc;
 
 --- DEFAULT FX RATE SOURCES ---
 
-insert into fx_rate_source (name, description, base_url, api_key_required, is_active) values
-  ('Manual Entry', 'Manually entered exchange rates', null, 0, 1),
-  ('European Central Bank', 'ECB daily reference rates', 'https://www.ecb.europa.eu/stats/eurofxref/', 0, 1),
-  ('Bank of England', 'BoE daily exchange rates', 'https://www.bankofengland.co.uk/boeapps/database/', 0, 1),
-  ('Federal Reserve', 'Fed H.10 Foreign Exchange Rates', 'https://www.federalreserve.gov/releases/h10/', 0, 1),
-  ('Exchange Rate API', 'Free currency exchange rate API', 'https://api.exchangerate-api.com/v4/latest/', 0, 0),
-  ('Currency Layer', 'Real-time exchange rates API', 'https://currencylayer.com/', 1, 0),
-  ('Open Exchange Rates', 'Real-time exchange rates', 'https://openexchangerates.org/', 1, 0)
+insert into fx_rate_source (name, description, base_url, api_key_required, is_active, created_time) values
+  ('Manual Entry', 'Manually entered exchange rates', null, 0, 1, 1704067200),
+  ('European Central Bank', 'ECB daily reference rates', 'https://www.ecb.europa.eu/stats/eurofxref/', 0, 1, 1704067200),
+  ('Bank of England', 'BoE daily exchange rates', 'https://www.bankofengland.co.uk/boeapps/database/', 0, 1, 1704067200),
+  ('Federal Reserve', 'Fed H.10 Foreign Exchange Rates', 'https://www.federalreserve.gov/releases/h10/', 0, 1, 1704067200),
+  ('Exchange Rate API', 'Free currency exchange rate API', 'https://api.exchangerate-api.com/v4/latest/', 0, 0, 1704067200),
+  ('Currency Layer', 'Real-time exchange rates API', 'https://currencylayer.com/', 1, 0, 1704067200),
+  ('Open Exchange Rates', 'Real-time exchange rates', 'https://openexchangerates.org/', 1, 0, 1704067200)
 on conflict (name) do update set
   description = excluded.description,
   base_url = excluded.base_url,
@@ -229,7 +231,7 @@ begin
       then raise(rollback, 'exchange rate seems unreasonably high')
     end,
     case
-      when new.rate_date > unixepoch()
+      when new.rate_date > 1735689600 -- 2025-01-01 00:00:00 UTC (reasonable future limit)
       then raise(rollback, 'exchange rate date cannot be in the future')
     end;
 end;
@@ -257,18 +259,18 @@ begin
 end;
 
 --- SAMPLE EXCHANGE RATES ---
--- Insert some sample exchange rates for testing (rates as of a typical day)
-insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source) values
-  ('EUR', 'USD', unixepoch('2024-01-01'), 1.1050, 'Manual Entry'),
-  ('GBP', 'USD', unixepoch('2024-01-01'), 1.2680, 'Manual Entry'),
-  ('JPY', 'USD', unixepoch('2024-01-01'), 0.0071, 'Manual Entry'),
-  ('CAD', 'USD', unixepoch('2024-01-01'), 0.7456, 'Manual Entry'),
-  ('AUD', 'USD', unixepoch('2024-01-01'), 0.6789, 'Manual Entry'),
-  ('CHF', 'USD', unixepoch('2024-01-01'), 1.0876, 'Manual Entry'),
-  ('CNY', 'USD', unixepoch('2024-01-01'), 0.1398, 'Manual Entry'),
-  ('SEK', 'USD', unixepoch('2024-01-01'), 0.0952, 'Manual Entry'),
-  ('NOK', 'USD', unixepoch('2024-01-01'), 0.0943, 'Manual Entry'),
-  ('DKK', 'USD', unixepoch('2024-01-01'), 0.1481, 'Manual Entry')
+-- Insert some sample exchange rates for testing (rates as of 2024-01-01)
+insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source, created_time) values
+  ('EUR', 'USD', 1704067200, 1.1050, 'Manual Entry', 1704067200), -- 2024-01-01 00:00:00 UTC
+  ('GBP', 'USD', 1704067200, 1.2680, 'Manual Entry', 1704067200),
+  ('JPY', 'USD', 1704067200, 0.0071, 'Manual Entry', 1704067200),
+  ('CAD', 'USD', 1704067200, 0.7456, 'Manual Entry', 1704067200),
+  ('AUD', 'USD', 1704067200, 0.6789, 'Manual Entry', 1704067200),
+  ('CHF', 'USD', 1704067200, 1.0876, 'Manual Entry', 1704067200),
+  ('CNY', 'USD', 1704067200, 0.1398, 'Manual Entry', 1704067200),
+  ('SEK', 'USD', 1704067200, 0.0952, 'Manual Entry', 1704067200),
+  ('NOK', 'USD', 1704067200, 0.0943, 'Manual Entry', 1704067200),
+  ('DKK', 'USD', 1704067200, 0.1481, 'Manual Entry', 1704067200)
 on conflict (from_currency_code, to_currency_code, rate_date) do update set
   rate = excluded.rate,
   source = excluded.source;
