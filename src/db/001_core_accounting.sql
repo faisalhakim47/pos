@@ -50,7 +50,7 @@ create table if not exists exchange_rate (
   rate_date integer not null,
   rate real not null check (rate > 0),
   source text,
-  created_time integer not null default (unixepoch()),
+  created_time integer not null,
   primary key (from_currency_code, to_currency_code, rate_date),
   foreign key (from_currency_code) references currency (code) on update restrict on delete restrict,
   foreign key (to_currency_code) references currency (code) on update restrict on delete restrict
@@ -567,7 +567,7 @@ select
   code as from_currency_code,
   code as to_currency_code,
   1.0 as rate,
-  unixepoch() as rate_date
+  1704067200 as rate_date -- 2024-01-01 00:00:00 UTC
 from currency;
 
 -- Multi-currency account balance view
@@ -641,7 +641,8 @@ select
   je.note as original_note,
   je.transaction_currency_code,
   je.exchange_rate_to_functional,
-  'Reversal of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) as reversal_note
+  'Reversal of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) as reversal_note,
+  null as reversal_transaction_time -- To be set by caller
 from journal_entry je
 where je.post_time is not null
   and je.reversed_by_journal_entry_ref is null
@@ -675,7 +676,7 @@ begin
     exchange_rate_to_functional
   )
   select
-    unixepoch(),
+    coalesce(new.reversal_transaction_time, je.transaction_time),
     'Reversal of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) || ' [Reverses Entry #' || printf('%.0f', new.original_ref) || ']',
     je.transaction_currency_code,
     je.exchange_rate_to_functional
@@ -712,7 +713,7 @@ begin
 
   -- Post the reversal entry immediately
   update journal_entry
-  set post_time = unixepoch()
+  set post_time = coalesce(new.reversal_transaction_time, (select transaction_time from journal_entry where ref = new.original_ref))
   where ref = (select max(ref) from journal_entry);
 end;
 
@@ -726,7 +727,8 @@ select
   je.note as original_note,
   je.transaction_currency_code,
   je.exchange_rate_to_functional,
-  'Correction of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) as correction_note
+  'Correction of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) as correction_note,
+  null as correction_transaction_time -- To be set by caller
 from journal_entry je
 where je.post_time is not null
   and je.reversed_by_journal_entry_ref is null
@@ -760,7 +762,7 @@ begin
     exchange_rate_to_functional
   )
   select
-    unixepoch(),
+    coalesce(new.correction_transaction_time, je.transaction_time),
     'Correction of: ' || coalesce(je.note, 'Journal Entry ' || je.ref) || ' [Corrects Entry #' || printf('%.0f', new.original_ref) || ']',
     je.transaction_currency_code,
     je.exchange_rate_to_functional
@@ -797,7 +799,7 @@ begin
 
   -- Post the correction entry
   update journal_entry
-  set post_time = unixepoch()
+  set post_time = coalesce(new.correction_transaction_time, (select transaction_time from journal_entry where ref = new.original_ref))
   where ref = (select max(ref) from journal_entry);
 end;
 

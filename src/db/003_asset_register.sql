@@ -90,8 +90,11 @@ create table if not exists fixed_asset (
   salvage_value integer not null default 0 check (salvage_value >= 0),
   declining_balance_rate real check (declining_balance_rate > 0 and declining_balance_rate <= 1),
 
-  -- Current status
-  status text not null default 'active' check (status in ('active', 'disposed', 'fully_depreciated', 'impaired')),
+  -- Status timestamps (only one should be set at a time)
+  active_time integer not null, -- When asset became active (usually purchase_date)
+  disposed_time integer, -- When asset was disposed
+  fully_depreciated_time integer, -- When asset became fully depreciated
+  impaired_time integer, -- When asset was impaired
   location text,
 
   -- Disposal information
@@ -106,8 +109,22 @@ create table if not exists fixed_asset (
 
 create index if not exists fixed_asset_asset_number_index on fixed_asset (asset_number);
 create index if not exists fixed_asset_category_index on fixed_asset (asset_category_id);
-create index if not exists fixed_asset_status_index on fixed_asset (status);
+create index if not exists fixed_asset_active_time_index on fixed_asset (active_time);
+create index if not exists fixed_asset_disposed_time_index on fixed_asset (disposed_time);
 create index if not exists fixed_asset_purchase_date_index on fixed_asset (purchase_date);
+
+-- View to compute current asset status from timestamp fields
+drop view if exists fixed_asset_with_status;
+create view fixed_asset_with_status as
+select
+  fa.*,
+  case
+    when fa.disposed_time is not null then 'disposed'
+    when fa.fully_depreciated_time is not null then 'fully_depreciated'
+    when fa.impaired_time is not null then 'impaired'
+    else 'active'
+  end as status
+from fixed_asset fa;
 
 -- Asset modifications (improvements, betterments, repairs)
 create table if not exists asset_modification (
@@ -186,16 +203,20 @@ create index if not exists asset_impairment_date_index on asset_impairment (impa
 drop trigger if exists fixed_asset_disposal_validation_trigger;
 create trigger fixed_asset_disposal_validation_trigger
 before update on fixed_asset for each row
-when new.status = 'disposed' and old.status != 'disposed'
+when new.disposed_time is not null and old.disposed_time is null
 begin
   select
     case
       when new.disposal_date is null
-      then raise(rollback, 'disposal_date is required when asset status is disposed')
+      then raise(rollback, 'disposal_date is required when asset is disposed')
     end,
     case
       when new.disposal_date < new.purchase_date
       then raise(rollback, 'disposal_date cannot be before purchase_date')
+    end,
+    case
+      when new.disposed_time < new.purchase_date
+      then raise(rollback, 'disposed_time cannot be before purchase_date')
     end;
 end;
 
@@ -236,11 +257,11 @@ end;
 drop trigger if exists fixed_asset_disposed_modification_trigger;
 create trigger fixed_asset_disposed_modification_trigger
 before update on fixed_asset for each row
-when old.status = 'disposed'
+when old.disposed_time is not null
 begin
   select
     case
-      when new.status != old.status or
+      when new.disposed_time != old.disposed_time or
            new.purchase_cost != old.purchase_cost or
            new.useful_life_years != old.useful_life_years or
            new.depreciation_method != old.depreciation_method
@@ -263,7 +284,7 @@ select
     then cast((fa.purchase_cost - fa.salvage_value) / (fa.useful_life_years * 12.0) as integer)
     else 0
   end as monthly_depreciation
-from fixed_asset fa
+from fixed_asset_with_status fa
 where fa.depreciation_method = 'straight_line'
   and fa.status = 'active';
 
@@ -283,7 +304,7 @@ select
     then cast((fa.purchase_cost - coalesce(latest_dep.accumulated_depreciation, 0)) * fa.declining_balance_rate / 12.0 as integer)
     else 0
   end as next_month_depreciation
-from fixed_asset fa
+from fixed_asset_with_status fa
 left join (
   select
     fixed_asset_id,
@@ -314,7 +335,7 @@ select
   end as depreciation_per_unit,
   coalesce(latest_usage.cumulative_units, 0) as total_units_used,
   coalesce(latest_dep.accumulated_depreciation, 0) as current_accumulated_depreciation
-from fixed_asset fa
+from fixed_asset_with_status fa
 left join (
   select
     fixed_asset_id,
@@ -361,7 +382,7 @@ select
   fa.purchase_cost + coalesce(sum(case when am.capitalizable = 1 then am.cost else 0 end), 0) as total_cost_basis,
   coalesce(max(dp.accumulated_depreciation), 0) as accumulated_depreciation,
   fa.purchase_cost - coalesce(max(dp.accumulated_depreciation), 0) as book_value
-from fixed_asset fa
+from fixed_asset_with_status fa
 join asset_category ac on fa.asset_category_id = ac.id
 left join asset_modification am on fa.id = am.fixed_asset_id
 left join depreciation_period dp on fa.id = dp.fixed_asset_id
@@ -386,8 +407,10 @@ select
   fa.status,
   coalesce(latest_dep.accumulated_depreciation, 0) as current_accumulated_depreciation,
   fa.purchase_cost - coalesce(latest_dep.accumulated_depreciation, 0) as current_book_value,
-  julianday('now') - julianday(datetime(fa.purchase_date, 'unixepoch')) as days_since_purchase
-from fixed_asset fa
+  -- Note: days_since_purchase calculation removed to avoid unixepoch dependency
+  -- Use contextual time calculations in application layer instead
+  null as days_since_purchase
+from fixed_asset_with_status fa
 join asset_category ac on fa.asset_category_id = ac.id
 left join (
   select
@@ -401,9 +424,9 @@ left join (
     where dp2.fixed_asset_id = dp1.fixed_asset_id
   )
 ) latest_dep on fa.id = latest_dep.fixed_asset_id
-where fa.status = 'active'
-  and (latest_dep.period_end_date is null or
-       julianday('now') - julianday(datetime(latest_dep.period_end_date, 'unixepoch')) >= 365);
+where fa.status = 'active';
+  -- Note: time-based filtering removed to avoid unixepoch dependency
+  -- Use contextual time filtering in application layer instead
 
 -- Commit the transaction to finalize all schema changes
 commit transaction;

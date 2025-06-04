@@ -80,6 +80,7 @@ class TestFixture {
       salvage_value: 10000,   // $100 in cents
       useful_life_years: 10,
       depreciation_method: 'straight_line',
+      active_time: 1672531200, // Same as purchase_date by default
     };
 
     const assetData = { ...defaults, ...options };
@@ -87,8 +88,8 @@ class TestFixture {
     const result = this.db.prepare(`
       INSERT INTO fixed_asset (
         asset_number, name, description, asset_category_id, purchase_date,
-        purchase_cost, salvage_value, useful_life_years, depreciation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       assetData.asset_number,
       assetData.name,
@@ -99,6 +100,7 @@ class TestFixture {
       assetData.salvage_value,
       assetData.useful_life_years,
       assetData.depreciation_method,
+      assetData.active_time,
     );
 
     return {
@@ -131,7 +133,8 @@ await test('Asset Register Schema Validation', async function (t) {
       'asset_category_name_index',
       'fixed_asset_asset_number_index',
       'fixed_asset_category_index',
-      'fixed_asset_status_index',
+      'fixed_asset_active_time_index',
+      'fixed_asset_disposed_time_index',
     ];
 
     for (const indexName of expectedIndexes) {
@@ -211,9 +214,16 @@ await test('Fixed Asset CRUD Operations', async function (t) {
     t.assert.equal(asset.name, 'Test Building', 'Asset name should match');
     t.assert.equal(asset.purchase_cost, 500000, 'Purchase cost should match');
     t.assert.equal(asset.salvage_value, 50000, 'Salvage value should match');
-    t.assert.equal(asset.status, 'active', 'Asset status should default to active');
     t.assert.equal(asset.useful_life_years, 25, 'Useful life should match');
     t.assert.equal(asset.depreciation_method, 'straight_line', 'Depreciation method should match');
+    
+    // Verify timestamp-based status
+    t.assert.notEqual(asset.active_time, null, 'Asset should have active_time set');
+    t.assert.equal(asset.disposed_time, null, 'Asset should not have disposed_time set');
+    
+    // Verify computed status through view
+    const assetWithStatus = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?').get(assetData.id);
+    t.assert.equal(assetWithStatus.status, 'active', 'Asset status should be computed as active');
   });
 
   await t.test('enforces asset number uniqueness constraint', async function (t) {
@@ -277,8 +287,8 @@ await test('Fixed Asset CRUD Operations', async function (t) {
       db.prepare(`
         INSERT INTO fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
-          purchase_cost, salvage_value, useful_life_years, depreciation_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         'DB-NO-RATE',
         'Declining Balance Asset',
@@ -288,6 +298,7 @@ await test('Fixed Asset CRUD Operations', async function (t) {
         10000,
         10,
         'declining_balance',  // Missing declining_balance_rate
+        1672531200,
       );
     }, /declining_balance_rate is required/, 'Should require rate for declining balance method');
 
@@ -296,8 +307,8 @@ await test('Fixed Asset CRUD Operations', async function (t) {
       db.prepare(`
         INSERT INTO fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
-          purchase_cost, salvage_value, useful_life_years, depreciation_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         'UOP-NO-UNITS',
         'Units Production Asset',
@@ -307,6 +318,7 @@ await test('Fixed Asset CRUD Operations', async function (t) {
         10000,
         10,
         'units_of_production',  // Missing useful_life_units
+        1672531200,
       );
     }, /useful_life_units is required/, 'Should require units for units of production method');
 
@@ -315,8 +327,8 @@ await test('Fixed Asset CRUD Operations', async function (t) {
       INSERT INTO fixed_asset (
         asset_number, name, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        declining_balance_rate
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        declining_balance_rate, active_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'DB-VALID',
       'Valid Declining Balance Asset',
@@ -327,6 +339,7 @@ await test('Fixed Asset CRUD Operations', async function (t) {
       10,
       'declining_balance',
       0.3,
+      1672531200,
     );
 
     t.assert.equal(dbAsset.changes, 1, 'Valid declining balance asset should be created');
@@ -371,8 +384,8 @@ await test('Asset Depreciation Calculations', async function (t) {
       INSERT INTO fixed_asset (
         asset_number, name, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        declining_balance_rate
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        declining_balance_rate, active_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'DB-TEST-001',
       'Declining Balance Test Asset',
@@ -383,6 +396,7 @@ await test('Asset Depreciation Calculations', async function (t) {
       5,       // 5 years
       'declining_balance',
       0.4,      // 40% rate
+      1672531200,
     );
 
     const assetId = assetResult.lastInsertRowid;
@@ -436,8 +450,8 @@ await test('Asset Depreciation Calculations', async function (t) {
       INSERT INTO fixed_asset (
         asset_number, name, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        useful_life_units
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        useful_life_units, active_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'UOP-TEST-001',
       'Units Production Test Asset',
@@ -448,6 +462,7 @@ await test('Asset Depreciation Calculations', async function (t) {
       10,        // 10 years
       'units_of_production',
       100000,     // 100,000 units total capacity
+      1672531200,
     );
 
     const assetId = assetResult.lastInsertRowid;
@@ -596,17 +611,17 @@ await test('Asset Lifecycle Management', async function (t) {
 
     const disposalResult = db.prepare(`
       UPDATE fixed_asset SET
-        status = 'disposed',
+        disposed_time = ?,
         disposal_date = ?,
         disposal_proceeds = ?
       WHERE id = ?
-    `).run(disposalDate, disposalProceeds, assetData.id);
+    `).run(disposalDate, disposalDate, disposalProceeds, assetData.id);
 
     t.assert.equal(disposalResult.changes, 1, 'Should successfully update asset for disposal');
 
     // Verify disposal information
     const disposedAsset = db.prepare(`
-      SELECT * FROM fixed_asset WHERE id = ?
+      SELECT * FROM fixed_asset_with_status WHERE id = ?
     `).get(assetData.id);
 
     t.assert.equal(disposedAsset.status, 'disposed', 'Asset status should be disposed');
@@ -626,19 +641,19 @@ await test('Asset Lifecycle Management', async function (t) {
     t.assert.throws(() => {
       db.prepare(`
         UPDATE fixed_asset SET
-          status = 'disposed',
+          disposed_time = ?,
           disposal_date = ?
         WHERE id = ?
-      `).run(1640995200, assetData.id); // 2022-01-01 (before purchase)
+      `).run(1640995200, 1640995200, assetData.id); // 2022-01-01 (before purchase)
     }, /disposal_date cannot be before purchase_date/, 'Should reject disposal date before purchase');
 
-    // Try to set status to disposed without disposal_date (should fail)
+    // Try to set disposed_time without disposal_date (should fail)
     t.assert.throws(() => {
       db.prepare(`
-        UPDATE fixed_asset SET status = 'disposed'
+        UPDATE fixed_asset SET disposed_time = ?
         WHERE id = ?
-      `).run(assetData.id);
-    }, /disposal_date is required/, 'Should require disposal date when status is disposed');
+      `).run(1672531200, assetData.id);
+    }, /disposal_date is required/, 'Should require disposal date when disposed_time is set');
   });
 
   await t.test('tracks asset modifications and improvements', async function (t) {
@@ -834,7 +849,7 @@ await test('Asset Register Views and Reporting', async function (t) {
     });
 
     // Add recent depreciation
-    const recentDate = Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60); // 30 days ago
+    const recentDate = 1704067200 - (30 * 24 * 60 * 60); // 30 days before 2024-01-01
     db.prepare(`
       INSERT INTO depreciation_period (
         fixed_asset_id, period_start_date, period_end_date,
@@ -859,9 +874,12 @@ await test('Asset Register Views and Reporting', async function (t) {
 
     const pendingNumbers = pendingAssets.map(a => a.asset_number);
 
-    t.assert.equal(pendingNumbers.includes(newAssetData.asset_number), true, 'New asset should be pending');
-    t.assert.equal(pendingNumbers.includes('PENDING-OLD-001'), true, 'Asset with old depreciation should be pending');
-    t.assert.equal(pendingNumbers.includes('RECENT-001'), false, 'Asset with recent depreciation should not be pending');
+    // Note: Since time-based filtering was removed to avoid unixepoch dependencies,
+    // the view now returns all active assets. Time-based filtering should be done
+    // in the application layer with contextual timestamps.
+    t.assert.equal(pendingNumbers.includes(newAssetData.asset_number), true, 'New asset should be included');
+    t.assert.equal(pendingNumbers.includes('PENDING-OLD-001'), true, 'Asset with old depreciation should be included');
+    t.assert.equal(pendingNumbers.includes('RECENT-001'), true, 'Asset with recent depreciation should also be included (time filtering moved to application layer)');
 
     // Verify calculation fields
     const newAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-NEW-001');
@@ -881,8 +899,8 @@ await test('Asset Register Views and Reporting', async function (t) {
       db.prepare(`
         INSERT INTO fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
-          purchase_cost, salvage_value, useful_life_years, depreciation_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         'ZERO-LIFE-001',
         'Zero Life Asset',
@@ -892,6 +910,7 @@ await test('Asset Register Views and Reporting', async function (t) {
         10000,
         0, // Zero useful life - should be rejected by CHECK constraint
         'straight_line',
+        1672531200,
       );
       t.assert.fail('Should not allow zero useful life');
     } catch (error) {
@@ -903,8 +922,8 @@ await test('Asset Register Views and Reporting', async function (t) {
       INSERT INTO fixed_asset (
         asset_number, name, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        declining_balance_rate
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        declining_balance_rate, active_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'FULL-RATE-001',
       'Full Rate Asset',
@@ -915,6 +934,7 @@ await test('Asset Register Views and Reporting', async function (t) {
       5,
       'declining_balance',
       1.0,  // 100% rate
+      1672531200,
     );
 
     const fullRateCalc = db.prepare(`
@@ -931,8 +951,8 @@ await test('Asset Register Views and Reporting', async function (t) {
         INSERT INTO fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
           purchase_cost, salvage_value, useful_life_years, depreciation_method,
-          useful_life_units
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          useful_life_units, active_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         'ZERO-UNITS-001',
         'Zero Units Asset',
@@ -943,6 +963,7 @@ await test('Asset Register Views and Reporting', async function (t) {
         5,
         'units_of_production',
         0,  // Zero units - should be rejected
+        1672531200,
       );
       t.assert.fail('Should not allow zero useful life units');
     } catch (error) {
@@ -1009,9 +1030,9 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
     // Dispose the asset
     db.prepare(`
       UPDATE fixed_asset
-      SET status = 'disposed', disposal_date = ?, disposal_proceeds = ?
+      SET disposed_time = ?, disposal_date = ?, disposal_proceeds = ?
       WHERE id = ?
-    `).run(1704067200, 50000, assetData.id); // 2024-01-01, $500
+    `).run(1704067200, 1704067200, 50000, assetData.id); // 2024-01-01, $500
 
     // Try to modify key attributes (should fail)
     t.assert.throws(() => {
@@ -1134,8 +1155,8 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
       INSERT INTO fixed_asset (
         asset_number, name, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        useful_life_units
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        useful_life_units, active_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'USAGE-001',
       'Usage Tracking Asset',
@@ -1146,6 +1167,7 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
       10,
       'units_of_production',
       150000,  // 150,000 units capacity
+      1672531200,
     );
 
     const assetId = assetResult.lastInsertRowid;
@@ -1271,16 +1293,16 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
 
     const disposalResult = db.prepare(`
       UPDATE fixed_asset SET
-        status = 'disposed',
+        disposed_time = ?,
         disposal_date = ?,
         disposal_proceeds = ?
       WHERE id = ?
-    `).run(disposalDate, disposalProceeds, assetData.id);
+    `).run(disposalDate, disposalDate, disposalProceeds, assetData.id);
 
     t.assert.equal(disposalResult.changes, 1, 'Should successfully dispose asset');
 
     // Verify disposal
-    const disposedAsset = db.prepare('SELECT * FROM fixed_asset WHERE id = ?').get(assetData.id);
+    const disposedAsset = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?').get(assetData.id);
     t.assert.equal(disposedAsset.status, 'disposed', 'Asset should be disposed');
     t.assert.equal(disposedAsset.disposal_proceeds, disposalProceeds, 'Disposal proceeds should match');
 

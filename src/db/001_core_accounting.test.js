@@ -1040,9 +1040,9 @@ await test('Core Accounting Schema', async function (t) {
     // Setup EUR currency and exchange rate
     db.exec('begin');
     db.prepare(`
-      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
-      values (?, ?, ?, ?, ?)
-    `).run('EUR', 'USD', 1000000000, 1.2, 'manual');
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source, created_time)
+      values (?, ?, ?, ?, ?, ?)
+    `).run('EUR', 'USD', 1000000000, 1.2, 'manual', 1000000000);
     db.exec('commit');
 
     // Create initial capital in USD
@@ -1151,8 +1151,8 @@ await test('Core Accounting Schema', async function (t) {
 
     // Now add the required exchange rate
     db.prepare(`
-      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source)
-      values ('EUR', 'USD', 1000000000, 1.2, 'manual')
+      insert into exchange_rate (from_currency_code, to_currency_code, rate_date, rate, source, created_time)
+      values ('EUR', 'USD', 1000000000, 1.2, 'manual', 1000000000)
     `).run();
 
     // Now the queries should work with proper conversion
