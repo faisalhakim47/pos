@@ -21,7 +21,7 @@ class TestFixture {
     this.label = label.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
     this.testRunId = testRunId;
     this.coreSchemaFilePath = join(__dirname, '001_core_accounting.sql');
-    this.schemaFilePath = join(__dirname, '005_finance_reporting.sql');
+    this.schemaFilePath = join(__dirname, '099_finance_reporting.sql');
     this.schemaFileContent = null;
     this.db = null;
     this.dbPath = null;
