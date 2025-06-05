@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -216,11 +217,11 @@ await test('Fixed Asset CRUD Operations', async function (t) {
     t.assert.equal(asset.salvage_value, 50000, 'Salvage value should match');
     t.assert.equal(asset.useful_life_years, 25, 'Useful life should match');
     t.assert.equal(asset.depreciation_method, 'straight_line', 'Depreciation method should match');
-    
+
     // Verify timestamp-based status
     t.assert.notEqual(asset.active_time, null, 'Asset should have active_time set');
     t.assert.equal(asset.disposed_time, null, 'Asset should not have disposed_time set');
-    
+
     // Verify computed status through view
     const assetWithStatus = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?').get(assetData.id);
     t.assert.equal(assetWithStatus.status, 'active', 'Asset status should be computed as active');

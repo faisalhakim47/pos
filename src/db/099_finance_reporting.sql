@@ -199,15 +199,15 @@ begin
         + coalesce(last_trial_balance_account.db_reporting, 0)
         - coalesce(last_trial_balance_account.cr_reporting, 0)
         + coalesce(sum(
-          case 
-            when account.currency_code = fsc.reporting_currency_code 
+          case
+            when account.currency_code = fsc.reporting_currency_code
             then journal_entry_line.db
             else cast(journal_entry_line.db_functional * coalesce(erl_reporting.rate, 1.0) as integer)
           end
         ), 0)
         - coalesce(sum(
-          case 
-            when account.currency_code = fsc.reporting_currency_code 
+          case
+            when account.currency_code = fsc.reporting_currency_code
             then journal_entry_line.cr
             else cast(journal_entry_line.cr_functional * coalesce(erl_reporting.rate, 1.0) as integer)
           end
@@ -218,10 +218,10 @@ begin
     from account
     left join account_type on account_type.name = account.account_type_name
     cross join finance_statement_config fsc
-    left join exchange_rate_lookup erl_functional 
-      on erl_functional.from_currency_code = account.currency_code 
+    left join exchange_rate_lookup erl_functional
+      on erl_functional.from_currency_code = account.currency_code
       and erl_functional.to_currency_code = (select code from currency where is_functional_currency = 1)
-    left join exchange_rate_lookup erl_reporting 
+    left join exchange_rate_lookup erl_reporting
       on erl_reporting.from_currency_code = (select code from currency where is_functional_currency = 1)
       and erl_reporting.to_currency_code = fsc.reporting_currency_code
     left join trial_balance as last_trial_balance
@@ -243,8 +243,8 @@ begin
       )
     group by account.code
   ) account_balance
-  where account_balance.net_balance != 0 
-     or account_balance.net_balance_functional != 0 
+  where account_balance.net_balance != 0
+     or account_balance.net_balance_functional != 0
      or account_balance.net_balance_reporting != 0;
 end;
 
@@ -954,7 +954,7 @@ begin
   -- Create journal entry for closing entries
   insert into journal_entry (transaction_time, note)
   values (new.end_time, 'Fiscal year closing entries for ' || new.begin_time);
-  
+
   -- Close revenue accounts by reversing their net balance
   insert into journal_entry_line_auto_number (
     journal_entry_ref,
@@ -1032,17 +1032,17 @@ begin
     select
       -- Net Income = Revenues - Expenses - Dividends
       coalesce(sum(case when account_code in (
-        select account_code from account_tag 
+        select account_code from account_tag
         join finance_statement_config on finance_statement_config.id = 1
         where tag = fiscal_year_closing_revenue_tag
       ) then (sum_of_cr - sum_of_db) else 0 end), 0) -
       coalesce(sum(case when account_code in (
-        select account_code from account_tag 
-        join finance_statement_config on finance_statement_config.id = 1 
+        select account_code from account_tag
+        join finance_statement_config on finance_statement_config.id = 1
         where tag = fiscal_year_closing_expense_tag
       ) then (sum_of_db - sum_of_cr) else 0 end), 0) -
       coalesce(sum(case when account_code in (
-        select account_code from account_tag 
+        select account_code from account_tag
         join finance_statement_config on finance_statement_config.id = 1
         where tag = fiscal_year_closing_dividend_tag
       ) then (sum_of_db - sum_of_cr) else 0 end), 0) as net_income
@@ -1059,7 +1059,7 @@ begin
       select 1 from journal_entry_line
       where journal_entry_ref = last_insert_rowid()
     );
-    
+
   -- Delete the entry if it has no lines
   delete from journal_entry
   where ref = last_insert_rowid()

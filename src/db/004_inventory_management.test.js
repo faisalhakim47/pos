@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -1235,7 +1236,7 @@ await test('Inventory Management Schema', async function (t) {
 
   await t.test('Accounting principles compliance - LCM and reserves', async function (t) {
     const db = new DatabaseSync(':memory:');
-    
+
     try {
       // Load all schemas
       db.exec(readFileSync(join(__dirname, '001_core_accounting.sql'), 'utf8'));
@@ -1252,16 +1253,16 @@ await test('Inventory Management Schema', async function (t) {
         (51900, 'Slow Moving Reserve Expense', 'expense'),
         (10350, 'Inventory Reserve (Contra-Asset)', 'contra_asset')
       `);
-      
+
       // First create a test product
       db.exec(`
-        insert into product (sku, name, product_category_id, base_unit_code, costing_method, 
+        insert into product (sku, name, product_category_id, base_unit_code, costing_method,
                            inventory_account_code, cogs_account_code, sales_account_code, is_active,
                            created_time, updated_time)
         values ('TEST001', 'Test Product 1', 1, 'EACH', 'FIFO', 10300, 50100, 40100, 1,
                 ${Math.floor(Date.now() / 1000)}, ${Math.floor(Date.now() / 1000)})
       `);
-      
+
       const productId = db.prepare('select id from product where sku = ?').get('TEST001').id;
 
       // Add some inventory stock for the product
@@ -1284,12 +1285,12 @@ await test('Inventory Management Schema', async function (t) {
 
       // Verify LCM analysis view works
       const lcmAnalysis = db.prepare(`
-        select * from inventory_lcm_analysis 
+        select * from inventory_lcm_analysis
         where product_id = ?
       `).get(productId);
 
       t.assert.equal(lcmAnalysis.lcm_status, 'LCM_WRITEDOWN_REQUIRED', 'Should identify LCM writedown requirement');
-      t.assert.equal(Boolean(lcmAnalysis.potential_writedown_amount > 0), true, 'Should calculate writedown amount');
+      t.assert.equal(Number(lcmAnalysis.potential_writedown_amount) > 0, true, 'Should calculate writedown amount');
 
       // Test inventory reserve creation and journal entry automation
       db.exec(`
@@ -1304,7 +1305,7 @@ await test('Inventory Management Schema', async function (t) {
 
       // Apply the reserve to trigger journal entry
       db.exec(`
-        update inventory_reserve 
+        update inventory_reserve
         set applied_time = ${Math.floor(Date.now() / 1000)}
         where product_id = ${productId} and reserve_type = 'OBSOLESCENCE'
       `);
@@ -1341,9 +1342,9 @@ await test('Inventory Management Schema', async function (t) {
 
       // Test costing method change tracking (Consistency Principle)
       const originalMethod = db.prepare('select costing_method from product where id = ?').get(productId).costing_method;
-      
+
       db.exec(`
-        update product 
+        update product
         set costing_method = 'LIFO'
         where id = ${productId}
       `);
@@ -1385,7 +1386,7 @@ await test('Inventory Management Schema', async function (t) {
       `).get(productId);
 
       t.assert.equal(Boolean(abcAnalysis), true, 'Should provide ABC analysis');
-      t.assert.equal(Boolean(abcAnalysis.total_reserves >= 0), true, 'Should include reserve amounts');
+      t.assert.equal(Number(abcAnalysis.total_reserves) >= 0, true, 'Should include reserve amounts');
       t.assert.equal(Boolean(abcAnalysis.net_inventory_value), true, 'Should calculate net inventory value');
 
       // Test inventory reserve summary
@@ -1414,7 +1415,7 @@ await test('Inventory Management Schema', async function (t) {
 
   await t.test('Inventory cutoff controls and period-end procedures', async function (t) {
     const db = new DatabaseSync(':memory:');
-    
+
     try {
       // Load all schemas
       db.exec(readFileSync(join(__dirname, '001_core_accounting.sql'), 'utf8'));
@@ -1422,12 +1423,12 @@ await test('Inventory Management Schema', async function (t) {
 
       // Test inventory cutoff control table exists
       const tableExists = db.prepare(`
-        select name from sqlite_master 
+        select name from sqlite_master
         where type='table' and name='inventory_cutoff_control'
       `).get();
 
       t.assert.equal(Boolean(tableExists), true, 'Cutoff control table should exist');
-      
+
       // Test basic cutoff control functionality
       const warehouseId = db.prepare('select id from warehouse where code = ?').get('MAIN').id;
       const cutoffDate = Math.floor(Date.now() / 1000);
