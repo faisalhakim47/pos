@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -432,8 +431,8 @@ await test('Finance Reporting Schema', async function (t) {
     }
 
     // Verify accounting equation before closing
-    const totalDebits = report.reduce(function(sum, row) { return sum + Number(row.db); }, 0);
-    const totalCredits = report.reduce(function(sum, row) { return sum + Number(row.cr); }, 0);
+    const totalDebits = report.reduce(function (sum, row) { return sum + Number(row.db); }, 0);
+    const totalCredits = report.reduce(function (sum, row) { return sum + Number(row.cr); }, 0);
     t.assert.equal(totalDebits, totalCredits, 'Debits should equal credits in trial balance');
   });
 
@@ -454,7 +453,7 @@ await test('Finance Reporting Schema', async function (t) {
     `).all(1000000000, 1999999999);
     t.assert.equal(report.length > 0, true, 'Income statement should contain lines');
     // Check revenues
-    const revenues = report.filter(function(line) { return line.line_type === 'revenue'; });
+    const revenues = report.filter(function (line) { return line.line_type === 'revenue'; });
     t.assert.equal(revenues.length, 1, 'Should have one revenue account');
     t.assert.equal(revenues[0].account_code, 40100, 'Revenue should be Sales of Merchandise');
   });
@@ -477,7 +476,7 @@ await test('Finance Reporting Schema', async function (t) {
 
     t.assert.equal(report.length > 0, true, 'Balance sheet should contain lines');
     // Check current assets
-    const currentAssets = report.filter(function(line) { return line.line_type === 'current_asset'; });
+    const currentAssets = report.filter(function (line) { return line.line_type === 'current_asset'; });
     t.assert.equal(currentAssets.length >= 2, true, 'Should have current asset accounts');
     // Validate accounting equation: Assets = Liabilities + Equity
     const totalAssets = report.filter(function(line) { return line.line_type === 'total_asset'; });
@@ -779,26 +778,26 @@ await test('Finance Reporting Schema', async function (t) {
     const currentAssets = report.filter(function(line) { return line.line_type === 'current_asset'; });
     t.assert.equal(currentAssets.length >= 2, true, 'Should have current asset accounts');
 
-    const cash = currentAssets.find(function(a) { return a.account_code === 10100; });
-    const inventory = currentAssets.find(function(a) { return a.account_code === 10600; });
+    const cash = currentAssets.find(function (a) { return a.account_code === 10100; });
+    const inventory = currentAssets.find(function (a) { return a.account_code === 10600; });
 
     t.assert.equal(cash?.amount, 120000, 'Cash should be 120000 after closing');
     t.assert.equal(inventory?.amount, 20000, 'Merchandise inventory should be 20000 after closing');
 
     // Check for accumulated depreciation (contra-asset)
-    const nonCurrentAssets = report.filter(function(line) { return line.line_type === 'non_current_asset'; });
-    const accumulatedDepreciation = nonCurrentAssets.find(function(a) { return a.account_code === 12410; });
+    const nonCurrentAssets = report.filter(function (line) { return line.line_type === 'non_current_asset'; });
+    const accumulatedDepreciation = nonCurrentAssets.find(function (a) { return a.account_code === 12410; });
     t.assert.equal(accumulatedDepreciation?.amount, -5000, 'Accumulated depreciation should be -5000');
 
     // Check liability accounts
-    const currentLiabilities = report.filter(function(line) { return line.line_type === 'current_liability'; });
-    const accountsPayable = currentLiabilities.find(function(l) { return l.account_code === 20100; });
+    const currentLiabilities = report.filter(function (line) { return line.line_type === 'current_liability'; });
+    const accountsPayable = currentLiabilities.find(function (l) { return l.account_code === 20100; });
     t.assert.equal(accountsPayable?.amount, 20000, 'Accounts payable should be 20000');
 
     // Check equity accounts (should include retained earnings after closing)
-    const equity = report.filter(function(line) { return line.line_type === 'equity'; });
-    const commonStock = equity.find(function(e) { return e.account_code === 30100; });
-    const retainedEarnings = equity.find(function(e) { return e.account_code === 30200; });
+    const equity = report.filter(function (line) { return line.line_type === 'equity'; });
+    const commonStock = equity.find(function (e) { return e.account_code === 30100; });
+    const retainedEarnings = equity.find(function (e) { return e.account_code === 30200; });
 
     t.assert.equal(commonStock?.amount, 100000, 'Common stock should be 100000');
     t.assert.equal(retainedEarnings?.amount, 15000, 'Retained earnings should be 15000 after closing');

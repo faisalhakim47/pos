@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
@@ -87,10 +86,10 @@ class TestFixture {
     const assetData = { ...defaults, ...options };
 
     const result = this.db.prepare(`
-      INSERT INTO fixed_asset (
+      insert into fixed_asset (
         asset_number, name, description, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       assetData.asset_number,
       assetData.name,
@@ -286,10 +285,10 @@ await test('Fixed Asset CRUD Operations', async function (t) {
     // Test declining balance without rate (should fail)
     t.assert.throws(() => {
       db.prepare(`
-        INSERT INTO fixed_asset (
+        insert into fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
           purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         'DB-NO-RATE',
         'Declining Balance Asset',
@@ -306,10 +305,10 @@ await test('Fixed Asset CRUD Operations', async function (t) {
     // Test units of production without units (should fail)
     t.assert.throws(() => {
       db.prepare(`
-        INSERT INTO fixed_asset (
+        insert into fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
           purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         'UOP-NO-UNITS',
         'Units Production Asset',
@@ -325,7 +324,7 @@ await test('Fixed Asset CRUD Operations', async function (t) {
 
     // Test valid declining balance asset
     const dbAsset = db.prepare(`
-      INSERT INTO fixed_asset (
+      insert into fixed_asset (
         asset_number, name, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
         declining_balance_rate, active_time
@@ -382,11 +381,11 @@ await test('Asset Depreciation Calculations', async function (t) {
 
     // Create declining balance asset
     const assetResult = db.prepare(`
-      INSERT INTO fixed_asset (
+      insert into fixed_asset (
         asset_number, name, asset_category_id, purchase_date,
         purchase_cost, salvage_value, useful_life_years, depreciation_method,
         declining_balance_rate, active_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'DB-TEST-001',
       'Declining Balance Test Asset',
