@@ -1,6 +1,6 @@
 // @ts-check
 
-import { inject, reactive } from 'vue';
+import { inject } from 'vue';
 
 /** @template T @typedef {import('vue').InjectionKey<T>} InjectionKey */
 /** @template T @typedef {import('vue').Plugin<T>} Plugin */
@@ -9,16 +9,17 @@ import { inject, reactive } from 'vue';
 /**
  * @typedef {object} PlatformContext
  * @property {() => Date} date
- * @property {boolean} isSupported
  * @property {Crypto} [crypto]
- * @property {string} [unsupportedMessage]
  * @property {WebAssembly} [webAssembly]
+ * @property {boolean} isSupported
+ * @property {string} [unsupportedMessage]
  * @property {Array<{ name: string, url: string }>} [supportedBrowsers]
  */
 
 export const platformKey = /** @type {InjectionKey<PlatformContext>} */ (Symbol());
 
-export const platformPlugin = /** @type {Plugin<unknown>} */ ({
+/** @type {Plugin<unknown>} */
+export const platform = {
   install(app) {
     const errors = /** @type {Array<string>} */ ([]);
 
@@ -41,22 +42,18 @@ export const platformPlugin = /** @type {Plugin<unknown>} */ ({
 
     const isSupported = errors.length === 0;
 
-    const state = reactive(/** @type {PlatformContext} */ ({
+    app.provide(platformKey, {
       isSupported,
-      date() {
-        return new Date();
-      },
+      date() { return new Date(); },
       unsupportedMessage: errors.length > 0 ? errors.join('; ') : undefined,
       crypto: globalThis?.crypto,
       webAssembly: globalThis?.WebAssembly,
       supportedBrowsers: [
         { name: 'Chrome', url: 'https://www.google.com/chrome/' },
       ],
-    }));
-
-    app.provide(platformKey, state);
+    });
   },
-});
+};
 
 export function usePlatform() {
   const platform = inject(platformKey);

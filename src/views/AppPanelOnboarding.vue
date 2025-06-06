@@ -1,9 +1,9 @@
 <script setup>
 import { computed, reactive, useCssModule } from 'vue';
 
-import TextWithLoadingIndicator from '@/components/TextWithLoadingIndicator.vue';
-import { useI18n } from '@/i18n/i18n.js';
-import { assertInstanceOf } from '@/tools/assertion.js';
+import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
+import { useI18n } from '@/src/i18n/i18n.js';
+import { assertInstanceOf } from '@/src/tools/assertion.js';
 
 const style = useCssModule();
 const { t } = useI18n();

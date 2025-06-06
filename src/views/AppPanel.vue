@@ -2,8 +2,8 @@
 import { useCssModule } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 
-import MaterialSymbolDashboard from '@/assets/material-symbols/dashboard_24dp_E3E3E3_FILL1_wght400_GRAD0_opsz24.svg';
-import { useI18n } from '@/i18n/i18n.js';
+import MaterialSymbolDashboard from '@/src/assets/material-symbols/dashboard_24dp_E3E3E3_FILL1_wght400_GRAD0_opsz24.svg';
+import { useI18n } from '@/src/i18n/i18n.js';
 
 const { t } = useI18n();
 const style = useCssModule();

@@ -1,19 +1,19 @@
 // @ts-check
 
+import { usePlatform } from '@/src/context/platform.js';
+
+/** @typedef {import('vue').App} App */
 /** @typedef {import('vue-router').Router} Router */
 
-import { isServiceWorkerSupported } from '@/tools/platform.js';
-
 /**
+ * @param {App} app
  * @param {Router} router
  */
-export async function installUnsupportedPlatformGuard(router) {
+export async function installUnsupportedPlatformGuard(app, router) {
   const removeListener = router.beforeEach(async function (destination) {
-    const supportConditions = await Promise.all([
-      isServiceWorkerSupported(),
-    ]);
-    const isSupported = supportConditions.every(function (condition) {
-      return condition;
+    const isSupported = await app.runWithContext(async function () {
+      const platform = usePlatform();
+      return platform.isSupported;
     });
     if (isSupported) {
       if (destination.name === 'AppUnsupportedPlatform') {

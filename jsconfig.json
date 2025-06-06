@@ -1,7 +1,6 @@
 {
   "include": [
     "env.d.ts",
-    "service-worker.js",
     "src/**/*.js",
     "src/**/*.vue",
     "vite.config.js"
@@ -16,9 +15,7 @@
     "moduleResolution": "nodenext",
     "target": "ESNext",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./*"]
     },
     "lib": [
       "DOM",

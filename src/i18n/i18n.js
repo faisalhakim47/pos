@@ -1,31 +1,35 @@
 // @ts-check
 
-import { createI18n as create , useI18n as vueUseI18n } from 'vue-i18n';
+import { createI18n, useI18n as vueUseI18n } from 'vue-i18n';
 
-import en from '@/i18n/langs/en.js';
+import en from '@/src/i18n/langs/en.js';
 
 /**
  * @typedef {object} AppI18a
  * @property {typeof en} messages
  */
 
-/** @typedef {import('vue-i18n').Composer<AppI18a>} AppComposer */
+/** @type {import('vue').ObjectPlugin} */
+export const i18n = {
+  install(app) {
+    const detectedLocale = navigator.language;
+    const i18n = createI18n({
+      legacy: false,
+      locale: detectedLocale,
+      fallbackLocale: 'en',
+      messages: {
+        en,
+        id: en,
+      },
+    });
+    app.use(i18n);
+  },
+};
 
-export function createI18n() {
-  const detectedLocale = navigator.language;
-  return create({
-    legacy: false,
-    locale: detectedLocale,
-    fallbackLocale: 'en',
-    messages: {
-      en,
-      id: en,
-    },
-  });
-}
+/** @typedef {import('vue-i18n').Composer<AppI18a>} AppI18nComposer */
 
 /**
- * @returns {AppComposer}
+ * @returns {AppI18nComposer}
  */
 export function useI18n() {
   return /** @type {any} */ (vueUseI18n());

@@ -23,11 +23,4 @@ export default {
 
   unsupportedPlatformTitle: 'Your browser is not supported',
   unsupportedPlatformMessage: 'Unfortunately, the platform you are using is not supported by this application. Please use following browsers:',
-
-  serviceWorkerInstallationTitle: 'Install',
-  serviceWorkerInstallationSubtitle: 'We need to install background process to make this application work offline.',
-  serviceWorkerInstallationCta: 'Install',
-  serviceWorkerInstallationCtaProgress: 'Installing',
-  serviceWorkerInstallationCtaCompleted: 'Reload',
-  serviceWorkerInstallationCtaError: 'Retry',
 };

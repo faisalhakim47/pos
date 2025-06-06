@@ -1,5 +1,5 @@
 <script setup>
-import { useI18n } from '@/i18n/i18n.js';
+import { useI18n } from '@/src/i18n/i18n.js';
 
 const { t } = useI18n();
 const supportedBrowsers = [
