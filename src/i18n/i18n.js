@@ -4,12 +4,14 @@ import { createI18n, useI18n as vueUseI18n } from 'vue-i18n';
 
 import en from '@/src/i18n/langs/en.js';
 
+/** @template T @typedef {import('vue').Plugin<T>} Plugin */
+
 /**
  * @typedef {object} AppI18a
  * @property {typeof en} messages
  */
 
-/** @type {import('vue').ObjectPlugin} */
+/** @type {Plugin<unknown>} */
 export const i18n = {
   install(app) {
     const detectedLocale = navigator.language;

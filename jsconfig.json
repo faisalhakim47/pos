@@ -3,10 +3,12 @@
     "env.d.ts",
     "src/**/*.js",
     "src/**/*.vue",
+    "tests/**/*.js",
     "vite.config.js"
   ],
   "exclude": [
-    "src/**/__tests__/*"
+    "src/**/__tests__/*",
+    "src/vendor/**/*"
   ],
   "compilerOptions": {
     "allowJs": true,
@@ -15,7 +17,9 @@
     "moduleResolution": "nodenext",
     "target": "ESNext",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     },
     "lib": [
       "DOM",

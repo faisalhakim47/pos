@@ -1,29 +1,26 @@
 <script setup>
-import { ref, useCssModule, onMounted, onUnmounted } from 'vue';
+import { useCssModule, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 
+import { AppPanelAccountListRoute } from '@/src/router/router.js';
+
+const router = useRouter();
 const style = useCssModule();
-const randomColor = ref('blue');
 
 onMounted(function () {
-  const interval = setInterval(function () {
-    randomColor.value = '#' + Math.floor(Math.random() * 16777215).toString(16);
-  }, 1000);
-  onUnmounted(function () {
-    clearInterval(interval);
-  });
+  /** @todo implement dashboard */
+  router.push({ name: AppPanelAccountListRoute, replace: true });
 });
 </script>
 
 <template>
   <div :class="style.container">
-    <h1>App Panel Dashboard</h1>
-    <p>This is the App Panel Dashboard view.</p>
-    <p>{{ randomColor }}</p>
+    <h1>Dashboard</h1>
   </div>
 </template>
 
 <style module>
 .container {
-  color: v-bind(randomColor);
+  /* grid layout style here */
 }
 </style>

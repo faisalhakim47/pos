@@ -2,8 +2,11 @@
 import { useCssModule } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 
-import MaterialSymbolDashboard from '@/src/assets/material-symbols/dashboard_24dp_E3E3E3_FILL1_wght400_GRAD0_opsz24.svg';
+import { AppPanelAccountListRoute, AppPanelDashboardRoute } from '@/src/router/router.js';
 import { useI18n } from '@/src/i18n/i18n.js';
+import MaterialSymbolAccount from '@/src/assets/material-symbols/account_balance_wallet_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg';
+import MaterialSymbolDashboard from '@/src/assets/material-symbols/dashboard_24dp_E3E3E3_FILL1_wght400_GRAD0_opsz24.svg';
+import SvgIcon from '@/src/components/SvgIcon.vue';
 
 const { t } = useI18n();
 const style = useCssModule();
@@ -12,15 +15,19 @@ const style = useCssModule();
 <template>
   <div :class="style.container">
     <header :class="style.header">
-      <h1 :class="style.headerTitle">{{ t('appBrand') }}</h1>
+      <!-- <h1 :class="style.headerTitle">{{ t('appBrand') }}</h1> -->
     </header>
     <aside :class="style.sidebar">
       <nav>
         <ul :class="style.sidebarMenuList">
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: 'AppPanelDashboard' }">
-              <img :src="MaterialSymbolDashboard" :alt="t('menuItemDashboardLabel')" />
-              <span>{{ t('menuItemDashboardLabel') }}</span>
+            <RouterLink :to="{ name: AppPanelDashboardRoute }">
+              <SvgIcon :src="MaterialSymbolDashboard" :alt="t('menuItemDashboardLabel')" />
+            </RouterLink>
+          </li>
+          <li :class="style.sidebarMenuItem">
+            <RouterLink :to="{ name: AppPanelAccountListRoute }">
+              <SvgIcon :src="MaterialSymbolAccount" :alt="t('menuItemAccountLabel')" />
             </RouterLink>
           </li>
         </ul>
@@ -35,8 +42,8 @@ const style = useCssModule();
 <style module>
 .container {
   display: grid;
-  grid-template-columns: 96px 1fr;
-  grid-template-rows: 64px 1fr;
+  grid-template-columns: 44px 1fr;
+  grid-template-rows: 44px 1fr;
   grid-template-areas:
     "header content"
     "sidebar content";
@@ -52,7 +59,7 @@ const style = useCssModule();
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  height: 64px;
+  height: 44px;
 }
 
 .headerTitle {
@@ -81,8 +88,8 @@ const style = useCssModule();
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 64px;
-  width: 96px;
+  height: 44px;
+  width: 44px;
 }
 
 .sidebarMenuItem a {
@@ -90,8 +97,8 @@ const style = useCssModule();
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   text-decoration: none;
   font-weight: 500;
@@ -123,8 +130,8 @@ const style = useCssModule();
 }
 
 .sidebarMenuItem a img {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
 }
 
 .sidebarMenuItem a span {

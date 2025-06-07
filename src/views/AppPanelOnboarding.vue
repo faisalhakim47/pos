@@ -4,9 +4,11 @@ import { computed, reactive, useCssModule } from 'vue';
 import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { assertInstanceOf } from '@/src/tools/assertion.js';
+import { useDb } from '@/src/context/db.js';
 
 const style = useCssModule();
 const { t } = useI18n();
+const db = useDb();
 
 const submission = reactive({
   action: /** @type {'open' | 'new' | undefined} */ (undefined),
@@ -30,7 +32,7 @@ async function handleCtaSubmission(event) {
     const action = /** @type {'open' | 'new'} */ (submitter.value);
     submission.action = action;
     if (action === 'open') await openFile();
-    else if (action === 'new') await newFile();
+    else if (action === 'new') await db.initNewDb();
     else throw new Error(`Unknown action: ${action}`);
   }
   catch (error) {
@@ -40,34 +42,6 @@ async function handleCtaSubmission(event) {
   finally {
     submission.action = undefined;
   }
-}
-
-async function newFile() {
-  const uuid = crypto.randomUUID();
-
-  const fileCreationResp = await fetch('/api/v1/files', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      uid: uuid,
-    }),
-  });
-
-  if (!fileCreationResp.ok) {
-    submission.error = fileCreationResp;
-    return;
-  }
-
-  const files = await fetch('/api/v1/accounts?posFileUid=' + uuid, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  console.debug('Files:', await files.json());
 }
 
 async function openFile() {

@@ -1,29 +1,36 @@
 // @ts-check
 
-import { join } from 'node:path';
-
 import { defineConfig, devices } from '@playwright/test';
 
-const __dirname = new URL('.', import.meta.url).pathname;
-
+/**
+ * @see https://playwright.dev/docs/test-configuration
+ */
 export default defineConfig({
-  testDir: join(__dirname, 'tests'),
+  testDir: './tests',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: 'line',
   use: {
-    baseURL: 'http://127.0.0.1:5173',
-    trace: process.env.CI ? 'on-first-retry' : 'on',
+    baseURL: 'http://localhost:5173',
+    video: 'on-first-retry',
+    trace: 'on-first-retry',
+    hasTouch: false,
+    viewport: {
+      width: 1368,
+      height: 768,
+    },
   },
   projects: [
     {
       name: 'chromium',
-      use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 1280, height: 720 },
-      },
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
+  webServer: {
+    url: 'http://localhost:5173',
+    command: 'npm run dev',
+    reuseExistingServer: !process.env.CI,
+  },
 });

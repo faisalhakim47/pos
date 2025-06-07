@@ -1,6 +1,7 @@
 // @ts-check
 
 import { usePlatform } from '@/src/context/platform.js';
+import { AppPanelIndexRoute, AppUnsupportedPlatformRoute } from '@/src/router/router.js';
 
 /** @typedef {import('vue').App} App */
 /** @typedef {import('vue-router').Router} Router */
@@ -16,14 +17,14 @@ export async function installUnsupportedPlatformGuard(app, router) {
       return platform.isSupported;
     });
     if (isSupported) {
-      if (destination.name === 'AppUnsupportedPlatform') {
-        return { name: 'AppPanelIndex', replace: true };
+      if (destination.name === AppUnsupportedPlatformRoute) {
+        return { name: AppPanelIndexRoute, replace: true };
       }
     }
     else {
-      return destination.name === 'AppUnsupportedPlatform'
+      return destination.name === AppUnsupportedPlatformRoute
         ? true
-        : { name: 'AppUnsupportedPlatform', replace: true };
+        : { name: AppUnsupportedPlatformRoute, replace: true };
     }
     removeListener();
     return true;

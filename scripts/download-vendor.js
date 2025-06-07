@@ -6,9 +6,10 @@ import { dirname, join } from 'node:path';
 const __dirname = new URL('.', import.meta.url).pathname;
 
 const vendors = [
-  { url: 'https://cdn.jsdelivr.net/npm/@antonz/sqlean@3.47.1-rc1/dist/sqlean.d.ts', path: join(__dirname, '../src/vendor/@antonz/sqlean/dist/sqlean.d.ts') },
-  { url: 'https://cdn.jsdelivr.net/npm/@antonz/sqlean@3.47.1-rc1/dist/sqlean.dev.mjs', path: join(__dirname, '../src/vendor/@antonz/sqlean/dist/sqlean.js') },
-  { url: 'https://cdn.jsdelivr.net/npm/@antonz/sqlean@3.47.1-rc1/dist/sqlean.wasm', path: join(__dirname, '../src/vendor/@antonz/sqlean/dist/sqlean.wasm') },
+  { url: 'https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/sql-wasm-debug.wasm', path: join(__dirname, '../src/vendor/sql.js/dist/sql-wasm-debug.wasm') },
+  { url: 'https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/sql-wasm.wasm', path: join(__dirname, '../src/vendor/sql.js/dist/sql-wasm.wasm') },
+  { url: 'https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/worker.sql-wasm-debug.js', path: join(__dirname, '../src/vendor/sql.js/dist/sql-wasm-debug.js') },
+  { url: 'https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/worker.sql-wasm.js', path: join(__dirname, '../src/vendor/sql.js/dist/sql-wasm.js') },
 ];
 
 await Promise.all(vendors.map(async function (vendor) {

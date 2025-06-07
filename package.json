@@ -12,7 +12,9 @@
     "lint": "eslint --fix .",
     "fix": "eslint --fix .",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "npm run test:sqlite && npm run test:frontend",
+    "test:sqlite": "node --test",
+    "test:frontend": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
@@ -22,10 +24,12 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-oxlint": "^0.17.0",
     "eslint-plugin-vue": "~10.2.0",
+    "sql.js": "^1.13.0",
     "vite": "npm:rolldown-vite@6.3.18",
     "vite-plugin-vue-devtools": "^7.7.6",
     "vue": "^3.5.16",
     "vue-i18n": "^11.1.5",
-    "vue-router": "^4.5.1"
+    "vue-router": "^4.5.1",
+    "web-worker": "^1.5.0"
   }
 }
