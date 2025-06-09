@@ -16,6 +16,6 @@ test('Account Management', async function ({ page }) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   await page.getByRole('button', { name: en.onboardingNewFileCtaDefaultLabel }).click();
-  await expect(page.getByText(en.accountListTitle)).toBeVisible();
+  await expect(page.getByText(en.accountListTitle, { exact: true })).toBeVisible();
 
 });

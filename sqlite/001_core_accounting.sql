@@ -39,7 +39,7 @@ create table if not exists currency (
   code text primary key check (length(code) = 3 and code = upper(code)),
   name text not null,
   symbol text not null,
-  decimal_places integer not null default 2 check (decimal_places >= 0 and decimal_places <= 8),
+  decimal_places integer not null default 2 check (decimal_places >= 0 and decimal_places <= 18),
   is_functional_currency integer not null default 0 check (is_functional_currency in (0, 1)),
   is_active integer not null default 1 check (is_active in (0, 1))
 ) strict, without rowid;

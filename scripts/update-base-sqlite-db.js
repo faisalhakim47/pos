@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 // @ts-check
 
-import { readFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
-const db = new DatabaseSync(join(__dirname, '../src/assets/pos.db'));
+const dbPath = join(__dirname, '../src/assets/pos.db');
+
+await unlink(dbPath);
+
+const db = new DatabaseSync(dbPath);
 
 db.exec(await readFile(join(__dirname, '../sqlite/001_core_accounting.sql'), { encoding: 'utf8' }));
 db.exec(await readFile(join(__dirname, '../sqlite/002_foreign_exchange.sql'), { encoding: 'utf8' }));

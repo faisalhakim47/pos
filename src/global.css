@@ -409,6 +409,7 @@ main.page {
       border: 1px solid var(--color-slate-500);
       box-sizing: border-box;
       line-height: 26px;
+      white-space: nowrap;
 
       sub {
         line-height: 1;

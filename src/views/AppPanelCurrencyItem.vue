@@ -6,9 +6,9 @@ import { useRoute } from 'vue-router';
 import { useAsync } from '@/src/composables/use-async.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
+import { AppPanelCurrencyEditRoute } from '@/src/router/router.js';
 
 const route = useRoute();
-
 const { sql } = useDb();
 const { t } = useI18n();
 
@@ -55,5 +55,10 @@ onMounted(async function () {
       <dt>{{ t('literal.decimalPlaces') }}</dt>
       <dd>{{ currencyItem.data?.decimalPlaces }}</dd>
     </dl>
+    <div>
+      <RouterLink
+        :to="{ name: AppPanelCurrencyEditRoute, params: { currencyCode: route.params?.currencyCode } }"
+      >{{ t('currencyEditNavLabel') }}</RouterLink>
+    </div>
   </main>
 </template>

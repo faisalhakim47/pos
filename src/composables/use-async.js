@@ -35,6 +35,7 @@ export function useAsync(fn) {
       }
       catch (err) {
         state.error = err;
+        state.data = undefined;
       }
       finally {
         state.isLoading = false;

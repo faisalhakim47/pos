@@ -10,6 +10,7 @@ import AppPanelOnboarding from '@/src/views/AppOnboarding.vue';
 import AppPanel from '@/src/views/AppPanel.vue';
 import AppPanelAccountList from '@/src/views/AppPanelAccountList.vue';
 import AppPanelCurrencyCreation from '@/src/views/AppPanelCurrencyCreation.vue';
+import AppPanelCurrencyEdit from '@/src/views/AppPanelCurrencyEdit.vue';
 import AppPanelCurrencyItem from '@/src/views/AppPanelCurrencyItem.vue';
 import AppPanelCurrencyList from '@/src/views/AppPanelCurrencyList.vue';
 import AppPanelDashboard from '@/src/views/AppPanelDashboard.vue';
@@ -22,6 +23,7 @@ import AppUnsupportedPlatform from '@/src/views/AppUnsupportedPlatform.vue';
 export const AppOnboardingRoute = Symbol('AppPanelOnboarding');
 export const AppPanelAccountListRoute = Symbol('AppPanelAccountList');
 export const AppPanelCurrencyCreationRoute = Symbol('AppPanelCurrencyCreation');
+export const AppPanelCurrencyEditRoute = Symbol('AppPanelCurrencyEdit');
 export const AppPanelCurrencyItemRoute = Symbol('AppPanelCurrencyItem');
 export const AppPanelCurrencyListRoute = Symbol('AppPanelCurrencyList');
 export const AppPanelDashboardRoute = Symbol('AppPanelDashboard');
@@ -53,6 +55,7 @@ function createRoutes() {
             { name: AppPanelIndexRoute, path: '', redirect: { name: AppOnboardingRoute, replace: true } },
             { name: AppPanelAccountListRoute, component: AppPanelAccountList, path: 'accounts' },
             { name: AppPanelCurrencyCreationRoute, component: AppPanelCurrencyCreation, path: 'currencies/create' },
+            { name: AppPanelCurrencyEditRoute, component: AppPanelCurrencyEdit, path: 'currencies/:currencyCode/edit' },
             { name: AppPanelCurrencyItemRoute, component: AppPanelCurrencyItem, path: 'currencies/:currencyCode' },
             { name: AppPanelCurrencyListRoute, component: AppPanelCurrencyList, path: 'currencies' },
             { name: AppPanelDashboardRoute, component: AppPanelDashboard, path: 'dashboard' },

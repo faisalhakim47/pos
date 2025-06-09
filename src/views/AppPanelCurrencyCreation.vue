@@ -37,23 +37,23 @@ const currencyCreationHandler = useAsync(async function (event) {
   try {
     await sql`begin transaction`;
     const currencyCreationResult = await sql`
-    insert into currency (
-      code,
-      name,
-      symbol,
-      decimal_places,
-      is_functional_currency,
-      is_active
-    ) values (
-      ${currencyCode},
-      ${currencyName},
-      ${currencySymbol},
-      ${currencyDecimalPlaces},
-      0,
-      1
-    )
-    returning code, name, symbol, decimal_places
-  `;
+      insert into currency (
+        code,
+        name,
+        symbol,
+        decimal_places,
+        is_functional_currency,
+        is_active
+      ) values (
+        ${currencyCode},
+        ${currencyName},
+        ${currencySymbol},
+        ${currencyDecimalPlaces},
+        0,
+        1
+      )
+      returning code, name, symbol, decimal_places
+    `;
     if (currencyCreationResult[0].values.length !== 1) {
       throw new Error('Currency creation failed');
     }
@@ -75,7 +75,7 @@ const disabledCurrencyCreationForm = computed(function () {
 <template>
   <main class="page">
     <header>
-      <h1>Currency Creation</h1>
+      <h1>{{ t('currencyCreationTitle') }}</h1>
     </header>
     <form
       @submit.prevent="currencyCreationHandler.run"
@@ -84,11 +84,11 @@ const disabledCurrencyCreationForm = computed(function () {
     >
       <label
         for="currencyCodeInput"
-      >{{ t('currencyCreationCodeLabel') }}</label>
+      >{{ t('currencyFormCodeLabel') }}</label>
       <input
         id="currencyCodeInput"
         name="currencyCode"
-        :placeholder="t('currencyCreationCodePlaceholder')"
+        :placeholder="t('currencyFormCodePlaceholder')"
         type="text"
         minlength="3"
         required
@@ -97,39 +97,39 @@ const disabledCurrencyCreationForm = computed(function () {
       />
       <label
         for="currencyNameInput"
-      >{{ t('currencyCreationNameLabel') }}</label>
+      >{{ t('currencyFormNameLabel') }}</label>
       <input
         id="currencyNameInput"
         name="currencyName"
-        :placeholder="t('currencyCreationNamePlaceholder')"
+        :placeholder="t('currencyFormNamePlaceholder')"
         type="text"
         required
         :disabled="disabledCurrencyCreationForm"
       />
       <label
         for="currencySymbolInput"
-      >{{ t('currencyCreationSymbolLabel') }}</label>
+      >{{ t('currencyFormSymbolLabel') }}</label>
       <input
         id="currencySymbolInput"
         name="currencySymbol"
-        :placeholder="t('currencyCreationSymbolPlaceholder')"
+        :placeholder="t('currencyFormSymbolPlaceholder')"
         type="text"
         required
         :disabled="disabledCurrencyCreationForm"
       />
       <label
         for="currencyDecimalPlacesInput"
-      >{{ t('currencyCreationDecimalPlacesLabel') }}</label>
+      >{{ t('currencyFormDecimalPlacesLabel') }}</label>
       <input
         id="currencyDecimalPlacesInput"
         name="currencyDecimalPlaces"
-        :placeholder="t('currencyCreationDecimalPlacesPlaceholder')"
+        :placeholder="t('currencyFormDecimalPlacesPlaceholder')"
         type="number"
         min="0" required
         :disabled="disabledCurrencyCreationForm"
         aria-describedby="currencyDecimalPlacesHelpText"
       />
-      <p id="currencyDecimalPlacesHelpText">{{ t('currencyCreationDecimalPlacesHelpText') }}</p>
+      <p id="currencyDecimalPlacesHelpText">{{ t('currencyFormDecimalPlacesHelpText') }}</p>
       <div>
         <button
           type="submit"
