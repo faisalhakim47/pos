@@ -1,9 +1,10 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
 import UnhandledError from '@/src/components/UnhandledError.vue';
-import { useAsync } from '@/src/composables/use-async.js';
+import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { AppPanelCurrencyListRoute } from '@/src/router/router.js';
@@ -13,28 +14,43 @@ const { sql } = useDb();
 const { t } = useI18n();
 const router = useRouter();
 
-const currencyCreationHandler = useAsync(async function (event) {
-  assertInstanceOf(Event, event);
+const currencyForm = ref(null);
 
-  event.preventDefault();
-  assertInstanceOf(HTMLFormElement, event.target);
-
-  const currencyCodeInput = event.target.elements.namedItem('currencyCode');
-  const currencyNameInput = event.target.elements.namedItem('currencyName');
-  const currencySymbolInput = event.target.elements.namedItem('currencySymbol');
-  const currencyDecimalsInput = event.target.elements.namedItem('currencyDecimals');
-
+const currencyFormInputs = computed(function () {
+  const form = currencyForm.value;
+  assertInstanceOf(HTMLFormElement, form);
+  const currencyCodeInput = form.elements.namedItem('currencyCode');
+  const currencyNameInput = form.elements.namedItem('currencyName');
+  const currencySymbolInput = form.elements.namedItem('currencySymbol');
+  const currencyDecimalsInput = form.elements.namedItem('currencyDecimals');
   assertInstanceOf(HTMLInputElement, currencyCodeInput);
   assertInstanceOf(HTMLInputElement, currencyNameInput);
   assertInstanceOf(HTMLInputElement, currencySymbolInput);
   assertInstanceOf(HTMLInputElement, currencyDecimalsInput);
+  return {
+    currencyCodeInput,
+    currencyNameInput,
+    currencySymbolInput,
+    currencyDecimalsInput,
+  };
+});
 
-  const currencyCode = currencyCodeInput.value.trim().toUpperCase();
-  const currencyName = currencyNameInput.value.trim();
-  const currencySymbol = currencySymbolInput.value.trim();
-  const currencyDecimals = parseInt(currencyDecimalsInput.value.trim(), 10);
-
+const currencyCreator = useAsyncIterator(async function* () {
   try {
+    yield 'creating';
+
+    const {
+      currencyCodeInput,
+      currencyNameInput,
+      currencySymbolInput,
+      currencyDecimalsInput,
+    } = currencyFormInputs.value;
+
+    const currencyCode = currencyCodeInput.value.trim().toUpperCase();
+    const currencyName = currencyNameInput.value.trim();
+    const currencySymbol = currencySymbolInput.value.trim();
+    const currencyDecimals = parseInt(currencyDecimalsInput.value.trim(), 10);
+
     await sql`begin transaction`;
     const currencyCreationResult = await sql`
       insert into currency (
@@ -58,6 +74,7 @@ const currencyCreationHandler = useAsync(async function (event) {
       throw new Error('Currency creation failed');
     }
     await sql`commit transaction`;
+
     await router.replace({ name: AppPanelCurrencyListRoute });
   }
   catch (error) {
@@ -66,8 +83,8 @@ const currencyCreationHandler = useAsync(async function (event) {
   }
 });
 
-const disabledCurrencyCreationForm = computed(function () {
-  return currencyCreationHandler.isLoading;
+const disabledCurrencyForm = computed(function () {
+  return currencyCreator.state === 'creating';
 });
 
 </script>
@@ -78,8 +95,8 @@ const disabledCurrencyCreationForm = computed(function () {
       <h1>{{ t('currencyCreationTitle') }}</h1>
     </header>
     <form
-      @submit.prevent="currencyCreationHandler.run"
-      :aria-disabled="disabledCurrencyCreationForm"
+      @submit.prevent="currencyCreator.run"
+      :aria-disabled="disabledCurrencyForm"
       style="max-width: 480px;"
     >
       <label
@@ -92,7 +109,7 @@ const disabledCurrencyCreationForm = computed(function () {
         type="text"
         minlength="3"
         required
-        :disabled="disabledCurrencyCreationForm"
+        :disabled="disabledCurrencyForm"
         style="text-transform: uppercase;"
       />
       <label
@@ -104,7 +121,7 @@ const disabledCurrencyCreationForm = computed(function () {
         :placeholder="t('currencyFormNamePlaceholder')"
         type="text"
         required
-        :disabled="disabledCurrencyCreationForm"
+        :disabled="disabledCurrencyForm"
       />
       <label
         for="currencySymbolInput"
@@ -115,7 +132,7 @@ const disabledCurrencyCreationForm = computed(function () {
         :placeholder="t('currencyFormSymbolPlaceholder')"
         type="text"
         required
-        :disabled="disabledCurrencyCreationForm"
+        :disabled="disabledCurrencyForm"
       />
       <label
         for="currencyDecimalsInput"
@@ -126,17 +143,22 @@ const disabledCurrencyCreationForm = computed(function () {
         :placeholder="t('currencyFormDecimalsPlaceholder')"
         type="number"
         min="0" required
-        :disabled="disabledCurrencyCreationForm"
+        :disabled="disabledCurrencyForm"
         aria-describedby="currencyDecimalsHelpText"
       />
       <p id="currencyDecimalsHelpText">{{ t('currencyFormDecimalsHelpText') }}</p>
       <div>
         <button
           type="submit"
-          :disabled="disabledCurrencyCreationForm"
-        >{{ t('currencyCreationSaveCtaLabel') }}</button>
+          :disabled="disabledCurrencyForm"
+        >
+          <TextWithLoadingIndicator
+            :busy="currencyCreator.state === 'creating'"
+            :busy-label="t('currencyCreationSaveCtaProgressLabel')"
+          >{{ t('currencyCreationSaveCtaLabel') }}</TextWithLoadingIndicator>
+        </button>
       </div>
-      <UnhandledError :error="currencyCreationHandler.error"/>
+      <UnhandledError :error="currencyCreator.error"/>
     </form>
   </main>
 </template>

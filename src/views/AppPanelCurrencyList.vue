@@ -1,7 +1,8 @@
 <script setup>
-import { onMounted, reactive } from 'vue';
+import { onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 
+import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { AppPanelCurrencyCreationRoute, AppPanelCurrencyItemRoute } from '@/src/router/router.js';
@@ -9,16 +10,8 @@ import { AppPanelCurrencyCreationRoute, AppPanelCurrencyItemRoute } from '@/src/
 const { t } = useI18n();
 const db = useDb();
 
-const state = reactive({
-  currencies: [{
-    code: '',
-    name: '',
-    symbol: '',
-    decimals: 0,
-  }].slice(1),
-});
-
-onMounted(async function () {
+const currencyListFetcher = useAsyncIterator(async function* () {
+  yield 'fetching';
   const accountQueryRes = await db.sql`
     select
       code,
@@ -28,7 +21,7 @@ onMounted(async function () {
     from currency
     order by code asc
   `;
-  state.currencies = accountQueryRes[0].values.map(function (row) {
+  yield accountQueryRes[0].values.map(function (row) {
     return {
       code: String(row[0]),
       name: String(row[1]),
@@ -37,6 +30,8 @@ onMounted(async function () {
     };
   });
 });
+
+onMounted(currencyListFetcher.run);
 </script>
 
 <template>
@@ -60,8 +55,8 @@ onMounted(async function () {
           <th style="text-align: center; width: 128px;">{{ t('literal.decimals') }}</th>
         </tr>
       </thead>
-      <tbody>
-        <tr v-for="currency in state.currencies" :key="currency.code">
+      <tbody v-if="Array.isArray(currencyListFetcher.state)" >
+        <tr v-for="currency in currencyListFetcher.state" :key="currency.code">
           <td style="text-align: center; width: 128px;">
             <RouterLink
               :to="{

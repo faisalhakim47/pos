@@ -3,7 +3,7 @@
 import { onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 
-import { useAsync } from '@/src/composables/use-async.js';
+import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { AppPanelCurrencyEditRoute } from '@/src/router/router.js';
@@ -12,7 +12,12 @@ const route = useRoute();
 const { sql } = useDb();
 const { t } = useI18n();
 
-const currencyItem = useAsync(async function () {
+const currencyFetcher = useAsyncIterator(async function* () {
+  yield undefined;
+  const currencyCode = route.params?.currencyCode;
+  if (typeof currencyCode !== 'string' || currencyCode.length < 3) {
+    throw new Error('Invalid currency code');
+  }
   const currencyQueryRes = await sql`
     select
       code,
@@ -20,7 +25,7 @@ const currencyItem = useAsync(async function () {
       symbol,
       decimals
     from currency
-    where code = ${route.params?.currencyCode}
+    where code = ${currencyCode}
   `;
   if (currencyQueryRes[0].values.length !== 1) {
     throw new Error('Currency not found');
@@ -34,10 +39,7 @@ const currencyItem = useAsync(async function () {
   };
 });
 
-onMounted(async function () {
-  currencyItem.run();
-});
-
+onMounted(currencyFetcher.run);
 </script>
 
 <template>
@@ -47,17 +49,17 @@ onMounted(async function () {
     </header>
     <dl>
       <dt>{{ t('literal.code') }}</dt>
-      <dd>{{ currencyItem.data?.code }}</dd>
+      <dd>{{ currencyFetcher.state?.code }}</dd>
       <dt>{{ t('literal.name') }}</dt>
-      <dd>{{ currencyItem.data?.name }}</dd>
+      <dd>{{ currencyFetcher.state?.name }}</dd>
       <dt>{{ t('literal.symbol') }}</dt>
-      <dd>{{ currencyItem.data?.symbol }}</dd>
+      <dd>{{ currencyFetcher.state?.symbol }}</dd>
       <dt>{{ t('literal.decimals') }}</dt>
-      <dd>{{ currencyItem.data?.decimals }}</dd>
+      <dd>{{ currencyFetcher.state?.decimals }}</dd>
     </dl>
     <div>
       <RouterLink
-        :to="{ name: AppPanelCurrencyEditRoute, params: { currencyCode: route.params?.currencyCode } }"
+        :to="{ name: AppPanelCurrencyEditRoute, params: { currencyCode: currencyFetcher.state?.code } }"
       >{{ t('currencyEditNavLabel') }}</RouterLink>
     </div>
   </main>

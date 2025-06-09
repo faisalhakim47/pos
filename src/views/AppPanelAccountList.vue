@@ -1,12 +1,8 @@
 <script setup>
 import { onMounted, reactive } from 'vue';
-import { RouterLink } from 'vue-router';
 
-import { MaterialSymbolDashboardUrl } from '@/src/assets/material-symbols.js';
-import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelDashboardRoute } from '@/src/router/router.js';
 
 const { t } = useI18n();
 const db = useDb();

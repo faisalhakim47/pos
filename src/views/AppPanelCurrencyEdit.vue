@@ -14,10 +14,10 @@ const { sql } = useDb();
 const { t } = useI18n();
 const route = useRoute();
 
-const currencyUpdateForm = ref(null);
+const currencyForm = ref(null);
 
-const currencyUpdateFormInputs = computed(function () {
-  const form = currencyUpdateForm.value;
+const currencyFormInputs = computed(function () {
+  const form = currencyForm.value;
   assertInstanceOf(HTMLFormElement, form);
   const currencyCodeInput = form.elements.namedItem('currencyCode');
   const currencyNameInput = form.elements.namedItem('currencyName');
@@ -69,7 +69,7 @@ watchPostEffect(function () {
       currencyNameInput,
       currencySymbolInput,
       currencyDecimalsInput,
-    } = currencyUpdateFormInputs.value;
+    } = currencyFormInputs.value;
     currencyCodeInput.value = currencyFetcher.state.code;
     currencyNameInput.value = currencyFetcher.state.name;
     currencySymbolInput.value = currencyFetcher.state.symbol;
@@ -92,7 +92,7 @@ const currencyUpdater = useAsyncIterator(async function* () {
       currencyDecimalsInput,
       currencyNameInput,
       currencySymbolInput,
-    } = currencyUpdateFormInputs.value;
+    } = currencyFormInputs.value;
 
     const currencyName = currencyNameInput.value.trim();
     const currencySymbol = currencySymbolInput.value.trim();
@@ -136,7 +136,7 @@ const disabledCurrencyForm = computed(function () {
       <h1>{{ t('currencyEditTitle') }}</h1>
     </header>
     <form
-      ref="currencyUpdateForm"
+      ref="currencyForm"
       @submit.prevent="currencyUpdater.run"
       :aria-disabled="disabledCurrencyForm"
       style="max-width: 480px;"
