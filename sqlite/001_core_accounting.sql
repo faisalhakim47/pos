@@ -39,7 +39,7 @@ create table if not exists currency (
   code text primary key check (length(code) = 3 and code = upper(code)),
   name text not null,
   symbol text not null,
-  decimal_places integer not null default 2 check (decimal_places >= 0 and decimal_places <= 18),
+  decimals integer not null default 2 check (decimals >= 0 and decimals <= 18),
   is_functional_currency integer not null default 0 check (is_functional_currency in (0, 1)),
   is_active integer not null default 1 check (is_active in (0, 1))
 ) strict, without rowid;
@@ -321,7 +321,7 @@ order by journal_entry.ref asc, journal_entry_line.line_order asc;
 --- DEFAULT CHART OF ACCOUNTS ---
 
 -- Insert default currencies
-insert into currency (code, name, symbol, decimal_places, is_functional_currency, is_active) values
+insert into currency (code, name, symbol, decimals, is_functional_currency, is_active) values
   ('AED', 'United Arab Emirates Dirham', 'د.إ', 2, 0, 1),
   ('AUD', 'Australian Dollar', 'A$', 2, 0, 1),
   ('BRL', 'Brazilian Real', 'R$', 2, 0, 1),
@@ -334,10 +334,10 @@ insert into currency (code, name, symbol, decimal_places, is_functional_currency
   ('GBP', 'British Pound', '£', 2, 0, 1),
   ('HKD', 'Hong Kong Dollar', 'HK$', 2, 0, 1),
   ('HUF', 'Hungarian Forint', 'Ft', 2, 0, 1),
-  ('IDR', 'Indonesian Rupiah', 'Rp', 2, 0, 1),
+  ('IDR', 'Indonesian Rupiah', 'Rp', 0, 0, 1),
   ('INR', 'Indian Rupee', '₹', 2, 0, 1),
-  ('JPY', 'Japanese Yen', '¥', 0, 0, 1),
-  ('KRW', 'South Korean Won', '₩', 0, 0, 1),
+  ('JPY', 'Japanese Yen', '¥', 2, 0, 1),
+  ('KRW', 'South Korean Won', '₩', 2, 0, 1),
   ('MXN', 'Mexican Peso', '$', 2, 0, 1),
   ('MYR', 'Malaysian Ringgit', 'RM', 2, 0, 1),
   ('NOK', 'Norwegian Krone', 'kr', 2, 0, 1),
@@ -355,7 +355,7 @@ insert into currency (code, name, symbol, decimal_places, is_functional_currency
 on conflict (code) do update set
   name = excluded.name,
   symbol = excluded.symbol,
-  decimal_places = excluded.decimal_places,
+  decimals = excluded.decimals,
   is_active = excluded.is_active;
 
 -- Insert account types

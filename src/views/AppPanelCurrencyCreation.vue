@@ -22,17 +22,17 @@ const currencyCreationHandler = useAsync(async function (event) {
   const currencyCodeInput = event.target.elements.namedItem('currencyCode');
   const currencyNameInput = event.target.elements.namedItem('currencyName');
   const currencySymbolInput = event.target.elements.namedItem('currencySymbol');
-  const currencyDecimalPlacesInput = event.target.elements.namedItem('currencyDecimalPlaces');
+  const currencyDecimalsInput = event.target.elements.namedItem('currencyDecimals');
 
   assertInstanceOf(HTMLInputElement, currencyCodeInput);
   assertInstanceOf(HTMLInputElement, currencyNameInput);
   assertInstanceOf(HTMLInputElement, currencySymbolInput);
-  assertInstanceOf(HTMLInputElement, currencyDecimalPlacesInput);
+  assertInstanceOf(HTMLInputElement, currencyDecimalsInput);
 
   const currencyCode = currencyCodeInput.value.trim().toUpperCase();
   const currencyName = currencyNameInput.value.trim();
   const currencySymbol = currencySymbolInput.value.trim();
-  const currencyDecimalPlaces = parseInt(currencyDecimalPlacesInput.value.trim(), 10);
+  const currencyDecimals = parseInt(currencyDecimalsInput.value.trim(), 10);
 
   try {
     await sql`begin transaction`;
@@ -41,18 +41,18 @@ const currencyCreationHandler = useAsync(async function (event) {
         code,
         name,
         symbol,
-        decimal_places,
+        decimals,
         is_functional_currency,
         is_active
       ) values (
         ${currencyCode},
         ${currencyName},
         ${currencySymbol},
-        ${currencyDecimalPlaces},
+        ${currencyDecimals},
         0,
         1
       )
-      returning code, name, symbol, decimal_places
+      returning code, name, symbol, decimals
     `;
     if (currencyCreationResult[0].values.length !== 1) {
       throw new Error('Currency creation failed');
@@ -118,18 +118,18 @@ const disabledCurrencyCreationForm = computed(function () {
         :disabled="disabledCurrencyCreationForm"
       />
       <label
-        for="currencyDecimalPlacesInput"
-      >{{ t('currencyFormDecimalPlacesLabel') }}</label>
+        for="currencyDecimalsInput"
+      >{{ t('currencyFormDecimalsLabel') }}</label>
       <input
-        id="currencyDecimalPlacesInput"
-        name="currencyDecimalPlaces"
-        :placeholder="t('currencyFormDecimalPlacesPlaceholder')"
+        id="currencyDecimalsInput"
+        name="currencyDecimals"
+        :placeholder="t('currencyFormDecimalsPlaceholder')"
         type="number"
         min="0" required
         :disabled="disabledCurrencyCreationForm"
-        aria-describedby="currencyDecimalPlacesHelpText"
+        aria-describedby="currencyDecimalsHelpText"
       />
-      <p id="currencyDecimalPlacesHelpText">{{ t('currencyFormDecimalPlacesHelpText') }}</p>
+      <p id="currencyDecimalsHelpText">{{ t('currencyFormDecimalsHelpText') }}</p>
       <div>
         <button
           type="submit"

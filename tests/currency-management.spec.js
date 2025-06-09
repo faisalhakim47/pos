@@ -25,7 +25,7 @@ test('Currency Management', async function ({ page }) {
   await page.getByLabel(en.currencyCreationCodeLabel).fill('SOL');
   await page.getByLabel(en.currencyCreationNameLabel).fill('Solana');
   await page.getByLabel(en.currencyCreationSymbolLabel).fill('SOL');
-  await page.getByLabel(en.currencyCreationDecimalPlacesLabel).fill('9');
+  await page.getByLabel(en.currencyCreationDecimalsLabel).fill('9');
   await page.getByRole('button', { name: en.currencyCreationSaveCtaLabel }).click();
 
   await expect(page.getByText(en.currencyListTitle, { exact: true })).toBeVisible();

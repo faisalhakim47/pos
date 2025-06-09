@@ -109,7 +109,7 @@ await test('Foreign Exchange - Currency Management', async function (t) {
 
   await t.test('should have default currencies loaded', function (t) {
     const currencies = fixture.db.prepare(`
-      select code, name, symbol, decimal_places, is_functional_currency
+      select code, name, symbol, decimals, is_functional_currency
       from currency
       where is_active = true
       order by code

@@ -18,7 +18,7 @@ const currencyItem = useAsync(async function () {
       code,
       name,
       symbol,
-      decimal_places
+      decimals
     from currency
     where code = ${route.params?.currencyCode}
   `;
@@ -30,7 +30,7 @@ const currencyItem = useAsync(async function () {
     code: String(row[0]),
     name: String(row[1]),
     symbol: String(row[2]),
-    decimalPlaces: Number(row[3]),
+    decimals: Number(row[3]),
   };
 });
 
@@ -52,8 +52,8 @@ onMounted(async function () {
       <dd>{{ currencyItem.data?.name }}</dd>
       <dt>{{ t('literal.symbol') }}</dt>
       <dd>{{ currencyItem.data?.symbol }}</dd>
-      <dt>{{ t('literal.decimalPlaces') }}</dt>
-      <dd>{{ currencyItem.data?.decimalPlaces }}</dd>
+      <dt>{{ t('literal.decimals') }}</dt>
+      <dd>{{ currencyItem.data?.decimals }}</dd>
     </dl>
     <div>
       <RouterLink

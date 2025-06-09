@@ -18,19 +18,22 @@ const state = reactive({
     accountTypeName: '',
     balance: 0,
     currencyCode: '',
+    currencySymbol: '',
   }].slice(1),
 });
 
 onMounted(async function () {
   const accountQueryRes = await db.sql`
     select
-      code,
-      name,
-      account_type_name,
-      balance,
-      currency_code
+      account.code,
+      account.name,
+      account.account_type_name,
+      account.balance,
+      currency.code,
+      currency.symbol
     from account
-    order by code asc
+    join currency on currency.code = account.currency_code
+    order by account.code asc
   `;
   state.accounts = accountQueryRes[0].values.map(function (row) {
     return {
@@ -39,6 +42,7 @@ onMounted(async function () {
       accountTypeName: String(row[2]),
       balance: Number(row[3]),
       currencyCode: String(row[4]),
+      currencySymbol: String(row[5]),
     };
   });
 });
@@ -47,16 +51,7 @@ onMounted(async function () {
 <template>
   <main class="page">
     <header>
-      <h1 style="margin: 0px; font-size: 1.5rem;">{{ t('accountListTitle') }}</h1>
-      <nav>
-        <ul>
-          <li>
-            <RouterLink :to="{ name: AppPanelDashboardRoute }">
-              <SvgIcon :src="MaterialSymbolDashboardUrl" :alt="t('menuItemDashboardLabel')" />
-            </RouterLink>
-          </li>
-        </ul>
-      </nav>
+      <h1>{{ t('accountListTitle') }}</h1>
     </header>
     <table>
       <thead>
@@ -72,7 +67,7 @@ onMounted(async function () {
           <td style="text-align: center; width: 128px;">{{ account.code }}</td>
           <td style="text-align: center; width: 160px;">{{ t(`literal.${account.accountTypeName}`) }}</td>
           <td style="text-align: left;">{{ account.name }}</td>
-          <td style="text-align: right; width: 200px;">{{ account.balance }} <sub>{{ account.currencyCode }}</sub></td>
+          <td style="text-align: right; width: 200px;">{{ account.currencySymbol }}{{ account.balance }}</td>
         </tr>
       </tbody>
     </table>

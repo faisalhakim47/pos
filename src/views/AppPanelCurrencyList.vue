@@ -14,7 +14,7 @@ const state = reactive({
     code: '',
     name: '',
     symbol: '',
-    decimalPlaces: 0,
+    decimals: 0,
   }].slice(1),
 });
 
@@ -24,7 +24,7 @@ onMounted(async function () {
       code,
       name,
       symbol,
-      decimal_places
+      decimals
     from currency
     order by code asc
   `;
@@ -33,7 +33,7 @@ onMounted(async function () {
       code: String(row[0]),
       name: String(row[1]),
       symbol: String(row[2]),
-      decimalPlaces: Number(row[3]),
+      decimals: Number(row[3]),
     };
   });
 });
@@ -57,7 +57,7 @@ onMounted(async function () {
           <th style="text-align: center; width: 128px;">{{ t('literal.code') }}</th>
           <th style="text-align: center; width: 128px;">{{ t('literal.symbol') }}</th>
           <th style="text-align: left;">{{ t('literal.name') }}</th>
-          <th style="text-align: center; width: 128px;">{{ t('literal.decimalPlaces') }}</th>
+          <th style="text-align: center; width: 128px;">{{ t('literal.decimals') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -73,7 +73,7 @@ onMounted(async function () {
           </td>
           <td style="text-align: center; width: 128px;">{{ currency.symbol }}</td>
           <td style="text-align: left;">{{ currency.name }}</td>
-          <td style="text-align: center; width: 128px;">{{ currency.decimalPlaces }}</td>
+          <td style="text-align: center; width: 128px;">{{ currency.decimals }}</td>
         </tr>
       </tbody>
     </table>

@@ -63,7 +63,7 @@ class TestFixture {
 
     // Insert sample currencies only if they don't exist
     this.db.prepare(`
-      insert or ignore into currency (code, name, symbol, decimal_places, is_functional_currency)
+      insert or ignore into currency (code, name, symbol, decimals, is_functional_currency)
       values (?, ?, ?, ?, ?)
     `).run('USD', 'US Dollar', '$', 2, 1);
 
@@ -628,7 +628,7 @@ await test('Purchase Management Schema', async function (t) {
 
     // Add EUR currency
     db.prepare(`
-      insert or ignore into currency (code, name, symbol, decimal_places, is_active)
+      insert or ignore into currency (code, name, symbol, decimals, is_active)
       values (?, ?, ?, ?, ?)
     `).run('EUR', 'Euro', '€', 2, 1);
 

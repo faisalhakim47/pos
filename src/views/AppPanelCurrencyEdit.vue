@@ -22,16 +22,16 @@ const currencyUpdateFormInputs = computed(function () {
   const currencyCodeInput = form.elements.namedItem('currencyCode');
   const currencyNameInput = form.elements.namedItem('currencyName');
   const currencySymbolInput = form.elements.namedItem('currencySymbol');
-  const currencyDecimalPlacesInput = form.elements.namedItem('currencyDecimalPlaces');
+  const currencyDecimalsInput = form.elements.namedItem('currencyDecimals');
   assertInstanceOf(HTMLInputElement, currencyCodeInput);
   assertInstanceOf(HTMLInputElement, currencyNameInput);
   assertInstanceOf(HTMLInputElement, currencySymbolInput);
-  assertInstanceOf(HTMLInputElement, currencyDecimalPlacesInput);
+  assertInstanceOf(HTMLInputElement, currencyDecimalsInput);
   return {
     currencyCodeInput,
     currencyNameInput,
     currencySymbolInput,
-    currencyDecimalPlacesInput,
+    currencyDecimalsInput,
   };
 });
 
@@ -46,7 +46,7 @@ const currencyFetcher = useAsyncIterator(async function* () {
       code,
       name,
       symbol,
-      decimal_places
+      decimals
     from currency
     where code = ${currencyCode}
   `;
@@ -58,7 +58,7 @@ const currencyFetcher = useAsyncIterator(async function* () {
     code: String(row[0]),
     name: String(row[1]),
     symbol: String(row[2]),
-    decimalPlaces: Number(row[3]),
+    decimals: Number(row[3]),
   };
 });
 
@@ -68,12 +68,12 @@ watchPostEffect(function () {
       currencyCodeInput,
       currencyNameInput,
       currencySymbolInput,
-      currencyDecimalPlacesInput,
+      currencyDecimalsInput,
     } = currencyUpdateFormInputs.value;
     currencyCodeInput.value = currencyFetcher.state.code;
     currencyNameInput.value = currencyFetcher.state.name;
     currencySymbolInput.value = currencyFetcher.state.symbol;
-    currencyDecimalPlacesInput.value = String(currencyFetcher.state.decimalPlaces);
+    currencyDecimalsInput.value = String(currencyFetcher.state.decimals);
   }
 });
 
@@ -89,21 +89,21 @@ const currencyUpdater = useAsyncIterator(async function* () {
     }
 
     const {
-      currencyDecimalPlacesInput,
+      currencyDecimalsInput,
       currencyNameInput,
       currencySymbolInput,
     } = currencyUpdateFormInputs.value;
 
     const currencyName = currencyNameInput.value.trim();
     const currencySymbol = currencySymbolInput.value.trim();
-    const currencyDecimalPlaces = parseInt(currencyDecimalPlacesInput.value.trim(), 10);
+    const currencyDecimals = parseInt(currencyDecimalsInput.value.trim(), 10);
 
     await sql`begin transaction`;
     await sql`
       update currency set
         name = ${currencyName},
         symbol = ${currencySymbol},
-        decimal_places = ${currencyDecimalPlaces}
+        decimals = ${currencyDecimals}
       where code = ${currencyCode}
     `;
     await sql`commit transaction`;
@@ -176,18 +176,18 @@ const disabledCurrencyForm = computed(function () {
         :disabled="disabledCurrencyForm"
       />
       <label
-        for="currencyDecimalPlacesInput"
-      >{{ t('currencyFormDecimalPlacesLabel') }}</label>
+        for="currencyDecimalsInput"
+      >{{ t('currencyFormDecimalsLabel') }}</label>
       <input
-        id="currencyDecimalPlacesInput"
-        name="currencyDecimalPlaces"
-        :placeholder="t('currencyFormDecimalPlacesPlaceholder')"
+        id="currencyDecimalsInput"
+        name="currencyDecimals"
+        :placeholder="t('currencyFormDecimalsPlaceholder')"
         type="number"
         min="0" required
         :disabled="disabledCurrencyForm"
-        aria-describedby="currencyDecimalPlacesHelpText"
+        aria-describedby="currencyDecimalsHelpText"
       />
-      <p id="currencyDecimalPlacesHelpText">{{ t('currencyFormDecimalPlacesHelpText') }}</p>
+      <p id="currencyDecimalsHelpText">{{ t('currencyFormDecimalsHelpText') }}</p>
       <div>
         <button
           type="submit"
