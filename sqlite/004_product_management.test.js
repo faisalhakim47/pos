@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -75,7 +75,7 @@ await test('Product Management Schema', async function (t) {
       const table = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='table' AND name=?
-      `).get(tableName);
+      `)?.get(tableName) ?? {};
       t.assert.equal(Boolean(table), true, `Table ${tableName} should exist`);
     }
 
@@ -87,15 +87,15 @@ await test('Product Management Schema', async function (t) {
     const db = await fixture.setup();
 
     // Test units of measure exist
-    const units = db.prepare('SELECT COUNT(*) as count FROM unit_of_measure').get();
+    const units = db.prepare('SELECT COUNT(*) as count FROM unit_of_measure')?.get() ?? {};
     t.assert.equal(Number(units.count) > 0, true, 'Units of measure should be populated');
 
     // Test product categories exist
-    const categories = db.prepare('SELECT COUNT(*) as count FROM product_category').get();
+    const categories = db.prepare('SELECT COUNT(*) as count FROM product_category')?.get() ?? {};
     t.assert.equal(Number(categories.count) > 0, true, 'Product categories should be populated');
 
     // Test default vendor exists
-    const vendor = db.prepare('SELECT * FROM vendor WHERE vendor_code = ?').get('SUPPLIER001');
+    const vendor = db.prepare('SELECT * FROM vendor WHERE vendor_code = ?')?.get('SUPPLIER001') ?? {};
     t.assert.equal(Boolean(vendor), true, 'Default vendor should exist');
 
     fixture.cleanup();
@@ -106,7 +106,7 @@ await test('Product Management Schema', async function (t) {
     const db = await fixture.setup();
 
     // Get a category ID for the test
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
 
     // Create a test product
     const productId = db.prepare(`
@@ -117,7 +117,7 @@ await test('Product Management Schema', async function (t) {
     `).run('TEST-001', 'Test Product', category.id, 1000, 'FIFO', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify product was created
-    const product = db.prepare('SELECT * FROM product WHERE id = ?').get(productId);
+    const product = db.prepare('SELECT * FROM product WHERE id = ?')?.get(productId) ?? {};
     t.assert.equal(Boolean(product), true, 'Product should be created');
     t.assert.equal(String(product.sku), 'TEST-001', 'Product SKU should match');
     t.assert.equal(Number(product.standard_cost), 1000, 'Standard cost should match');
@@ -131,7 +131,7 @@ await test('Product Management Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create a test product first
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (
         sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time
@@ -152,8 +152,8 @@ await test('Product Management Schema', async function (t) {
     `).run(productId, 'VARIANT-001-BLUE-M', 'Blue Medium', JSON.stringify({color: 'blue', size: 'M'}), 1100, Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify variants were created
-    const variant1 = db.prepare('SELECT * FROM product_variant WHERE id = ?').get(variantId1);
-    const variant2 = db.prepare('SELECT * FROM product_variant WHERE id = ?').get(variantId2);
+    const variant1 = db.prepare('SELECT * FROM product_variant WHERE id = ?')?.get(variantId1) ?? {};
+    const variant2 = db.prepare('SELECT * FROM product_variant WHERE id = ?')?.get(variantId2) ?? {};
 
     t.assert.equal(Boolean(variant1), true, 'First variant should be created');
     t.assert.equal(Boolean(variant2), true, 'Second variant should be created');
@@ -174,7 +174,7 @@ await test('Product Management Schema', async function (t) {
     `).run('VEN-001', 'Test Vendor Inc.', 'John Smith', 1, Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Create product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('VEN-PROD-001', 'Vendor Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -194,7 +194,7 @@ await test('Product Management Schema', async function (t) {
       JOIN vendor v ON v.id = vp.vendor_id
       JOIN product p ON p.id = vp.product_id
       WHERE vp.vendor_id = ? AND vp.product_id = ?
-    `).get(vendorId, productId);
+    `)?.get(vendorId, productId) ?? {};
 
     t.assert.equal(Boolean(vendorProduct), true, 'Vendor-product relationship should exist');
     t.assert.equal(String(vendorProduct.vendor_name), 'Test Vendor Inc.', 'Vendor name should match');
@@ -209,7 +209,7 @@ await test('Product Management Schema', async function (t) {
     const fixture = new TestFixture('Data integrity constraints are enforced');
     const db = await fixture.setup();
 
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
 
     // Test unique SKU constraint
     db.prepare(`
@@ -238,15 +238,15 @@ await test('Product Management Schema', async function (t) {
     const db = await fixture.setup();
 
     // Verify that key accounting accounts exist for inventory integration
-    const inventoryAccount = db.prepare('SELECT * FROM account WHERE code = 10300').get();
+    const inventoryAccount = db.prepare('SELECT * FROM account WHERE code = 10300')?.get() ?? {};
     t.assert.equal(Boolean(inventoryAccount), true, 'Inventory account (10300) should exist');
     t.assert.equal(String(inventoryAccount.name), 'Inventory', 'Inventory account name should match');
 
-    const cogsAccount = db.prepare('SELECT * FROM account WHERE code = 50100').get();
+    const cogsAccount = db.prepare('SELECT * FROM account WHERE code = 50100')?.get() ?? {};
     t.assert.equal(Boolean(cogsAccount), true, 'COGS account (50100) should exist');
     t.assert.equal(String(cogsAccount.name), 'Cost of Goods Sold', 'COGS account name should match');
 
-    const salesAccount = db.prepare('SELECT * FROM account WHERE code = 40100').get();
+    const salesAccount = db.prepare('SELECT * FROM account WHERE code = 40100')?.get() ?? {};
     t.assert.equal(Boolean(salesAccount), true, 'Sales account (40100) should exist');
     t.assert.equal(String(salesAccount.name), 'Sales Revenue', 'Sales account name should match');
 
@@ -258,12 +258,12 @@ await test('Product Management Schema', async function (t) {
     const db = await fixture.setup();
 
     // Test that conversion factors are set correctly
-    const gram = db.prepare('SELECT * FROM unit_of_measure WHERE code = ?').get('G');
+    const gram = db.prepare('SELECT * FROM unit_of_measure WHERE code = ?')?.get('G') ?? {};
     t.assert.equal(Boolean(gram), true, 'Gram unit should exist');
     t.assert.equal(String(gram.base_unit_code), 'KG', 'Gram should have KG as base unit');
     t.assert.equal(Number(gram.conversion_factor), 0.001, 'Gram conversion factor should be 0.001');
 
-    const pound = db.prepare('SELECT * FROM unit_of_measure WHERE code = ?').get('LB');
+    const pound = db.prepare('SELECT * FROM unit_of_measure WHERE code = ?')?.get('LB') ?? {};
     t.assert.equal(Boolean(pound), true, 'Pound unit should exist');
     t.assert.equal(String(pound.base_unit_code), 'KG', 'Pound should have KG as base unit');
     t.assert.equal(Number(pound.conversion_factor), 0.453592, 'Pound conversion factor should be 0.453592');
@@ -288,7 +288,7 @@ await test('Product Management Schema', async function (t) {
     `).run('CHILD', 'Child Category', 'Child category for testing', parentId).lastInsertRowid;
 
     // Verify hierarchy
-    const child = db.prepare('SELECT * FROM product_category WHERE id = ?').get(childId);
+    const child = db.prepare('SELECT * FROM product_category WHERE id = ?')?.get(childId) ?? {};
     t.assert.equal(Boolean(child), true, 'Child category should exist');
     t.assert.equal(Number(child.parent_category_id), Number(parentId), 'Child should reference parent');
 
@@ -298,7 +298,7 @@ await test('Product Management Schema', async function (t) {
       FROM product_category c
       LEFT JOIN product_category p ON p.id = c.parent_category_id
       WHERE c.id = ?
-    `).get(childId);
+    `)?.get(childId) ?? {};
 
     t.assert.equal(String(hierarchy.child_name), 'Child Category', 'Child name should match');
     t.assert.equal(String(hierarchy.parent_name), 'Parent Category', 'Parent name should match');

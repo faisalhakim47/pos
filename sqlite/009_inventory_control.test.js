@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -81,7 +81,7 @@ await test('Inventory Control Schema', async function (t) {
       const table = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='table' AND name=?
-      `).get(tableName);
+      `)?.get(tableName) ?? {};
       t.assert.equal(Boolean(table), true, `Table ${tableName} should exist`);
     }
 
@@ -92,7 +92,7 @@ await test('Inventory Control Schema', async function (t) {
     const fixture = new TestFixture('Cutoff control management works');
     const db = await fixture.setup();
 
-    const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?').get('MAIN');
+    const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?')?.get('MAIN') ?? {};
     const currentTime = Math.floor(Date.now() / 1000);
 
     // Create cutoff control record
@@ -104,7 +104,7 @@ await test('Inventory Control Schema', async function (t) {
     `).run(currentTime, warehouse.id, 'REC-001', 'SHP-001', 'ADJ-001', 'test_user', currentTime, 'Period-end cutoff').lastInsertRowid;
 
     // Verify cutoff control was created
-    const cutoff = db.prepare('SELECT * FROM inventory_cutoff_control WHERE id = ?').get(cutoffId);
+    const cutoff = db.prepare('SELECT * FROM inventory_cutoff_control WHERE id = ?')?.get(cutoffId) ?? {};
     t.assert.equal(Boolean(cutoff), true, 'Cutoff control should be created');
     t.assert.equal(String(cutoff.last_receipt_number), 'REC-001', 'Last receipt number should match');
     t.assert.equal(String(cutoff.last_shipment_number), 'SHP-001', 'Last shipment number should match');
@@ -118,14 +118,14 @@ await test('Inventory Control Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('CONTROL-001', 'Control Test Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?').get('MAIN');
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = ? LIMIT 1').get(warehouse.id);
+    const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?')?.get('MAIN') ?? {};
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = ? LIMIT 1')?.get(warehouse.id) ?? {};
 
     // Create physical inventory
     const physicalInventoryId = db.prepare(`
@@ -162,7 +162,7 @@ await test('Inventory Control Schema', async function (t) {
       WHERE reference_number LIKE 'PI-ADJ-%'
       ORDER BY created_time DESC
       LIMIT 1
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(Boolean(adjustmentTransaction), true, 'Adjustment transaction should be created automatically');
     t.assert.equal(String(adjustmentTransaction.transaction_type_code), 'PHYSICAL_COUNT', 'Should be physical count transaction type');
@@ -172,7 +172,7 @@ await test('Inventory Control Schema', async function (t) {
     const transactionLine = db.prepare(`
       SELECT * FROM inventory_transaction_line 
       WHERE inventory_transaction_id = ?
-    `).get(adjustmentTransaction.id);
+    `)?.get(adjustmentTransaction.id) ?? {};
 
     t.assert.equal(Boolean(transactionLine), true, 'Transaction line should be created');
     t.assert.equal(Number(transactionLine.quantity), -5, 'Quantity should match variance (-5)');
@@ -184,7 +184,7 @@ await test('Inventory Control Schema', async function (t) {
     const journalEntry = db.prepare(`
       SELECT * FROM journal_entry 
       WHERE ref = ?
-    `).get(adjustmentTransaction.journal_entry_ref);
+    `)?.get(adjustmentTransaction.journal_entry_ref) ?? {};
 
     t.assert.equal(Boolean(journalEntry), true, 'Journal entry should be created');
     t.assert.equal(Boolean(journalEntry.post_time), true, 'Journal entry should be posted');
@@ -197,13 +197,13 @@ await test('Inventory Control Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('JOURNAL-001', 'Journal Test Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Test PURCHASE_RECEIPT journal entry automation
     const receiptId = db.prepare(`
@@ -223,10 +223,10 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), receiptId);
 
     // Verify journal entry was created and linked
-    const receiptTransaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(receiptId);
+    const receiptTransaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(receiptId) ?? {};
     t.assert.equal(Boolean(receiptTransaction.journal_entry_ref), true, 'Journal entry should be linked to receipt');
 
-    const receiptJournalEntry = db.prepare('SELECT * FROM journal_entry WHERE ref = ?').get(receiptTransaction.journal_entry_ref);
+    const receiptJournalEntry = db.prepare('SELECT * FROM journal_entry WHERE ref = ?')?.get(receiptTransaction.journal_entry_ref) ?? {};
     t.assert.equal(Boolean(receiptJournalEntry), true, 'Journal entry should be created for receipt');
     t.assert.equal(Boolean(receiptJournalEntry.post_time), true, 'Journal entry should be posted');
 
@@ -252,10 +252,10 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), issueId);
 
     // Verify journal entry was created for issue
-    const issueTransaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(issueId);
+    const issueTransaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(issueId) ?? {};
     t.assert.equal(Boolean(issueTransaction.journal_entry_ref), true, 'Journal entry should be linked to issue');
 
-    const issueJournalEntry = db.prepare('SELECT * FROM journal_entry WHERE ref = ?').get(issueTransaction.journal_entry_ref);
+    const issueJournalEntry = db.prepare('SELECT * FROM journal_entry WHERE ref = ?')?.get(issueTransaction.journal_entry_ref) ?? {};
     t.assert.equal(Boolean(issueJournalEntry), true, 'Journal entry should be created for issue');
     t.assert.equal(Boolean(issueJournalEntry.post_time), true, 'Journal entry should be posted');
 
@@ -267,13 +267,13 @@ await test('Inventory Control Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('ADJ-001', 'Adjustment Test Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Test positive adjustment
     const positiveAdjId = db.prepare(`
@@ -293,7 +293,7 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), positiveAdjId);
 
     // Verify positive adjustment journal entry
-    const positiveAdj = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(positiveAdjId);
+    const positiveAdj = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(positiveAdjId) ?? {};
     t.assert.equal(Boolean(positiveAdj.journal_entry_ref), true, 'Positive adjustment should have journal entry');
 
     const positiveJournalLines = db.prepare('SELECT * FROM journal_entry_line WHERE journal_entry_ref = ? ORDER BY account_code').all(positiveAdj.journal_entry_ref);
@@ -317,7 +317,7 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), negativeAdjId);
 
     // Verify negative adjustment journal entry
-    const negativeAdj = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(negativeAdjId);
+    const negativeAdj = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(negativeAdjId) ?? {};
     t.assert.equal(Boolean(negativeAdj.journal_entry_ref), true, 'Negative adjustment should have journal entry');
 
     const negativeJournalLines = db.prepare('SELECT * FROM journal_entry_line WHERE journal_entry_ref = ? ORDER BY account_code').all(negativeAdj.journal_entry_ref);
@@ -331,7 +331,7 @@ await test('Inventory Control Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test products
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const rawMaterialId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -342,7 +342,7 @@ await test('Inventory Control Schema', async function (t) {
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('FG-001', 'Finished Good', category.id, 1500, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add initial stock for raw materials
     db.prepare(`
@@ -369,7 +369,7 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), mfgIssueId);
 
     // Verify manufacturing issue journal entry
-    const mfgIssue = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(mfgIssueId);
+    const mfgIssue = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(mfgIssueId) ?? {};
     t.assert.equal(Boolean(mfgIssue.journal_entry_ref), true, 'Manufacturing issue should have journal entry');
 
     // Test manufacturing receipt (WIP to finished goods)
@@ -390,7 +390,7 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), mfgReceiptId);
 
     // Verify manufacturing receipt journal entry
-    const mfgReceipt = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(mfgReceiptId);
+    const mfgReceipt = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(mfgReceiptId) ?? {};
     t.assert.equal(Boolean(mfgReceipt.journal_entry_ref), true, 'Manufacturing receipt should have journal entry');
 
     fixture.cleanup();
@@ -401,13 +401,13 @@ await test('Inventory Control Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('WRITEOFF-001', 'Write-off Test Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add initial stock for write-offs
     db.prepare(`
@@ -434,7 +434,7 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), obsolescenceId);
 
     // Verify obsolescence write-off journal entry
-    const obsolescence = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(obsolescenceId);
+    const obsolescence = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(obsolescenceId) ?? {};
     t.assert.equal(Boolean(obsolescence.journal_entry_ref), true, 'Obsolescence write-off should have journal entry');
 
     // Test damage write-off
@@ -455,7 +455,7 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), damageId);
 
     // Verify damage write-off journal entry
-    const damage = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(damageId);
+    const damage = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(damageId) ?? {};
     t.assert.equal(Boolean(damage.journal_entry_ref), true, 'Damage write-off should have journal entry');
 
     fixture.cleanup();
@@ -466,13 +466,13 @@ await test('Inventory Control Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('AUTO-POST-001', 'Auto Post Test Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create transaction
     const transactionId = db.prepare(`
@@ -494,16 +494,16 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(postTime, transactionId);
 
     // Verify journal entry was created and posted automatically
-    const transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(transactionId);
+    const transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(transactionId) ?? {};
     t.assert.equal(Boolean(transaction.journal_entry_ref), true, 'Journal entry should be linked');
 
-    const journalEntry = db.prepare('SELECT * FROM journal_entry WHERE ref = ?').get(transaction.journal_entry_ref);
+    const journalEntry = db.prepare('SELECT * FROM journal_entry WHERE ref = ?')?.get(transaction.journal_entry_ref) ?? {};
     t.assert.equal(Boolean(journalEntry), true, 'Journal entry should be created');
     t.assert.equal(Boolean(journalEntry.post_time), true, 'Journal entry should be posted automatically');
     t.assert.equal(Number(journalEntry.post_time), postTime, 'Journal entry post time should match transaction post time');
 
     // Verify journal entry lines were created
-    const journalLines = db.prepare('SELECT COUNT(*) as count FROM journal_entry_line WHERE journal_entry_ref = ?').get(transaction.journal_entry_ref);
+    const journalLines = db.prepare('SELECT COUNT(*) as count FROM journal_entry_line WHERE journal_entry_ref = ?')?.get(transaction.journal_entry_ref) ?? {};
     t.assert.equal(Number(journalLines.count) >= 2, true, 'Should have at least 2 journal entry lines');
 
     fixture.cleanup();
@@ -514,13 +514,13 @@ await test('Inventory Control Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('NO-JOURNAL-001', 'No Journal Test Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add initial stock for transfer
     db.prepare(`
@@ -547,7 +547,7 @@ await test('Inventory Control Schema', async function (t) {
     db.prepare('UPDATE inventory_transaction SET posted_time = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), transferOutId);
 
     // Verify no journal entry was created
-    const transferOut = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(transferOutId);
+    const transferOut = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(transferOutId) ?? {};
     t.assert.equal(transferOut.journal_entry_ref, null, 'Transfer out should not have journal entry');
 
     fixture.cleanup();

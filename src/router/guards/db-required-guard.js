@@ -1,7 +1,7 @@
 // @ts-check
 
 import { useDb } from '@/src/context/db.js';
-import { AppPanelDashboardRoute, AppPanelOnboardingRoute } from '@/src/router/router.js';
+import { AppPanelDashboardRoute, AppOnboardingRoute } from '@/src/router/router.js';
 
 /** @typedef {import('vue').App} App */
 /** @typedef {import('vue-router').Router} Router */
@@ -17,14 +17,14 @@ export async function installDbRequiredGuard(app, router) {
       return db.isOpen;
     });
     if (isDbOpen) {
-      if (destination.name === AppPanelOnboardingRoute) {
+      if (destination.name === AppOnboardingRoute) {
         return { name: AppPanelDashboardRoute, replace: true };
       }
     }
     else {
-      return destination.name === AppPanelOnboardingRoute
+      return destination.name === AppOnboardingRoute
         ? true
-        : { name: AppPanelOnboardingRoute, replace: true };
+        : { name: AppOnboardingRoute, replace: true };
     }
     removeListener();
     return true;

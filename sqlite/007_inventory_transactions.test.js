@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -77,7 +77,7 @@ await test('Inventory Transactions Schema', async function (t) {
       const table = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='table' AND name=?
-      `).get(tableName);
+      `)?.get(tableName) ?? {};
       t.assert.equal(Boolean(table), true, `Table ${tableName} should exist`);
     }
 
@@ -89,15 +89,15 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Test that default transaction types exist
-    const transactionTypes = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction_type').get();
+    const transactionTypes = db.prepare('SELECT COUNT(*) as count FROM inventory_transaction_type')?.get() ?? {};
     t.assert.equal(Number(transactionTypes.count) > 0, true, 'Transaction types should be populated');
 
     // Test specific transaction types
-    const purchaseReceipt = db.prepare('SELECT * FROM inventory_transaction_type WHERE code = ?').get('PURCHASE_RECEIPT');
+    const purchaseReceipt = db.prepare('SELECT * FROM inventory_transaction_type WHERE code = ?')?.get('PURCHASE_RECEIPT') ?? {};
     t.assert.equal(Boolean(purchaseReceipt), true, 'PURCHASE_RECEIPT type should exist');
     t.assert.equal(String(purchaseReceipt.affects_quantity), 'INCREASE', 'PURCHASE_RECEIPT should increase quantity');
 
-    const salesIssue = db.prepare('SELECT * FROM inventory_transaction_type WHERE code = ?').get('SALES_ISSUE');
+    const salesIssue = db.prepare('SELECT * FROM inventory_transaction_type WHERE code = ?')?.get('SALES_ISSUE') ?? {};
     t.assert.equal(Boolean(salesIssue), true, 'SALES_ISSUE type should exist');
     t.assert.equal(String(salesIssue.affects_quantity), 'DECREASE', 'SALES_ISSUE should decrease quantity');
 
@@ -109,7 +109,7 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time)
@@ -117,7 +117,7 @@ await test('Inventory Transactions Schema', async function (t) {
     `).run('TEST-002', 'Test Product 2', category.id, 1500, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Get warehouse location
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create inventory transaction
     const transactionId = db.prepare(`
@@ -135,11 +135,11 @@ await test('Inventory Transactions Schema', async function (t) {
     `).run(transactionId, 1, productId, warehouseLocation.id, 100, 1200);
 
     // Verify transaction was created
-    const transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(transactionId);
+    const transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(transactionId) ?? {};
     t.assert.equal(Boolean(transaction), true, 'Transaction should be created');
     t.assert.equal(String(transaction.transaction_type_code), 'PURCHASE_RECEIPT', 'Transaction type should match');
 
-    const transactionLine = db.prepare('SELECT * FROM inventory_transaction_line WHERE inventory_transaction_id = ?').get(transactionId);
+    const transactionLine = db.prepare('SELECT * FROM inventory_transaction_line WHERE inventory_transaction_id = ?')?.get(transactionId) ?? {};
     t.assert.equal(Boolean(transactionLine), true, 'Transaction line should be created');
     t.assert.equal(Number(transactionLine.quantity), 100, 'Quantity should match');
     t.assert.equal(Number(transactionLine.unit_cost), 1200, 'Unit cost should match');
@@ -153,14 +153,14 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('STOCK-UPDATE', 'Stock Update Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create and post a receipt transaction
     const receiptId = db.prepare(`
@@ -183,7 +183,7 @@ await test('Inventory Transactions Schema', async function (t) {
     const stock = db.prepare(`
       SELECT * FROM inventory_stock 
       WHERE product_id = ? AND warehouse_location_id = ?
-    `).get(productId, warehouseLocation.id);
+    `)?.get(productId, warehouseLocation.id) ?? {};
 
     t.assert.equal(Boolean(stock), true, 'Stock record should be created');
     t.assert.equal(Number(stock.quantity_on_hand), 50, 'Quantity on hand should be 50');
@@ -210,7 +210,7 @@ await test('Inventory Transactions Schema', async function (t) {
     const updatedStock = db.prepare(`
       SELECT * FROM inventory_stock 
       WHERE product_id = ? AND warehouse_location_id = ?
-    `).get(productId, warehouseLocation.id);
+    `)?.get(productId, warehouseLocation.id) ?? {};
 
     t.assert.equal(Number(updatedStock.quantity_on_hand), 30, 'Quantity on hand should be reduced to 30');
 
@@ -222,7 +222,7 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create lot-tracked product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, is_lot_tracked, shelf_life_days,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -234,7 +234,7 @@ await test('Inventory Transactions Schema', async function (t) {
       VALUES (?, ?, ?, ?)
     `).run(productId, 'LOT-20250601', Math.floor(Date.now() / 1000) + (30 * 24 * 3600), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create transaction
     const transactionId = db.prepare(`
@@ -278,13 +278,13 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create serialized product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, is_serialized,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('SERIAL-001', 'Serialized Product', category.id, 1, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create transaction
     const transactionId = db.prepare(`
@@ -328,12 +328,12 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test scenario with multiple movements
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('AUDIT-001', 'Audit Trail Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Receipt transaction
     const receiptId = db.prepare(`
@@ -390,12 +390,12 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('STATUS-001', 'Status Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
     const currentTime = Math.floor(Date.now() / 1000);
 
     // Create transaction that requires approval
@@ -413,7 +413,7 @@ await test('Inventory Transactions Schema', async function (t) {
     `).run(transactionId, 1, productId, warehouseLocation.id, 10, 1000);
 
     // Test created status
-    let transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(transactionId);
+    let transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(transactionId) ?? {};
     t.assert.equal(Boolean(transaction.created_time), true, 'Should have created_time');
     t.assert.equal(transaction.approved_time, null, 'Should not have approved_time yet');
     t.assert.equal(transaction.posted_time, null, 'Should not have posted_time yet');
@@ -426,7 +426,7 @@ await test('Inventory Transactions Schema', async function (t) {
     `).run(currentTime + 100, 'approver_user', transactionId);
 
     // Test approved status
-    transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(transactionId);
+    transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(transactionId) ?? {};
     t.assert.equal(Boolean(transaction.approved_time), true, 'Should have approved_time');
     t.assert.equal(String(transaction.approved_by_user), 'approver_user', 'Should track who approved');
     t.assert.equal(transaction.posted_time, null, 'Should not have posted_time yet');
@@ -439,7 +439,7 @@ await test('Inventory Transactions Schema', async function (t) {
     `).run(currentTime + 200, transactionId);
 
     // Test posted status
-    transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?').get(transactionId);
+    transaction = db.prepare('SELECT * FROM inventory_transaction WHERE id = ?')?.get(transactionId) ?? {};
     t.assert.equal(Boolean(transaction.posted_time), true, 'Should have posted_time');
 
     fixture.cleanup();
@@ -473,7 +473,7 @@ await test('Inventory Transactions Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test products
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const product1Id = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('LINE-001', 'Line Test Product 1', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -482,7 +482,7 @@ await test('Inventory Transactions Schema', async function (t) {
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('LINE-002', 'Line Test Product 2', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create transaction with multiple lines
     const transactionId = db.prepare(`

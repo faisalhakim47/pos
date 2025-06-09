@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -74,7 +74,7 @@ await test('Inventory Tracking Schema', async function (t) {
       const table = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='table' AND name=?
-      `).get(tableName);
+      `)?.get(tableName) ?? {};
       t.assert.equal(Boolean(table), true, `Table ${tableName} should exist`);
     }
 
@@ -96,7 +96,7 @@ await test('Inventory Tracking Schema', async function (t) {
       const view = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='view' AND name=?
-      `).get(viewName);
+      `)?.get(viewName) ?? {};
       t.assert.equal(Boolean(view), true, `View ${viewName} should exist`);
     }
 
@@ -108,12 +108,12 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('STOCK-001', 'Stock Test Product', category.id, 1000, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create inventory stock record
     const stockId = db.prepare(`
@@ -123,7 +123,7 @@ await test('Inventory Tracking Schema', async function (t) {
     `).run(productId, warehouseLocation.id, 100, 20, 1000, Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify stock was created and calculated fields work
-    const stock = db.prepare('SELECT * FROM inventory_stock WHERE id = ?').get(stockId);
+    const stock = db.prepare('SELECT * FROM inventory_stock WHERE id = ?')?.get(stockId) ?? {};
     t.assert.equal(Boolean(stock), true, 'Stock record should be created');
     t.assert.equal(Number(stock.quantity_on_hand), 100, 'Quantity on hand should be 100');
     t.assert.equal(Number(stock.quantity_reserved), 20, 'Quantity reserved should be 20');
@@ -138,7 +138,7 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create lot-tracked product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, is_lot_tracked, shelf_life_days, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('LOT-001', 'Lot Tracked Product', category.id, 1, 30, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -150,7 +150,7 @@ await test('Inventory Tracking Schema', async function (t) {
     `).run(productId, 'LOT-20250601', Math.floor(Date.now() / 1000) + (30 * 24 * 3600), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify lot was created
-    const lot = db.prepare('SELECT * FROM inventory_lot WHERE id = ?').get(lotId);
+    const lot = db.prepare('SELECT * FROM inventory_lot WHERE id = ?')?.get(lotId) ?? {};
     t.assert.equal(Boolean(lot), true, 'Lot should be created');
     t.assert.equal(String(lot.lot_number), 'LOT-20250601', 'Lot number should match');
     t.assert.equal(Number(lot.product_id), Number(productId), 'Product ID should match');
@@ -171,12 +171,12 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create serialized product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, is_serialized, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('SERIAL-001', 'Serialized Product', category.id, 1, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create serial number records
     const serial1Id = db.prepare(`
@@ -192,8 +192,8 @@ await test('Inventory Tracking Schema', async function (t) {
     `).run(productId, 'SN002', warehouseLocation.id, Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify serial numbers were created
-    const serial1 = db.prepare('SELECT * FROM inventory_serial WHERE id = ?').get(serial1Id);
-    const serial2 = db.prepare('SELECT * FROM inventory_serial WHERE id = ?').get(serial2Id);
+    const serial1 = db.prepare('SELECT * FROM inventory_serial WHERE id = ?')?.get(serial1Id) ?? {};
+    const serial2 = db.prepare('SELECT * FROM inventory_serial WHERE id = ?')?.get(serial2Id) ?? {};
 
     t.assert.equal(Boolean(serial1), true, 'First serial should be created');
     t.assert.equal(Boolean(serial2), true, 'Second serial should be created');
@@ -216,12 +216,12 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product and stock
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('RESERVE-001', 'Reserve Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add stock
     db.prepare(`
@@ -239,7 +239,7 @@ await test('Inventory Tracking Schema', async function (t) {
     const stock = db.prepare(`
       SELECT * FROM inventory_stock
       WHERE product_id = ? AND warehouse_location_id = ?
-    `).get(productId, warehouseLocation.id);
+    `)?.get(productId, warehouseLocation.id) ?? {};
 
     t.assert.equal(Number(stock.quantity_reserved), 50, 'Should allow valid reservation');
     t.assert.equal(Number(stock.quantity_available), 50, 'Available should be calculated correctly');
@@ -260,7 +260,7 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test products with stock
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const product1Id = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost, reorder_point, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('LOW-001', 'Low Stock Product', category.id, 1000, 10, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -269,10 +269,10 @@ await test('Inventory Tracking Schema', async function (t) {
       INSERT INTO product (sku, name, product_category_id, standard_cost, reorder_point, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('OK-001', 'Adequate Stock Product', category.id, 1200, 10, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?').get('MAIN');
+    const warehouse = db.prepare('SELECT id FROM warehouse WHERE code = ?')?.get('MAIN') ?? {};
 
     // Get default warehouse location
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = ? LIMIT 1').get(warehouse.id);
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = ? LIMIT 1')?.get(warehouse.id) ?? {};
 
     // Add stock records
     db.prepare(`
@@ -311,7 +311,7 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test products with different stock levels
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const lowStockProductId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, minimum_stock_level, reorder_point, reorder_quantity, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('ALERT-LOW', 'Low Stock Alert Product', category.id, 10, 20, 50, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -320,7 +320,7 @@ await test('Inventory Tracking Schema', async function (t) {
       INSERT INTO product (sku, name, product_category_id, minimum_stock_level, reorder_point, reorder_quantity, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('ALERT-OUT', 'Out of Stock Product', category.id, 5, 10, 25, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add stock - low stock (below reorder point)
     db.prepare(`
@@ -340,8 +340,8 @@ await test('Inventory Tracking Schema', async function (t) {
     const alerts = db.prepare('SELECT * FROM inventory_alerts ORDER BY alert_type, sku').all();
     t.assert.equal(alerts.length >= 2, true, 'Should have at least 2 alerts');
 
-    const outOfStockAlert = alerts.find(alert => alert.product_id === outOfStockProductId);
-    const lowStockAlert = alerts.find(alert => alert.product_id === lowStockProductId);
+    const outOfStockAlert = alerts.find(alert => alert.product_id === outOfStockProductId) ?? {};
+    const lowStockAlert = alerts.find(alert => alert.product_id === lowStockProductId) ?? {};
 
     t.assert.equal(Boolean(outOfStockAlert), true, 'Should have out of stock alert');
     t.assert.equal(String(outOfStockAlert.alert_type), 'OUT_OF_STOCK', 'Alert type should be OUT_OF_STOCK');
@@ -357,12 +357,12 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create lot-tracked product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, is_lot_tracked, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('EXPIRY-001', 'Expiry Test Product', category.id, 1, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     const currentTime = Math.floor(Date.now() / 1000);
 
@@ -394,8 +394,8 @@ await test('Inventory Tracking Schema', async function (t) {
     const alerts = db.prepare('SELECT * FROM lot_expiration_alert ORDER BY expiration_date').all();
     t.assert.equal(alerts.length >= 2, true, `Should have at least 2 expiration alerts, but got ${alerts.length}`);
 
-    const expiredAlert = alerts.find(alert => alert.lot_number === 'EXPIRED-LOT');
-    const expiringAlert = alerts.find(alert => alert.lot_number === 'EXPIRING-LOT');
+    const expiredAlert = alerts.find(alert => alert.lot_number === 'EXPIRED-LOT') ?? {};
+    const expiringAlert = alerts.find(alert => alert.lot_number === 'EXPIRING-LOT') ?? {};
 
     t.assert.equal(Boolean(expiredAlert), true, 'Should have expired lot alert');
     t.assert.equal(String(expiredAlert.expiration_status), 'EXPIRED', 'Status should be EXPIRED');
@@ -411,12 +411,12 @@ await test('Inventory Tracking Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('UNIQUE-001', 'Unique Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create first stock record (no variant, no lot)
     db.prepare(`
@@ -450,7 +450,7 @@ await test('Inventory Tracking Schema', async function (t) {
     const stockRecords = db.prepare(`
       SELECT COUNT(*) as count FROM inventory_stock 
       WHERE product_id = ? AND warehouse_location_id = ?
-    `).get(productId, warehouseLocation.id);
+    `)?.get(productId, warehouseLocation.id) ?? {};
 
     t.assert.equal(Number(stockRecords.count), 2, 'Should have 2 stock records (one without lot, one with lot)');
 

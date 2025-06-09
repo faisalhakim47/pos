@@ -1,5 +1,7 @@
 // @ts-check
 
+import { unknownErrorToString } from '@/src/tools/error.js';
+
 /**
  * @template T
  * @param {new (...args: never) => T} constructor
@@ -10,7 +12,7 @@
 export function assertInstanceOf(constructor, value, message) {
   if (!(value instanceof constructor)) {
     throw new TypeError(
-      message ?? `Expected instance of ${constructor.name}, but got ${typeof value}`,
+      message ?? `Expected instance of ${constructor.name}, but got ${unknownErrorToString(value)}`,
     );
   }
 }

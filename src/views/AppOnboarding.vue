@@ -2,9 +2,9 @@
 import { computed, reactive, useCssModule } from 'vue';
 
 import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
+import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { assertInstanceOf } from '@/src/tools/assertion.js';
-import { useDb } from '@/src/context/db.js';
 
 const style = useCssModule();
 const { t } = useI18n();

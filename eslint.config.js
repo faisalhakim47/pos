@@ -1,8 +1,8 @@
 import { defineConfig } from 'eslint/config';
-import globals from 'globals';
-import pluginVue from 'eslint-plugin-vue';
-import pluginOxlint from 'eslint-plugin-oxlint';
 import eslintImport from 'eslint-plugin-import';
+import pluginOxlint from 'eslint-plugin-oxlint';
+import pluginVue from 'eslint-plugin-vue';
+import globals from 'globals';
 
 export default defineConfig([
   {
@@ -47,6 +47,10 @@ export default defineConfig([
           'index',
         ],
         'newlines-between': 'always',
+        'alphabetize': {
+          order: 'asc',
+          caseInsensitive: true,
+        },
       }],
       'indent': ['error', 2, { SwitchCase: 1 }],
       'no-constant-binary-expression': ['off'],

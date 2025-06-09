@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -21,8 +21,15 @@ class FXTestFixture {
     this.testRunId = testRunId;
     this.coreSchemaPath = join(__dirname, '001_core_accounting.sql');
     this.fxSchemaPath = join(__dirname, '002_foreign_exchange.sql');
-    this.db = null;
+    this.setupDb = null;
     this.dbPath = null;
+  }
+
+  get db() {
+    if (this.setupDb instanceof DatabaseSync) {
+      return this.setupDb;
+    }
+    throw new Error('Database not initialized. Call setup() first.');
   }
 
   async setup() {
@@ -36,7 +43,7 @@ class FXTestFixture {
       `${this.testRunId}_fx_${this.label}.db`,
     );
 
-    this.db = new DatabaseSync(this.dbPath);
+    this.setupDb = new DatabaseSync(this.dbPath);
     this.db.exec(coreSchema);
     this.db.exec(fxSchema);
 
@@ -110,11 +117,11 @@ await test('Foreign Exchange - Currency Management', async function (t) {
 
     t.assert.equal(currencies.length >= 25, true, 'Should have at least 25 currencies');
 
-    const usd = currencies.find(function (c) { return c.code === 'USD'; });
+    const usd = currencies.find(function (c) { return c.code === 'USD'; }) ?? {};
     t.assert.equal(!!usd, true, 'USD should be available');
     t.assert.equal(usd.is_functional_currency, 1, 'USD should be functional currency');
 
-    const eur = currencies.find(function (c) { return c.code === 'EUR'; });
+    const eur = currencies.find(function (c) { return c.code === 'EUR'; }) ?? {};
     t.assert.equal(!!eur, true, 'EUR should be available');
     t.assert.equal(eur.is_functional_currency, 0, 'EUR should not be functional currency');
   });
@@ -158,7 +165,7 @@ await test('Foreign Exchange - Exchange Rates', async function (t) {
 
     t.assert.equal(rates.length >= 10, true, 'Should have sample exchange rates');
 
-    const eurUsd = rates.find(function (r) { return r.from_currency_code === 'EUR' && r.to_currency_code === 'USD'; });
+    const eurUsd = rates.find(function (r) { return r.from_currency_code === 'EUR' && r.to_currency_code === 'USD'; }) ?? {};
     t.assert.equal(!!eurUsd, true, 'Should have EUR/USD rate');
     t.assert.equal(Number(eurUsd.rate) > 0, true, 'Exchange rate should be positive');
   });
@@ -185,8 +192,8 @@ await test('Foreign Exchange - Exchange Rates', async function (t) {
 
     t.assert.equal(lookupRates.length, 2, 'Should have both EUR/USD and USD/EUR rates');
 
-    const eurUsd = lookupRates.find(function (r) { return r.from_currency_code === 'EUR'; });
-    const usdEur = lookupRates.find(function (r) { return r.from_currency_code === 'USD'; });
+    const eurUsd = lookupRates.find(function (r) { return r.from_currency_code === 'EUR'; }) ?? {};
+    const usdEur = lookupRates.find(function (r) { return r.from_currency_code === 'USD'; }) ?? {};
 
     t.assert.equal(!!(eurUsd && usdEur), true, 'Should have both directions');
     t.assert.equal(Math.abs((Number(eurUsd.rate) * Number(usdEur.rate)) - 1.0) < 0.001, true, 'Inverse rates should multiply to ~1');
@@ -346,7 +353,7 @@ await test('Foreign Exchange - FX Revaluation', async function (t) {
 
     t.assert.equal(exposure.length >= 1, true, 'Should have FX exposure');
 
-    const eurExposure = exposure.find(function (e) { return e.currency_code === 'EUR'; });
+    const eurExposure = exposure.find(function (e) { return e.currency_code === 'EUR'; }) ?? {};
     t.assert.equal(!!eurExposure, true, 'Should have EUR exposure');
     t.assert.equal(eurExposure.account_count, 1, 'Should have one EUR account');
     t.assert.equal(Number(eurExposure.total_balance_functional) > 0, true, 'Should have positive functional balance');
@@ -369,11 +376,11 @@ await test('Foreign Exchange - FX Rate Sources', async function (t) {
 
     t.assert.equal(sources.length >= 4, true, 'Should have multiple rate sources');
 
-    const manualSource = sources.find(function (s) { return s.name === 'Manual Entry'; });
+    const manualSource = sources.find(function (s) { return s.name === 'Manual Entry'; }) ?? {};
     t.assert.equal(!!manualSource, true, 'Should have manual entry source');
     t.assert.equal(manualSource.api_key_required, 0, 'Manual entry should not require API key');
 
-    const ecbSource = sources.find(function (s) { return s.name === 'European Central Bank'; });
+    const ecbSource = sources.find(function (s) { return s.name === 'European Central Bank'; }) ?? {};
     t.assert.equal(!!ecbSource, true, 'Should have ECB source');
     t.assert.equal(String(ecbSource.base_url).includes('ecb.europa.eu'), true, 'ECB should have correct URL');
   });
@@ -475,7 +482,7 @@ await test('Foreign Exchange - FX Revaluation Calculations', async function (t) 
     // Verify revaluation records
     const revalRun = fixture.db.prepare(`
       select * from fx_revaluation_run where id = ?
-    `).get(revalRunId);
+    `)?.get(revalRunId) ?? {};
 
     t.assert.equal(revalRun.total_unrealized_gain_loss, 5000, 'Total unrealized gain should be 5000');
     t.assert.equal(revalRun.functional_currency_code, 'USD', 'Functional currency should be USD');
@@ -613,7 +620,7 @@ await test('Foreign Exchange - Accounting Principles Validation', async function
             else 0 end) as total_equity
       from account a
       join account_type at on a.account_type_name = at.name
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(
       Number(balances.total_assets),
@@ -632,16 +639,16 @@ await test('Foreign Exchange - Accounting Principles Validation', async function
 
     t.assert.equal(fxAccounts.length, 4, 'Should have all FX gain/loss accounts');
 
-    const realizedGain = fxAccounts.find(a => a.code === 71000);
+    const realizedGain = fxAccounts.find(a => a.code === 71000) ?? {};
     t.assert.equal(realizedGain.account_type_name, 'revenue', 'Realized FX Gain should be revenue');
 
-    const realizedLoss = fxAccounts.find(a => a.code === 71100);
+    const realizedLoss = fxAccounts.find(a => a.code === 71100) ?? {};
     t.assert.equal(realizedLoss.account_type_name, 'expense', 'Realized FX Loss should be expense');
 
-    const unrealizedGain = fxAccounts.find(a => a.code === 71200);
+    const unrealizedGain = fxAccounts.find(a => a.code === 71200) ?? {};
     t.assert.equal(unrealizedGain.account_type_name, 'revenue', 'Unrealized FX Gain should be revenue');
 
-    const unrealizedLoss = fxAccounts.find(a => a.code === 71300);
+    const unrealizedLoss = fxAccounts.find(a => a.code === 71300) ?? {};
     t.assert.equal(unrealizedLoss.account_type_name, 'expense', 'Unrealized FX Loss should be expense');
   });
 
@@ -670,7 +677,7 @@ await test('Foreign Exchange - Accounting Principles Validation', async function
         sum(credit_balance_functional) as total_credits,
         count(*) as account_count
       from trial_balance_multicurrency
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(
       Number(trialBalance.total_debits),
@@ -769,12 +776,12 @@ await test('Foreign Exchange - Rate Source Management', async function (t) {
 
     t.assert.equal(sources.length >= 7, true, 'Should have at least 7 rate sources');
 
-    const manualEntry = sources.find(s => s.name === 'Manual Entry');
+    const manualEntry = sources.find(s => s.name === 'Manual Entry') ?? {};
     t.assert.equal(!!manualEntry, true, 'Should have Manual Entry source');
     t.assert.equal(manualEntry.api_key_required, 0, 'Manual Entry should not require API key');
     t.assert.equal(manualEntry.is_active, 1, 'Manual Entry should be active');
 
-    const ecb = sources.find(s => s.name === 'European Central Bank');
+    const ecb = sources.find(s => s.name === 'European Central Bank') ?? {};
     t.assert.equal(!!ecb, true, 'Should have ECB source');
     t.assert.equal(ecb.api_key_required, 0, 'ECB should not require API key');
   });
@@ -792,7 +799,7 @@ await test('Foreign Exchange - Rate Source Management', async function (t) {
 
     const importLog = fixture.db.prepare(`
       select * from fx_rate_import_log where id = ?
-    `).get(logResult.lastInsertRowid);
+    `)?.get(logResult.lastInsertRowid) ?? {};
 
     t.assert.equal(importLog.rates_imported, 10, 'Should track imported rates count');
     t.assert.equal(importLog.rates_updated, 2, 'Should track updated rates count');

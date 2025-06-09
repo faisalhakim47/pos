@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -24,8 +24,15 @@ class TestFixture {
     this.assetSchemaFilePath = join(__dirname, '003_asset_register.sql');
     this.coreSchemaFileContent = null;
     this.assetSchemaFileContent = null;
-    this.db = null;
+    this.setupDb = null;
     this.dbPath = null;
+  }
+
+  get db() {
+    if (this.setupDb instanceof DatabaseSync) {
+      return this.setupDb;
+    }
+    throw new Error('Database not initialized. Call setup() first.');
   }
 
   async setup() {
@@ -39,7 +46,7 @@ class TestFixture {
       tempDir,
       `${this.testRunId}_${this.uniqueId}_asset_register_${this.label}.db`,
     );
-    this.db = new DatabaseSync(this.dbPath);
+    this.setupDb = new DatabaseSync(this.dbPath);
 
     // Execute schemas in order: core accounting first, then asset register
     try {
@@ -51,7 +58,7 @@ class TestFixture {
       for (const tableName of requiredTables) {
         const tableExists = this.db.prepare(`
           SELECT name FROM sqlite_master WHERE type='table' AND name=?
-        `).get(tableName);
+        `)?.get(tableName) ?? {};
 
         if (!tableExists) {
           throw new Error(`${tableName} table was not created for test: ${this.label}`);
@@ -124,7 +131,7 @@ await test('Asset Register Schema Validation', async function (t) {
     for (const tableName of expectedTables) {
       const table = db.prepare(`
         SELECT name FROM sqlite_master WHERE type='table' AND name=?
-      `).get(tableName);
+      `)?.get(tableName) ?? {};
       t.assert.equal(!!table, true, `Table ${tableName} should exist`);
     }
 
@@ -140,7 +147,7 @@ await test('Asset Register Schema Validation', async function (t) {
     for (const indexName of expectedIndexes) {
       const index = db.prepare(`
         SELECT name FROM sqlite_master WHERE type='index' AND name=?
-      `).get(indexName);
+      `)?.get(indexName) ?? {};
       t.assert.equal(!!index, true, `Index ${indexName} should exist`);
     }
   });
@@ -167,9 +174,9 @@ await test('Asset Register Schema Validation', async function (t) {
       t.assert.equal(typeof category.depreciation_expense_account_code, 'number', `${category.name} should have depreciation expense account code`);
 
       // Verify accounts exist in chart of accounts
-      const assetAccount = db.prepare('SELECT * FROM account WHERE code = ?').get(category.asset_account_code);
-      const accumDepAccount = db.prepare('SELECT * FROM account WHERE code = ?').get(category.accumulated_depreciation_account_code);
-      const depExpAccount = db.prepare('SELECT * FROM account WHERE code = ?').get(category.depreciation_expense_account_code);
+      const assetAccount = db.prepare('SELECT * FROM account WHERE code = ?')?.get(category.asset_account_code) ?? {};
+      const accumDepAccount = db.prepare('SELECT * FROM account WHERE code = ?')?.get(category.accumulated_depreciation_account_code) ?? {};
+      const depExpAccount = db.prepare('SELECT * FROM account WHERE code = ?')?.get(category.depreciation_expense_account_code) ?? {};
 
       t.assert.equal(!!assetAccount, true, `Asset account ${category.asset_account_code} for ${category.name} should exist`);
       t.assert.equal(!!accumDepAccount, true, `Accumulated depreciation account ${category.accumulated_depreciation_account_code} for ${category.name} should exist`);
@@ -182,11 +189,11 @@ await test('Asset Register Schema Validation', async function (t) {
     }
 
     // Test specific category configurations
-    const buildings = categories.find(c => c.name === 'Buildings');
+    const buildings = categories.find(c => c.name === 'Buildings') ?? {};
     t.assert.equal(buildings.default_depreciation_method, 'straight_line', 'Buildings should use straight-line depreciation');
     t.assert.equal(buildings.useful_life_years, 25, 'Buildings should have 25-year useful life');
 
-    const officeEquip = categories.find(c => c.name === 'Office Equipment');
+    const officeEquip = categories.find(c => c.name === 'Office Equipment') ?? {};
     t.assert.equal(officeEquip.default_depreciation_method, 'declining_balance', 'Office Equipment should use declining balance');
     t.assert.equal(officeEquip.default_declining_balance_rate, 0.4, 'Office Equipment should have 40% declining balance rate');
   });
@@ -208,7 +215,7 @@ await test('Fixed Asset CRUD Operations', async function (t) {
     });
 
     // Verify asset was created correctly
-    const asset = db.prepare('SELECT * FROM fixed_asset WHERE id = ?').get(assetData.id);
+    const asset = db.prepare('SELECT * FROM fixed_asset WHERE id = ?')?.get(assetData.id) ?? {};
 
     t.assert.equal(asset.asset_number, 'TEST-ASSET-001', 'Asset number should match');
     t.assert.equal(asset.name, 'Test Building', 'Asset name should match');
@@ -222,7 +229,7 @@ await test('Fixed Asset CRUD Operations', async function (t) {
     t.assert.equal(asset.disposed_time, null, 'Asset should not have disposed_time set');
 
     // Verify computed status through view
-    const assetWithStatus = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?').get(assetData.id);
+    const assetWithStatus = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?')?.get(assetData.id) ?? {};
     t.assert.equal(assetWithStatus.status, 'active', 'Asset status should be computed as active');
   });
 
@@ -364,7 +371,7 @@ await test('Asset Depreciation Calculations', async function (t) {
     const calculation = db.prepare(`
       SELECT * FROM calculate_straight_line_depreciation
       WHERE fixed_asset_id = ?
-    `).get(assetData.id);
+    `)?.get(assetData.id) ?? {};
 
     t.assert.equal(!!calculation, true, 'Should find calculation record');
 
@@ -405,7 +412,7 @@ await test('Asset Depreciation Calculations', async function (t) {
     const calculation = db.prepare(`
       SELECT * FROM calculate_declining_balance_depreciation
       WHERE fixed_asset_id = ?
-    `).get(assetId);
+    `)?.get(assetId) ?? {};
 
     t.assert.equal(!!calculation, true, 'Should find declining balance calculation');
     t.assert.equal(calculation.declining_balance_rate, 0.4, 'Rate should be 0.4');
@@ -434,7 +441,7 @@ await test('Asset Depreciation Calculations', async function (t) {
     const recalculation = db.prepare(`
       SELECT * FROM calculate_declining_balance_depreciation
       WHERE fixed_asset_id = ?
-    `).get(assetId);
+    `)?.get(assetId) ?? {};
 
     t.assert.equal(recalculation.current_accumulated_depreciation, 40000, 'Should reflect accumulated depreciation');
     t.assert.equal(recalculation.current_book_value, 60000, 'Book value should be reduced');
@@ -471,7 +478,7 @@ await test('Asset Depreciation Calculations', async function (t) {
     const calculation = db.prepare(`
       SELECT * FROM calculate_units_of_production_depreciation
       WHERE fixed_asset_id = ?
-    `).get(assetId);
+    `)?.get(assetId) ?? {};
 
     t.assert.equal(!!calculation, true, 'Should find units of production calculation');
     t.assert.equal(calculation.useful_life_units, 100000, 'Should have correct useful life units');
@@ -499,7 +506,7 @@ await test('Asset Depreciation Calculations', async function (t) {
     const updatedCalculation = db.prepare(`
       SELECT * FROM calculate_units_of_production_depreciation
       WHERE fixed_asset_id = ?
-    `).get(assetId);
+    `)?.get(assetId) ?? {};
 
     t.assert.equal(updatedCalculation.total_units_used, 5000, 'Should reflect units used');
     // Expected depreciation = 5000 units * 1.8 per unit = 9000
@@ -569,7 +576,7 @@ await test('Asset Lifecycle Management', async function (t) {
     // Verify periods are properly sequenced
     for (let i = 1; i < schedule.length; i++) {
       t.assert.equal(
-        schedule[i-1].period_end_date <= schedule[i].period_start_date,
+        (schedule[i-1]?.period_end_date ?? NaN) <= (schedule[i]?.period_start_date ?? NaN),
         true,
         'Periods should be properly sequenced',
       );
@@ -622,7 +629,7 @@ await test('Asset Lifecycle Management', async function (t) {
     // Verify disposal information
     const disposedAsset = db.prepare(`
       SELECT * FROM fixed_asset_with_status WHERE id = ?
-    `).get(assetData.id);
+    `)?.get(assetData.id) ?? {};
 
     t.assert.equal(disposedAsset.status, 'disposed', 'Asset status should be disposed');
     t.assert.equal(disposedAsset.disposal_date, disposalDate, 'Disposal date should match');
@@ -718,9 +725,9 @@ await test('Asset Lifecycle Management', async function (t) {
     t.assert.equal(allMods.length, 3, 'Should have 3 modifications');
 
     // Test capitalization logic
-    const maintenanceMod = allMods.find(m => m.modification_type === 'maintenance');
-    const improvementMod = allMods.find(m => m.modification_type === 'improvement');
-    const repairMod = allMods.find(m => m.modification_type === 'major_repair');
+    const maintenanceMod = allMods.find(m => m.modification_type === 'maintenance') ?? {};
+    const improvementMod = allMods.find(m => m.modification_type === 'improvement') ?? {};
+    const repairMod = allMods.find(m => m.modification_type === 'major_repair') ?? {};
 
     t.assert.equal(maintenanceMod.capitalizable, 0, 'Maintenance should not be capitalizable');
     t.assert.equal(improvementMod.capitalizable, 1, 'Improvement should be capitalizable');
@@ -796,7 +803,7 @@ await test('Asset Register Views and Reporting', async function (t) {
     const summary = db.prepare(`
       SELECT * FROM asset_register_summary
       WHERE id = ?
-    `).get(assetData.id);
+    `)?.get(assetData.id) ?? {};
 
     t.assert.equal(!!summary, true, 'Should find asset in summary view');
     t.assert.equal(summary.asset_number, 'SUMMARY-001', 'Asset number should match');
@@ -882,11 +889,11 @@ await test('Asset Register Views and Reporting', async function (t) {
     t.assert.equal(pendingNumbers.includes('RECENT-001'), true, 'Asset with recent depreciation should also be included (time filtering moved to application layer)');
 
     // Verify calculation fields
-    const newAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-NEW-001');
+    const newAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-NEW-001') ?? {};
     t.assert.equal(newAssetPending.current_accumulated_depreciation, 0, 'New asset should have zero accumulated depreciation');
     t.assert.equal(newAssetPending.current_book_value, newAssetPending.purchase_cost, 'New asset book value should equal purchase cost');
 
-    const oldAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-OLD-001');
+    const oldAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-OLD-001') ?? {};
     t.assert.equal(oldAssetPending.current_accumulated_depreciation, 9000, 'Old asset should show accumulated depreciation');
   });
 
@@ -940,7 +947,7 @@ await test('Asset Register Views and Reporting', async function (t) {
     const fullRateCalc = db.prepare(`
       SELECT * FROM calculate_declining_balance_depreciation
       WHERE fixed_asset_id = ?
-    `).get(fullRateAsset.lastInsertRowid);
+    `)?.get(fullRateAsset.lastInsertRowid) ?? {};
 
     t.assert.equal(fullRateCalc.declining_balance_rate, 1.0, 'Should accept 100% rate');
     t.assert.equal(fullRateCalc.next_year_depreciation, 100000, 'Should calculate 100% of book value');
@@ -1069,7 +1076,7 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
     t.assert.equal(locationUpdate.changes, 1, 'Should allow location updates');
 
     // Verify location was updated
-    const updatedAsset = db.prepare('SELECT location FROM fixed_asset WHERE id = ?').get(assetData.id);
+    const updatedAsset = db.prepare('SELECT location FROM fixed_asset WHERE id = ?')?.get(assetData.id) ?? {};
     t.assert.equal(updatedAsset.location, 'Storage Facility', 'Location should be updated');
   });
 
@@ -1133,14 +1140,14 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
     );
 
     // Verify all related records exist
-    const depPeriods = db.prepare('SELECT COUNT(*) as count FROM depreciation_period WHERE fixed_asset_id = ?').get(assetData.id);
-    const modifications = db.prepare('SELECT COUNT(*) as count FROM asset_modification WHERE fixed_asset_id = ?').get(assetData.id);
+    const depPeriods = db.prepare('SELECT COUNT(*) as count FROM depreciation_period WHERE fixed_asset_id = ?')?.get(assetData.id) ?? {};
+    const modifications = db.prepare('SELECT COUNT(*) as count FROM asset_modification WHERE fixed_asset_id = ?')?.get(assetData.id) ?? {};
 
     t.assert.equal(depPeriods.count, 1, 'Should have depreciation period');
     t.assert.equal(modifications.count, 1, 'Should have modification record');
 
     // Verify summary view includes all data
-    const summary = db.prepare('SELECT * FROM asset_register_summary WHERE id = ?').get(assetData.id);
+    const summary = db.prepare('SELECT * FROM asset_register_summary WHERE id = ?')?.get(assetData.id) ?? {};
     t.assert.equal(!!summary, true, 'Asset should appear in summary view');
     t.assert.equal(summary.accumulated_depreciation, 9000, 'Summary should include depreciation');
     t.assert.equal(summary.capitalized_modifications, 10000, 'Summary should include modifications');
@@ -1219,7 +1226,7 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
     const uopCalc = db.prepare(`
       SELECT * FROM calculate_units_of_production_depreciation
       WHERE fixed_asset_id = ?
-    `).get(assetId);
+    `)?.get(assetId) ?? {};
 
     t.assert.equal(uopCalc.total_units_used, 18000, 'Calculation should show latest cumulative units');
     t.assert.equal(uopCalc.depreciation_per_unit, 1.8, 'Should calculate correct per-unit depreciation'); // (300000-30000)/150000
@@ -1277,7 +1284,7 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
     }
 
     // Test complete asset summary
-    const summary = db.prepare('SELECT * FROM asset_register_summary WHERE id = ?').get(assetData.id);
+    const summary = db.prepare('SELECT * FROM asset_register_summary WHERE id = ?')?.get(assetData.id) ?? {};
 
     t.assert.equal(summary.purchase_cost, 240000, 'Summary should show original cost');
     t.assert.equal(summary.accumulated_depreciation, 54000, 'Should show 3 years of depreciation');
@@ -1302,7 +1309,7 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
     t.assert.equal(disposalResult.changes, 1, 'Should successfully dispose asset');
 
     // Verify disposal
-    const disposedAsset = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?').get(assetData.id);
+    const disposedAsset = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?')?.get(assetData.id) ?? {};
     t.assert.equal(disposedAsset.status, 'disposed', 'Asset should be disposed');
     t.assert.equal(disposedAsset.disposal_proceeds, disposalProceeds, 'Disposal proceeds should match');
 

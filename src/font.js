@@ -1,7 +1,7 @@
 // @ts-check
 
-import FontSourceSans3Url from '@/src/vendor/Source_Sans_3/SourceSans3-VariableFont_wght.ttf?url';
 import FontSourceSans3ItalicUrl from '@/src/vendor/Source_Sans_3/SourceSans3-Italic-VariableFont_wght.ttf?url';
+import FontSourceSans3Url from '@/src/vendor/Source_Sans_3/SourceSans3-VariableFont_wght.ttf?url';
 
 const fonts = /** @type {Array<FontFace>} */ ([]);
 const fontStyles = [

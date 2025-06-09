@@ -1,11 +1,10 @@
 <script setup>
-import { useCssModule, onMounted } from 'vue';
+import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { AppPanelAccountListRoute } from '@/src/router/router.js';
 
 const router = useRouter();
-const style = useCssModule();
 
 onMounted(function () {
   /** @todo implement dashboard */
@@ -14,13 +13,7 @@ onMounted(function () {
 </script>
 
 <template>
-  <div :class="style.container">
+  <main>
     <h1>Dashboard</h1>
-  </div>
+  </main>
 </template>
-
-<style module>
-.container {
-  /* grid layout style here */
-}
-</style>

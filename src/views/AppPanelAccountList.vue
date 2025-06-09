@@ -1,12 +1,15 @@
 <script setup>
-import { onMounted, reactive, useCssModule } from 'vue';
+import { onMounted, reactive } from 'vue';
+import { RouterLink } from 'vue-router';
 
+import { MaterialSymbolDashboardUrl } from '@/src/assets/material-symbols.js';
+import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
+import { AppPanelDashboardRoute } from '@/src/router/router.js';
 
 const { t } = useI18n();
 const db = useDb();
-const style = useCssModule();
 
 const state = reactive({
   accounts: [{
@@ -42,40 +45,37 @@ onMounted(async function () {
 </script>
 
 <template>
-  <div :class="style.container">
-    <h1>{{ t('accountListTitle') }}</h1>
-    <table :class="style.table">
+  <main class="page">
+    <header>
+      <h1 style="margin: 0px; font-size: 1.5rem;">{{ t('accountListTitle') }}</h1>
+      <nav>
+        <ul>
+          <li>
+            <RouterLink :to="{ name: AppPanelDashboardRoute }">
+              <SvgIcon :src="MaterialSymbolDashboardUrl" :alt="t('menuItemDashboardLabel')" />
+            </RouterLink>
+          </li>
+        </ul>
+      </nav>
+    </header>
+    <table>
       <thead>
-        <tr>
-          <th style="text-align: left;">Code</th>
-          <th style="text-align: left;">Name</th>
-          <th style="text-align: center;">Type</th>
-          <th style="text-align: right;">Balance</th>
+        <tr class="sticky">
+          <th style="text-align: center; width: 128px;">{{ t('literal.code') }}</th>
+          <th style="text-align: center; width: 160px;">{{ t('literal.type') }}</th>
+          <th style="text-align: left;">{{ t('literal.name') }}</th>
+          <th style="text-align: right; width: 200px;">{{ t('literal.balance') }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="account in state.accounts" :key="account.code">
-          <td style="text-align: left;">{{ account.code }}</td>
+          <td style="text-align: center; width: 128px;">{{ account.code }}</td>
+          <td style="text-align: center; width: 160px;">{{ t(`literal.${account.accountTypeName}`) }}</td>
           <td style="text-align: left;">{{ account.name }}</td>
-          <td style="text-align: center;">{{ t(`literal.${account.accountTypeName}`) }}</td>
-          <td style="text-align: right;">{{ account.balance }} <sub>{{ account.currencyCode }}</sub></td>
+          <td style="text-align: right; width: 200px;">{{ account.balance }} <sub>{{ account.currencyCode }}</sub></td>
         </tr>
       </tbody>
     </table>
-  </div>
+  </main>
 </template>
 
-<style module>
-.container {
-  padding: 16px;
-}
-.table {
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-}
-.table > thead > tr > th,
-.table > tbody > tr > td {
-  padding: 4px 8px;
-  border: 1px solid #ccc;
-}
-</style>

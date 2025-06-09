@@ -2,8 +2,8 @@
 
 import { fileURLToPath, URL } from 'node:url';
 
-import { defineConfig } from 'vite';
 import vitePluginVue from '@vitejs/plugin-vue';
+import { defineConfig } from 'vite';
 import vitePluginVueDevTools from 'vite-plugin-vue-devtools';
 
 export default defineConfig({

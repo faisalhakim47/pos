@@ -2,8 +2,8 @@
 
 import { inject, reactive } from 'vue';
 
-import dbWorkerUrl from '@/src/context/db.worker.js?url';
 import baseDbUrl from '@/src/assets/pos.db?url';
+import dbWorkerUrl from '@/src/context/db.worker.js?worker&url';
 import { assertPropertyExists, assertPropertyNumber } from '@/src/tools/assertion.js';
 import { crc32 } from '@/src/tools/crc32.js';
 
@@ -40,10 +40,18 @@ export const db = {
         dbContext.isOpen = true;
       },
       async sql(strings, ...values) {
-        return await rpc.call('exec', [
-          strings.join('?'),
-          values,
-        ]);
+        const preparedSqliteQuery = strings.join('?');
+        try {
+          return await rpc.call('exec', [
+            preparedSqliteQuery,
+            values,
+          ]);
+        }
+        catch (error) {
+          throw new Error(`Failed to run sqlite query: ${preparedSqliteQuery} <- ${values.join(', ')}`, {
+            cause: error,
+          });
+        }
       },
     }));
     app.provide(dbContextKey, dbContext);

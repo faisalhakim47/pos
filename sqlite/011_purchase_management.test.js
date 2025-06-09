@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -28,8 +28,15 @@ class TestFixture {
       '010_tax_management.sql',
       '011_purchase_management.sql',
     ];
-    this.db = null;
+    this.setupDb = null;
     this.dbPath = null;
+  }
+
+  get db() {
+    if (this.setupDb instanceof DatabaseSync) {
+      return this.setupDb;
+    }
+    throw new Error('Database not initialized. Call setup() first.');
   }
 
   async setup() {
@@ -39,7 +46,7 @@ class TestFixture {
       tempDir,
       `${this.testRunId}_purchase_management_${this.label}.db`,
     );
-    this.db = new DatabaseSync(this.dbPath);
+    this.setupDb = new DatabaseSync(this.dbPath);
 
     // Load all schema files in order
     for (const schemaFile of this.schemaFiles) {
@@ -148,7 +155,7 @@ await test('Purchase Management Schema', async function (t) {
     const tableInfo = db.prepare(`
       select name from sqlite_master
       where type = 'table' and name = 'vendor'
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(tableInfo.name, 'vendor', 'Vendor table should exist');
 
@@ -159,7 +166,7 @@ await test('Purchase Management Schema', async function (t) {
       values (?, ?, ?, ?)
     `).run('VEND001', 'Test Vendor', 'USD', now);
 
-    const vendor = db.prepare('select * from vendor where vendor_code = ?').get('VEND001');
+    const vendor = db.prepare('select * from vendor where vendor_code = ?')?.get('VEND001') ?? {};
     t.assert.equal(vendor.name, 'Test Vendor', 'Vendor should be inserted correctly');
   });
 
@@ -178,7 +185,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const requisitionId = db.prepare(`
       select id from purchase_requisition where requisition_number = ?
-    `).get('REQ001').id;
+    `)?.get('REQ001')?.id ?? NaN;
 
     // Add requisition line
     db.prepare(`
@@ -191,7 +198,7 @@ await test('Purchase Management Schema', async function (t) {
     // Test status tracking with timestamps
     const requisition = db.prepare(`
       select * from purchase_requisition where id = ?
-    `).get(requisitionId);
+    `)?.get(requisitionId) ?? {};
 
     t.assert.equal(requisition.created_time, now, 'Created time should be set');
     t.assert.equal(requisition.submitted_time, null, 'Submitted time should be null initially');
@@ -203,7 +210,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const updatedRequisition = db.prepare(`
       select * from purchase_requisition where id = ?
-    `).get(requisitionId);
+    `)?.get(requisitionId) ?? {};
 
     t.assert.equal(updatedRequisition.submitted_time, now + 1000, 'Submitted time should be updated');
   });
@@ -222,7 +229,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const vendorId = db.prepare(`
       select id from vendor where vendor_code = ?
-    `).get('VEND001').id;
+    `)?.get('VEND001')?.id ?? NaN;
 
     // Create purchase order
     db.prepare(`
@@ -233,7 +240,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const orderId = db.prepare(`
       select id from purchase_order where order_number = ?
-    `).get('PO001').id;
+    `)?.get('PO001')?.id ?? NaN;
 
     // Add purchase order line
     db.prepare(`
@@ -246,7 +253,7 @@ await test('Purchase Management Schema', async function (t) {
     // Test automatic total calculation via trigger
     const order = db.prepare(`
       select * from purchase_order where id = ?
-    `).get(orderId);
+    `)?.get(orderId) ?? {};
 
     t.assert.equal(order.subtotal, 1000, 'Subtotal should be calculated automatically');
     t.assert.equal(order.tax_amount, 100, 'Tax amount should be calculated');
@@ -267,7 +274,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const vendorId = db.prepare(`
       select id from vendor where vendor_code = ?
-    `).get('VEND001').id;
+    `)?.get('VEND001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order (order_number, vendor_id, order_date, ordered_by_user,
@@ -277,7 +284,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const orderId = db.prepare(`
       select id from purchase_order where order_number = ?
-    `).get('PO001').id;
+    `)?.get('PO001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order_line (purchase_order_id, line_number, product_id,
@@ -288,7 +295,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const poLineId = db.prepare(`
       select id from purchase_order_line where purchase_order_id = ?
-    `).get(orderId).id;
+    `)?.get(orderId)?.id ?? NaN;
 
     // Create goods receipt
     db.prepare(`
@@ -299,7 +306,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const receiptId = db.prepare(`
       select id from goods_receipt where receipt_number = ?
-    `).get('GR001').id;
+    `)?.get('GR001')?.id ?? NaN;
 
     // Add goods receipt line
     db.prepare(`
@@ -312,7 +319,7 @@ await test('Purchase Management Schema', async function (t) {
     // Test automatic update of purchase order quantities
     const updatedPOLine = db.prepare(`
       select * from purchase_order_line where id = ?
-    `).get(poLineId);
+    `)?.get(poLineId) ?? {};
 
     t.assert.equal(updatedPOLine.quantity_received, 8, 'PO line quantity received should be updated');
   });
@@ -331,7 +338,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const vendorId = db.prepare(`
       select id from vendor where vendor_code = ?
-    `).get('VEND001').id;
+    `)?.get('VEND001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order (order_number, vendor_id, order_date, ordered_by_user,
@@ -341,7 +348,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const orderId = db.prepare(`
       select id from purchase_order where order_number = ?
-    `).get('PO001').id;
+    `)?.get('PO001')?.id ?? NaN;
 
     db.prepare(`
       insert into goods_receipt (receipt_number, purchase_order_id, vendor_id, receipt_date,
@@ -351,7 +358,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const receiptId = db.prepare(`
       select id from goods_receipt where receipt_number = ?
-    `).get('GR001').id;
+    `)?.get('GR001')?.id ?? NaN;
 
     // Create purchase invoice linked to PO and GR
     db.prepare(`
@@ -363,7 +370,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const invoice = db.prepare(`
       select * from purchase_invoice where invoice_number = ?
-    `).get('PI001');
+    `)?.get('PI001') ?? {};
 
     t.assert.equal(invoice.purchase_order_id, orderId, 'Invoice should be linked to purchase order');
     t.assert.equal(invoice.goods_receipt_id, receiptId, 'Invoice should be linked to goods receipt');
@@ -384,7 +391,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const vendorId = db.prepare(`
       select id from vendor where vendor_code = ?
-    `).get('VEND001').id;
+    `)?.get('VEND001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order (order_number, vendor_id, order_date, ordered_by_user,
@@ -394,7 +401,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const orderId = db.prepare(`
       select id from purchase_order where order_number = ?
-    `).get('PO001').id;
+    `)?.get('PO001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order_line (purchase_order_id, line_number, product_id,
@@ -405,7 +412,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const poLineId = db.prepare(`
       select id from purchase_order_line where purchase_order_id = ?
-    `).get(orderId).id;
+    `)?.get(orderId)?.id ?? NaN;
 
     db.prepare(`
       insert into goods_receipt (receipt_number, purchase_order_id, vendor_id, receipt_date,
@@ -415,7 +422,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const receiptId = db.prepare(`
       select id from goods_receipt where receipt_number = ?
-    `).get('GR001').id;
+    `)?.get('GR001')?.id ?? NaN;
 
     db.prepare(`
       insert into goods_receipt_line (goods_receipt_id, line_number, purchase_order_line_id,
@@ -426,7 +433,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const grLineId = db.prepare(`
       select id from goods_receipt_line where goods_receipt_id = ?
-    `).get(receiptId).id;
+    `)?.get(receiptId)?.id ?? NaN;
 
     // Create purchase return
     db.prepare(`
@@ -438,7 +445,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const returnId = db.prepare(`
       select id from purchase_return where return_number = ?
-    `).get('PR001').id;
+    `)?.get('PR001')?.id ?? NaN;
 
     // Add return line
     db.prepare(`
@@ -450,7 +457,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const returnLine = db.prepare(`
       select * from purchase_return_line where purchase_return_id = ?
-    `).get(returnId);
+    `)?.get(returnId) ?? {};
 
     t.assert.equal(returnLine.quantity_returned, 2, 'Return quantity should be correct');
     t.assert.equal(returnLine.line_total, 200, 'Return line total should be calculated');
@@ -470,7 +477,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const vendorId = db.prepare(`
       select id from vendor where vendor_code = ?
-    `).get('VEND001').id;
+    `)?.get('VEND001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order (order_number, vendor_id, order_date, ordered_by_user,
@@ -480,7 +487,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const orderId = db.prepare(`
       select id from purchase_order where order_number = ?
-    `).get('PO001').id;
+    `)?.get('PO001')?.id ?? NaN;
 
     // Add line with tax
     db.prepare(`
@@ -492,7 +499,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const order = db.prepare(`
       select * from purchase_order where id = ?
-    `).get(orderId);
+    `)?.get(orderId) ?? {};
 
     t.assert.equal(order.tax_amount, 100, 'Order tax amount should be calculated from lines');
     t.assert.equal(order.total_amount, 1100, 'Order total should include tax');
@@ -505,7 +512,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const taxability = db.prepare(`
       select * from product_taxability where product_id = ? and tax_code_code = ?
-    `).get(1, 'VAT10');
+    `)?.get(1, 'VAT10') ?? {};
 
     t.assert.equal(taxability.is_taxable, 1, 'Product should be taxable for VAT10');
   });
@@ -525,19 +532,19 @@ await test('Purchase Management Schema', async function (t) {
 
     const requisitionId = db.prepare(`
       select id from purchase_requisition where requisition_number = ?
-    `).get('REQ001').id;
+    `)?.get('REQ001')?.id ?? NaN;
 
     // Test status progression
-    t.assert.equal(db.prepare('select created_time from purchase_requisition where id = ?').get(requisitionId).created_time, now);
+    t.assert.equal(db.prepare('select created_time from purchase_requisition where id = ?')?.get(requisitionId)?.created_time, now) ?? {};
 
     db.prepare('update purchase_requisition set submitted_time = ? where id = ?').run(now + 1000, requisitionId);
-    t.assert.equal(db.prepare('select submitted_time from purchase_requisition where id = ?').get(requisitionId).submitted_time, now + 1000);
+    t.assert.equal(db.prepare('select submitted_time from purchase_requisition where id = ?')?.get(requisitionId)?.submitted_time, now + 1000) ?? {};
 
     db.prepare('update purchase_requisition set approved_time = ?, approved_by_user = ? where id = ?').run(now + 2000, 'manager', requisitionId);
-    t.assert.equal(db.prepare('select approved_time from purchase_requisition where id = ?').get(requisitionId).approved_time, now + 2000);
+    t.assert.equal(db.prepare('select approved_time from purchase_requisition where id = ?')?.get(requisitionId)?.approved_time, now + 2000) ?? {};
 
     // Test that we can determine status from timestamps
-    const req = db.prepare('select * from purchase_requisition where id = ?').get(requisitionId);
+    const req = db.prepare('select * from purchase_requisition where id = ?')?.get(requisitionId) ?? {};
 
     function getStatus(doc) {
       if (doc.cancelled_time) return 'CANCELLED';
@@ -565,7 +572,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const vendorId = db.prepare(`
       select id from vendor where vendor_code = ?
-    `).get('VEND001').id;
+    `)?.get('VEND001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order (order_number, vendor_id, order_date, ordered_by_user,
@@ -575,7 +582,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const orderId = db.prepare(`
       select id from purchase_order where order_number = ?
-    `).get('PO001').id;
+    `)?.get('PO001')?.id ?? NaN;
 
     db.prepare(`
       insert into purchase_order_line (purchase_order_id, line_number, product_id,
@@ -586,7 +593,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const poLineId = db.prepare(`
       select id from purchase_order_line where purchase_order_id = ?
-    `).get(orderId).id;
+    `)?.get(orderId)?.id ?? NaN;
 
     db.prepare(`
       insert into goods_receipt (receipt_number, purchase_order_id, vendor_id, receipt_date,
@@ -596,7 +603,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const receiptId = db.prepare(`
       select id from goods_receipt where receipt_number = ?
-    `).get('GR001').id;
+    `)?.get('GR001')?.id ?? NaN;
 
     // Test that we can't receive more than ordered
     let errorThrown = false;
@@ -635,7 +642,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const vendorId = db.prepare(`
       select id from vendor where vendor_code = ?
-    `).get('VEND001').id;
+    `)?.get('VEND001')?.id ?? NaN;
 
     // Create purchase order in EUR
     db.prepare(`
@@ -646,7 +653,7 @@ await test('Purchase Management Schema', async function (t) {
 
     const order = db.prepare(`
       select * from purchase_order where order_number = ?
-    `).get('PO001');
+    `)?.get('PO001') ?? {};
 
     t.assert.equal(order.currency_code, 'EUR', 'Order should be in EUR');
     t.assert.equal(order.exchange_rate, 1.1, 'Exchange rate should be set');

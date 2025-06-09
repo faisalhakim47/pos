@@ -6,7 +6,7 @@ const platform = usePlatform();
 </script>
 
 <template>
-  <div class="app-unsupported-platform">
+  <main>
     <h1>{{ t('unsupportedPlatformTitle') }}</h1>
     <p>{{ t('unsupportedPlatformMessage') }}</p>
     <ul>
@@ -14,5 +14,5 @@ const platform = usePlatform();
         <a :href="browser.url" target="_blank" rel="noopener noreferrer">{{ browser.name }}</a>
       </li>
     </ul>
-  </div>
+  </main>
 </template>

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, useCssModule } from 'vue';
+import { onMounted, ref, useCssModule, watchPostEffect } from 'vue';
 
 /** @template T @typedef {import('vue').Ref<T>} Ref */
 
@@ -12,14 +12,22 @@ const props = defineProps({
 
 const style = useCssModule();
 
-const state = reactive({
-  loadedSvgText: '',
-  get svgText() {
-    return state.loadedSvgText.replace(
-      'fill="currentColor"><',
-      `fill="currentColor"><title>${props.alt}</title><`,
-    );
-  },
+const containerRef = ref(/** @type {HTMLSpanElement} */ (null));
+const svgText = ref('');
+
+watchPostEffect(function () {
+  if (!containerRef.value) return;
+  if (!svgText.value) return;
+  containerRef.value.innerHTML = svgText.value;
+  const svgEl = containerRef.value.querySelector('svg');
+  if (svgEl instanceof SVGSVGElement) {
+    svgEl.querySelector('title')?.remove();
+    const titleEl = document.createElement('title');
+    titleEl.textContent = props.alt;
+    svgEl.prepend(titleEl);
+    svgEl.setAttribute('role', 'img');
+    svgEl.setAttribute('aria-label', props.alt);
+  }
 });
 
 onMounted(async function () {
@@ -28,7 +36,7 @@ onMounted(async function () {
     if (!response.ok) {
       throw new Error(`Failed to fetch SVG: ${response.statusText}`);
     }
-    state.loadedSvgText = await response.text();
+    svgText.value = await response.text();
   }
   catch (error) {
     console.error('Error loading SVG:', error);
@@ -37,10 +45,7 @@ onMounted(async function () {
 </script>
 
 <template>
-  <span
-    :class="style.container"
-    v-html="state.svgText"
-  ></span>
+  <span ref="containerRef" :class="style.container"></span>
 </template>
 
 <style module>

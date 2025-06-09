@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -82,7 +82,7 @@ await test('Inventory Accounting Schema', async function (t) {
       const table = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='table' AND name=?
-      `).get(tableName);
+      `)?.get(tableName) ?? {};
       t.assert.equal(Boolean(table), true, `Table ${tableName} should exist`);
     }
 
@@ -109,7 +109,7 @@ await test('Inventory Accounting Schema', async function (t) {
       const view = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='view' AND name=?
-      `).get(viewName);
+      `)?.get(viewName) ?? {};
       t.assert.equal(Boolean(view), true, `View ${viewName} should exist`);
     }
 
@@ -121,17 +121,17 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Test that default aging categories exist
-    const categories = db.prepare('SELECT COUNT(*) as count FROM inventory_aging_category').get();
+    const categories = db.prepare('SELECT COUNT(*) as count FROM inventory_aging_category')?.get() ?? {};
     t.assert.equal(Number(categories.count) > 0, true, 'Aging categories should be populated');
 
     // Test specific categories
-    const current = db.prepare('SELECT * FROM inventory_aging_category WHERE category_name = ?').get('Current');
+    const current = db.prepare('SELECT * FROM inventory_aging_category WHERE category_name = ?')?.get('Current') ?? {};
     t.assert.equal(Boolean(current), true, 'Current category should exist');
     t.assert.equal(Number(current.days_from), 0, 'Current should start from 0 days');
     t.assert.equal(Number(current.days_to), 30, 'Current should end at 30 days');
     t.assert.equal(Number(current.obsolescence_rate), 0, 'Current should have 0% obsolescence rate');
 
-    const overOneYear = db.prepare('SELECT * FROM inventory_aging_category WHERE category_name = ?').get('Over 1 Year');
+    const overOneYear = db.prepare('SELECT * FROM inventory_aging_category WHERE category_name = ?')?.get('Over 1 Year') ?? {};
     t.assert.equal(Boolean(overOneYear), true, 'Over 1 Year category should exist');
     t.assert.equal(Number(overOneYear.obsolescence_rate), 75, 'Over 1 Year should have 75% obsolescence rate');
 
@@ -143,13 +143,13 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product with FIFO costing
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost, costing_method,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('FIFO-001', 'FIFO Test Product', category.id, 1000, 'FIFO', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create first receipt transaction (older, cheaper)
     const transaction1Id = db.prepare(`
@@ -215,13 +215,13 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Test weighted average costing
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, standard_cost, costing_method,
         inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('WA-001', 'Weighted Average Product', category.id, 1000, 'WEIGHTED_AVERAGE', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add stock with different costs
     db.prepare(`
@@ -240,7 +240,7 @@ await test('Inventory Accounting Schema', async function (t) {
     // Test inventory valuation view
     const valuation = db.prepare(`
       SELECT * FROM inventory_valuation WHERE product_id = ?
-    `).get(productId);
+    `)?.get(productId) ?? {};
 
     t.assert.equal(Boolean(valuation), true, 'Should have valuation record');
     t.assert.equal(Number(valuation.total_quantity), 150, 'Should have 150 total quantity');
@@ -249,7 +249,7 @@ await test('Inventory Accounting Schema', async function (t) {
     // Test ABC analysis view
     const abcAnalysis = db.prepare(`
       SELECT * FROM inventory_abc_analysis WHERE product_id = ?
-    `).get(productId);
+    `)?.get(productId) ?? {};
 
     t.assert.equal(Boolean(abcAnalysis), true, 'Should appear in ABC analysis');
     t.assert.equal(['A', 'B', 'C'].includes(String(abcAnalysis.abc_category)), true, 'Should have valid ABC category');
@@ -262,7 +262,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, costing_method, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('COSTING-001', 'Costing Method Test Product', category.id, 'FIFO', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -278,7 +278,7 @@ await test('Inventory Accounting Schema', async function (t) {
       WHERE product_id = ?
       ORDER BY change_date DESC
       LIMIT 1
-    `).get(productId);
+    `)?.get(productId) ?? {};
 
     t.assert.equal(Boolean(methodChange), true, 'Costing method change should be tracked');
     t.assert.equal(String(methodChange.old_costing_method), 'FIFO', 'Should track old costing method');
@@ -292,7 +292,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('RESERVE-001', 'Reserve Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -305,7 +305,7 @@ await test('Inventory Accounting Schema', async function (t) {
     `).run(productId, 'OBSOLESCENCE', 50000, Math.floor(Date.now() / 1000), 'Test obsolescence reserve', 'test_user', Math.floor(Date.now() / 1000)).lastInsertRowid;
 
     // Verify reserve was created
-    const reserve = db.prepare('SELECT * FROM inventory_reserve WHERE id = ?').get(reserveId);
+    const reserve = db.prepare('SELECT * FROM inventory_reserve WHERE id = ?')?.get(reserveId) ?? {};
     t.assert.equal(Boolean(reserve), true, 'Reserve should be created');
     t.assert.equal(String(reserve.reserve_type), 'OBSOLESCENCE', 'Reserve type should match');
     t.assert.equal(Number(reserve.reserve_amount), 50000, 'Reserve amount should match');
@@ -314,7 +314,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const reserveSummary = db.prepare(`
       SELECT * FROM inventory_reserve_summary
       WHERE reserve_type = 'OBSOLESCENCE'
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(Boolean(reserveSummary), true, 'Should have reserve summary');
     t.assert.equal(Number(reserveSummary.products_with_reserves) >= 1, true, 'Should count products with reserves');
@@ -327,12 +327,12 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('LCM-001', 'LCM Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add inventory stock
     db.prepare(`
@@ -354,7 +354,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const lcmAnalysis = db.prepare(`
       SELECT * FROM inventory_lcm_analysis
       WHERE product_id = ?
-    `).get(productId);
+    `)?.get(productId) ?? {};
 
     t.assert.equal(Boolean(lcmAnalysis), true, 'Should have LCM analysis');
     t.assert.equal(String(lcmAnalysis.lcm_status), 'LCM_WRITEDOWN_REQUIRED', 'Should identify LCM writedown requirement');
@@ -368,12 +368,12 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('AGING-001', 'Aging Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add inventory stock
     db.prepare(`
@@ -403,7 +403,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const agingAnalysis = db.prepare(`
       SELECT * FROM inventory_aging_analysis
       WHERE product_id = ?
-    `).get(productId);
+    `)?.get(productId) ?? {};
 
     t.assert.equal(Boolean(agingAnalysis), true, 'Should have aging analysis');
     t.assert.equal(Boolean(agingAnalysis.aging_category), true, 'Should categorize inventory age');
@@ -417,12 +417,12 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('TURNOVER-001', 'Turnover Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Add inventory stock
     db.prepare(`
@@ -449,7 +449,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const turnoverAnalysis = db.prepare(`
       SELECT * FROM inventory_turnover_analysis
       WHERE product_id = ?
-    `).get(productId);
+    `)?.get(productId) ?? {};
 
     t.assert.equal(Boolean(turnoverAnalysis), true, 'Should have turnover analysis');
     t.assert.equal(Boolean(turnoverAnalysis.movement_classification), true, 'Should classify movement speed');
@@ -463,12 +463,12 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('COST-LAYER-001', 'Cost Layer Test Product', category.id, 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
 
-    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1').get('MAIN');
+    const warehouseLocation = db.prepare('SELECT id FROM warehouse_location WHERE warehouse_id = (SELECT id FROM warehouse WHERE code = ?) LIMIT 1')?.get('MAIN') ?? {};
 
     // Create multiple cost layers
     const currentTime = Math.floor(Date.now() / 1000);
@@ -503,7 +503,7 @@ await test('Inventory Accounting Schema', async function (t) {
     // Test cost layer summary view
     const costSummary = db.prepare(`
       SELECT * FROM cost_layer_summary WHERE sku = ?
-    `).get('COST-LAYER-001');
+    `)?.get('COST-LAYER-001') ?? {};
 
     t.assert.equal(Boolean(costSummary), true, 'Should have cost layer summary');
     t.assert.equal(Number(costSummary.active_cost_layers), 2, 'Should have 2 active cost layers');
@@ -519,7 +519,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Create test product
-    const category = db.prepare('SELECT id FROM product_category LIMIT 1').get();
+    const category = db.prepare('SELECT id FROM product_category LIMIT 1')?.get() ?? {};
     const productId = db.prepare(`
       INSERT INTO product (sku, name, product_category_id, costing_method, inventory_account_code, cogs_account_code, sales_account_code, created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('AUDIT-001', 'Audit Test Product', category.id, 'FIFO', 10300, 50100, 40100, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)).lastInsertRowid;
@@ -532,7 +532,7 @@ await test('Inventory Accounting Schema', async function (t) {
     const costingAudit = db.prepare(`
       SELECT * FROM costing_method_audit
       WHERE product_id = ?
-    `).get(productId);
+    `)?.get(productId) ?? {};
 
     t.assert.equal(Boolean(costingAudit), true, 'Should have costing method audit');
     t.assert.equal(Number(costingAudit.method_changes_count), 2, 'Should count method changes');

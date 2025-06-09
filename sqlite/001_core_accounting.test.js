@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -21,8 +21,15 @@ class TestFixture {
     this.testRunId = testRunId;
     this.schemaFilePath = join(__dirname, '001_core_accounting.sql');
     this.schemaFileContent = null;
-    this.db = null;
+    this.setupDb = null;
     this.dbPath = null;
+  }
+
+  get db() {
+    if (this.setupDb instanceof DatabaseSync) {
+      return this.setupDb;
+    }
+    throw new Error('Database not initialized. Call setup() first.');
   }
 
   async setup() {
@@ -33,7 +40,7 @@ class TestFixture {
       tempDir,
       `${this.testRunId}_core_accounting_${this.label}.db`,
     );
-    this.db = new DatabaseSync(this.dbPath);
+    this.setupDb = new DatabaseSync(this.dbPath);
     this.db.exec(this.schemaFileContent);
     return this.db;
   }
@@ -70,19 +77,19 @@ await test('Core Accounting Schema', async function (t) {
 
     t.assert.equal(accountTypes.length, 11, 'Should have 11 account types');
 
-    const asset = accountTypes.find(function (at) { return at.name === 'asset'; });
+    const asset = accountTypes.find(function (at) { return at.name === 'asset'; }) ?? {};
     t.assert.equal(asset.normal_balance, 'db', 'Asset should have debit normal balance');
 
-    const liability = accountTypes.find(function (at) { return at.name === 'liability'; });
+    const liability = accountTypes.find(function (at) { return at.name === 'liability'; }) ?? {};
     t.assert.equal(liability.normal_balance, 'cr', 'Liability should have credit normal balance');
 
-    const equity = accountTypes.find(function (at) { return at.name === 'equity'; });
+    const equity = accountTypes.find(function (at) { return at.name === 'equity'; }) ?? {};
     t.assert.equal(equity.normal_balance, 'cr', 'Equity should have credit normal balance');
 
-    const revenue = accountTypes.find(function (at) { return at.name === 'revenue'; });
+    const revenue = accountTypes.find(function (at) { return at.name === 'revenue'; }) ?? {};
     t.assert.equal(revenue.normal_balance, 'cr', 'Revenue should have credit normal balance');
 
-    const expense = accountTypes.find(function (at) { return at.name === 'expense'; });
+    const expense = accountTypes.find(function (at) { return at.name === 'expense'; }) ?? {};
     t.assert.equal(expense.normal_balance, 'db', 'Expense should have debit normal balance');
   });
 
@@ -95,15 +102,15 @@ await test('Core Accounting Schema', async function (t) {
     t.assert.equal(accounts.length > 0, true, 'Should have accounts loaded');
 
     // Check specific accounts
-    const cash = accounts.find(function (acc) { return acc.code === 10100; });
+    const cash = accounts.find(function (acc) { return acc.code === 10100; }) ?? {};
     t.assert.equal(cash.name, 'Cash', 'Cash account should exist');
     t.assert.equal(cash.account_type_name, 'asset', 'Cash should be an asset');
 
-    const commonStock = accounts.find(function (acc) { return acc.code === 30100; });
+    const commonStock = accounts.find(function (acc) { return acc.code === 30100; }) ?? {};
     t.assert.equal(commonStock.name, 'Common Stock', 'Common Stock account should exist');
     t.assert.equal(commonStock.account_type_name, 'equity', 'Common Stock should be equity');
 
-    const salesRevenue = accounts.find(function (acc) { return acc.code === 40100; });
+    const salesRevenue = accounts.find(function (acc) { return acc.code === 40100; }) ?? {};
     t.assert.equal(salesRevenue.name, 'Sales Revenue', 'Sales Revenue account should exist');
     t.assert.equal(salesRevenue.account_type_name, 'revenue', 'Sales Revenue should be revenue');
   });
@@ -133,7 +140,7 @@ await test('Core Accounting Schema', async function (t) {
 
     // account_config table should not exist in core accounting anymore
     t.assert.throws(function () {
-      db.prepare('SELECT * FROM account_config WHERE id = 1').get();
+      db.prepare('SELECT * FROM account_config WHERE id = 1')?.get() ?? {};
     }, 'account_config table should not exist in core accounting schema');
   });
 
@@ -159,7 +166,7 @@ await test('Core Accounting Schema', async function (t) {
     `).run(1, 1, 30100, 0, 50000, 0, 50000);
     db.exec('commit');
 
-    const entry = db.prepare('SELECT * FROM journal_entry WHERE ref = 1').get();
+    const entry = db.prepare('SELECT * FROM journal_entry WHERE ref = 1')?.get() ?? {};
     t.assert.equal(typeof entry, 'object', 'Journal entry should be created');
     t.assert.equal(entry.post_time, null, 'Journal entry should be unposted');
 
@@ -174,8 +181,8 @@ await test('Core Accounting Schema', async function (t) {
     const db = await fixture.setup();
 
     // Get initial balances
-    const initialCash = db.prepare('SELECT balance FROM account WHERE code = 10100').get();
-    const initialCommonStock = db.prepare('SELECT balance FROM account WHERE code = 30100').get();
+    const initialCash = db.prepare('SELECT balance FROM account WHERE code = 10100')?.get() ?? {};
+    const initialCommonStock = db.prepare('SELECT balance FROM account WHERE code = 30100')?.get() ?? {};
 
     // Create and post journal entry
     db.exec('begin');
@@ -199,8 +206,8 @@ await test('Core Accounting Schema', async function (t) {
     `).run(1000000000, 1);
 
     // Check updated balances
-    const finalCash = db.prepare('SELECT balance FROM account WHERE code = 10100').get();
-    const finalCommonStock = db.prepare('SELECT balance FROM account WHERE code = 30100').get();
+    const finalCash = db.prepare('SELECT balance FROM account WHERE code = 10100')?.get() ?? {};
+    const finalCommonStock = db.prepare('SELECT balance FROM account WHERE code = 30100')?.get() ?? {};
 
     t.assert.equal(Number(finalCash.balance), Number(initialCash.balance) + 100000, 'Cash balance should increase');
     t.assert.equal(Number(finalCommonStock.balance), Number(initialCommonStock.balance) + 100000, 'Common Stock balance should increase');
@@ -375,7 +382,7 @@ await test('Core Accounting Schema', async function (t) {
       update journal_entry set post_time = ? where ref = ?
     `).run(1000000000, 1);
 
-    const entry = db.prepare('SELECT * FROM journal_entry WHERE ref = 1').get();
+    const entry = db.prepare('SELECT * FROM journal_entry WHERE ref = 1')?.get() ?? {};
     t.assert.equal(entry.post_time, 1000000000, 'Entry should be posted');
   });
 
@@ -445,7 +452,7 @@ await test('Core Accounting Schema', async function (t) {
             else 0 end) as total_equity
       from account a
       join account_type at on a.account_type_name = at.name
-    `).get();
+    `)?.get() ?? {};
 
     // Assets should equal Liabilities + Equity
     t.assert.equal(
@@ -527,17 +534,17 @@ await test('Core Accounting Schema', async function (t) {
 
     const assetType = db.prepare(`
       select normal_balance from account_type where name = 'asset'
-    `).get();
+    `)?.get() ?? {};
 
     const contraAssetType = db.prepare(`
       select normal_balance from account_type where name = 'contra_asset'
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.notEqual(assetType.normal_balance, contraAssetType.normal_balance,
       'Contra asset accounts should have opposite normal balance to asset accounts');
 
     // Verify specific contra asset accounts exist
-    const accumDepBuildings = contraAssets.find(a => a.code === 12210);
+    const accumDepBuildings = contraAssets.find(a => a.code === 12210) ?? {};
     t.assert.equal(!!accumDepBuildings, true, 'Accumulated Depreciation - Buildings should exist');
     t.assert.equal(String(accumDepBuildings.name).includes('Accumulated Depreciation'), true,
       'Contra asset should be depreciation account');
@@ -571,7 +578,7 @@ await test('Core Accounting Schema', async function (t) {
         sum(debit_balance_functional) as total_debits,
         sum(credit_balance_functional) as total_credits
       from trial_balance_multicurrency
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(
       Number(trialBalance.total_debits),
@@ -604,7 +611,7 @@ await test('Core Accounting Schema', async function (t) {
     // Verify revenue is recorded as a credit
     const revenueAccount = db.prepare(`
       select balance from account where code = 40100
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(Number(revenueAccount.balance) > 0, true, 'Revenue should have positive balance');
 
@@ -613,7 +620,7 @@ await test('Core Accounting Schema', async function (t) {
       select at.normal_balance from account a
       join account_type at on a.account_type_name = at.name
       where a.code = 40100
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(revenueType.normal_balance, 'cr', 'Revenue accounts should have credit normal balance');
   });
@@ -642,7 +649,7 @@ await test('Core Accounting Schema', async function (t) {
     // Verify COGS is recorded as a debit
     const cogsAccount = db.prepare(`
       select balance from account where code = 50100
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(Number(cogsAccount.balance) > 0, true, 'COGS should have positive balance');
 
@@ -651,7 +658,7 @@ await test('Core Accounting Schema', async function (t) {
       select at.normal_balance from account a
       join account_type at on a.account_type_name = at.name
       where a.code = 50100
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(cogsType.normal_balance, 'db', 'COGS accounts should have debit normal balance');
   });
@@ -714,8 +721,8 @@ await test('Core Accounting Schema', async function (t) {
     `).run(1000000100, 2);
 
     // Verify initial balances
-    const cashBalanceBefore = db.prepare('select balance from account where code = ?').get(10100).balance;
-    const salesBalanceBefore = db.prepare('select balance from account where code = ?').get(40100).balance;
+    const cashBalanceBefore = db.prepare('select balance from account where code = ?')?.get(10100)?.balance;
+    const salesBalanceBefore = db.prepare('select balance from account where code = ?')?.get(40100)?.balance;
     t.assert.equal(cashBalanceBefore, 150000, 'Cash should be $1500 (initial $1000 + sale $500)');
     t.assert.equal(salesBalanceBefore, 50000, 'Sales revenue should be $500');
 
@@ -725,14 +732,14 @@ await test('Core Accounting Schema', async function (t) {
     `).run(2);
 
     // Verify reversal entry was created
-    const reversalEntry = db.prepare('select * from journal_entry where ref = 3').get();
+    const reversalEntry = db.prepare('select * from journal_entry where ref = 3')?.get() ?? {};
     t.assert.equal(reversalEntry !== null && reversalEntry !== undefined, true, 'Reversal entry should be created');
     t.assert.equal(typeof reversalEntry.note, 'string', 'Reversal note should be a string');
     t.assert.equal(String(reversalEntry.note).includes('Reversal of:'), true, 'Reversal note should indicate it is a reversal');
     t.assert.equal(reversalEntry.post_time !== null && reversalEntry.post_time !== undefined, true, 'Reversal entry should be automatically posted');
 
     // Verify original entry is marked as reversed (in the note)
-    const reversalEntryCheck = db.prepare('select * from journal_entry where ref = 3').get();
+    const reversalEntryCheck = db.prepare('select * from journal_entry where ref = 3')?.get() ?? {};
     t.assert.equal(String(reversalEntryCheck.note).includes('[Reverses Entry #2]'), true, 'Reversal entry should reference original entry');
 
     // Verify reversal lines
@@ -748,8 +755,8 @@ await test('Core Accounting Schema', async function (t) {
     t.assert.equal(reversalLines[1].cr, 0, 'Sales credit should be 0 (reversed)');
 
     // Verify balances are back to original
-    const cashBalanceAfter = db.prepare('select balance from account where code = ?').get(10100).balance;
-    const salesBalanceAfter = db.prepare('select balance from account where code = ?').get(40100).balance;
+    const cashBalanceAfter = db.prepare('select balance from account where code = ?')?.get(10100)?.balance;
+    const salesBalanceAfter = db.prepare('select balance from account where code = ?')?.get(40100)?.balance;
     t.assert.equal(cashBalanceAfter, 100000, 'Cash should be back to $1000');
     t.assert.equal(salesBalanceAfter, 0, 'Sales revenue should be back to $0');
 
@@ -789,8 +796,8 @@ await test('Core Accounting Schema', async function (t) {
     `).run(1000000100, 2);
 
     // Verify initial balances
-    const cashBalanceBefore = db.prepare('select balance from account where code = ?').get(10100).balance;
-    const expenseBalanceBefore = db.prepare('select balance from account where code = ?').get(60500).balance;
+    const cashBalanceBefore = db.prepare('select balance from account where code = ?')?.get(10100)?.balance;
+    const expenseBalanceBefore = db.prepare('select balance from account where code = ?')?.get(60500)?.balance;
     t.assert.equal(cashBalanceBefore, 80000, 'Cash should be $800 (initial $1000 - $200)');
     t.assert.equal(expenseBalanceBefore, 20000, 'Office supplies expense should be $200');
 
@@ -800,13 +807,13 @@ await test('Core Accounting Schema', async function (t) {
     `).run(2);
 
     // Verify correction entry was created
-    const correctionEntry = db.prepare('select * from journal_entry where ref = 3').get();
+    const correctionEntry = db.prepare('select * from journal_entry where ref = 3')?.get() ?? {};
     t.assert.equal(correctionEntry !== null && correctionEntry !== undefined, true, 'Correction entry should be created');
     t.assert.equal(String(correctionEntry.note).includes('Correction of:'), true, 'Correction note should indicate it is a correction');
     t.assert.equal(correctionEntry.post_time !== null && correctionEntry.post_time !== undefined, true, 'Correction entry should be automatically posted');
 
     // Verify original entry is marked as corrected (in the note)
-    const correctionEntryCheck = db.prepare('select * from journal_entry where ref = 3').get();
+    const correctionEntryCheck = db.prepare('select * from journal_entry where ref = 3')?.get() ?? {};
     t.assert.equal(String(correctionEntryCheck.note).includes('[Corrects Entry #2]'), true, 'Correction entry should reference original entry');
 
     // Verify correction lines (should reverse the original)
@@ -822,8 +829,8 @@ await test('Core Accounting Schema', async function (t) {
     t.assert.equal(correctionLines[1].cr, 0, 'Cash credit should be 0 (reversed)');
 
     // Verify balances are back to original after correction
-    const cashBalanceAfter = db.prepare('select balance from account where code = ?').get(10100).balance;
-    const expenseBalanceAfter = db.prepare('select balance from account where code = ?').get(60500).balance;
+    const cashBalanceAfter = db.prepare('select balance from account where code = ?')?.get(10100)?.balance;
+    const expenseBalanceAfter = db.prepare('select balance from account where code = ?')?.get(60500)?.balance;
     t.assert.equal(cashBalanceAfter, 100000, 'Cash should be back to $1000');
     t.assert.equal(expenseBalanceAfter, 0, 'Office supplies expense should be back to $0');
 
@@ -853,8 +860,8 @@ await test('Core Accounting Schema', async function (t) {
     `).run(1000000100, 4);
 
     // Verify final balances with correct amounts
-    const cashBalanceFinal = db.prepare('select balance from account where code = ?').get(10100).balance;
-    const expenseBalanceFinal = db.prepare('select balance from account where code = ?').get(60500).balance;
+    const cashBalanceFinal = db.prepare('select balance from account where code = ?')?.get(10100)?.balance;
+    const expenseBalanceFinal = db.prepare('select balance from account where code = ?')?.get(60500)?.balance;
     t.assert.equal(cashBalanceFinal, 70000, 'Cash should be $700 (initial $1000 - $300)');
     t.assert.equal(expenseBalanceFinal, 30000, 'Office supplies expense should be $300');
 
@@ -1086,8 +1093,8 @@ await test('Core Accounting Schema', async function (t) {
     db.prepare('update journal_entry set post_time = ? where ref = ?').run(1000000100, 2);
 
     // Verify balances before reversal
-    const cashBefore = db.prepare('select balance from account where code = ?').get(10100).balance;
-    const salesBefore = db.prepare('select balance from account where code = ?').get(40100).balance;
+    const cashBefore = db.prepare('select balance from account where code = ?')?.get(10100)?.balance;
+    const salesBefore = db.prepare('select balance from account where code = ?')?.get(40100)?.balance;
     t.assert.equal(cashBefore, 112000, 'Cash should be $1120 ($1000 + $120)');
     t.assert.equal(salesBefore, 12000, 'Sales should be $120');
 
@@ -1095,7 +1102,7 @@ await test('Core Accounting Schema', async function (t) {
     db.prepare('insert into journal_entry_reversal (original_ref) values (2)').run();
 
     // Verify reversal maintains foreign currency information
-    const reversalEntry = db.prepare('select * from journal_entry where ref = 3').get();
+    const reversalEntry = db.prepare('select * from journal_entry where ref = 3')?.get() ?? {};
     t.assert.equal(reversalEntry.transaction_currency_code, 'EUR', 'Reversal should maintain EUR currency');
     t.assert.equal(reversalEntry.exchange_rate_to_functional, 1.2, 'Reversal should maintain exchange rate');
 
@@ -1109,8 +1116,8 @@ await test('Core Accounting Schema', async function (t) {
     t.assert.equal(reversalLines[1].foreign_currency_amount, 10000, 'Reversal should flip foreign currency amount');
 
     // Verify balances are restored
-    const cashAfter = db.prepare('select balance from account where code = ?').get(10100).balance;
-    const salesAfter = db.prepare('select balance from account where code = ?').get(40100).balance;
+    const cashAfter = db.prepare('select balance from account where code = ?')?.get(10100)?.balance;
+    const salesAfter = db.prepare('select balance from account where code = ?')?.get(40100)?.balance;
     t.assert.equal(cashAfter, 100000, 'Cash should be back to $1000');
     t.assert.equal(salesAfter, 0, 'Sales should be back to $0');
   });
@@ -1130,7 +1137,7 @@ await test('Core Accounting Schema', async function (t) {
       select balance_functional_currency, balance_original_currency
       from account_balance_multicurrency
       where code = 10105
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(balance.balance_functional_currency, null,
       'Should return null when exchange rate is missing instead of defaulting to 1.0');
@@ -1142,7 +1149,7 @@ await test('Core Accounting Schema', async function (t) {
       select count(*) as count, sum(debit_balance_functional) as total_debits
       from trial_balance_multicurrency
       where code = 10105
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(trialBalance.count, 0,
       'Trial balance should exclude accounts with null functional currency balance');
@@ -1160,7 +1167,7 @@ await test('Core Accounting Schema', async function (t) {
       select balance_functional_currency
       from account_balance_multicurrency
       where code = 10105
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(balanceWithRate.balance_functional_currency, 60000,
       'Should convert EUR 500 to USD 600 at rate 1.2');
@@ -1169,7 +1176,7 @@ await test('Core Accounting Schema', async function (t) {
       select count(*) as count, sum(debit_balance_functional) as total_debits
       from trial_balance_multicurrency
       where code = 10105
-    `).get();
+    `)?.get() ?? {};
 
     t.assert.equal(trialBalanceWithRate.count, 1,
       'Trial balance should include account when exchange rate is available');

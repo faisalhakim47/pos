@@ -1,10 +1,10 @@
 // @ts-check
 
-import { test } from 'node:test';
-import { join } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { test } from 'node:test';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
@@ -22,8 +22,15 @@ class TestFixture {
     this.coreSchemaFilePath = join(__dirname, '001_core_accounting.sql');
     this.schemaFilePath = join(__dirname, '099_finance_reporting.sql');
     this.schemaFileContent = null;
-    this.db = null;
+    this.setupDb = null;
     this.dbPath = null;
+  }
+
+  get db() {
+    if (this.setupDb instanceof DatabaseSync) {
+      return this.setupDb;
+    }
+    throw new Error('Database not initialized. Call setup() first.');
   }
 
   async setup() {
@@ -36,7 +43,7 @@ class TestFixture {
       tempDir,
       `${this.testRunId}_finance_reporting_${this.label}.db`,
     );
-    this.db = new DatabaseSync(this.dbPath);
+    this.setupDb = new DatabaseSync(this.dbPath);
     this.db.exec(coreSchemaContent);
     this.db.exec(this.schemaFileContent);
     return this.db;
@@ -341,7 +348,7 @@ await test('Finance Reporting Schema', async function (t) {
     const fixture = new TestFixture('Finance statement configuration is initialized');
     const db = await fixture.setup();
 
-    const config = db.prepare('SELECT * FROM finance_statement_config WHERE id = 1').get();
+    const config = db.prepare('SELECT * FROM finance_statement_config WHERE id = 1')?.get() ?? {};
 
     t.assert.equal(!!config, true, 'Finance statement config should exist');
     t.assert.equal(config.reporting_currency_code, 'USD', 'Default reporting currency should be USD');
@@ -490,7 +497,7 @@ await test('Finance Reporting Schema', async function (t) {
     const db = await fixture.setupWithFiscalYear();
 
     // Verify fiscal year was created
-    const fiscalYear = db.prepare('select * from fiscal_year where begin_time = ?').get(1000000000);
+    const fiscalYear = db.prepare('select * from fiscal_year where begin_time = ?')?.get(1000000000) ?? {};
     t.assert.notEqual(fiscalYear, undefined, 'Fiscal year should be created');
     t.assert.equal(fiscalYear.begin_time, 1000000000, 'Fiscal year begin_time should match');
     t.assert.equal(fiscalYear.end_time, 1999999999, 'Fiscal year end_time should match');
@@ -559,11 +566,11 @@ await test('Finance Reporting Schema', async function (t) {
     const closingEntries = db.prepare(`
       select count(*) as count from journal_entry
       where note like '%closing%' or ref >= 900
-    `).get().count;
+    `)?.get()?.count;
     t.assert.equal(Number(closingEntries) > 0, true, 'Should have closing entries created');
 
     // Check that revenue and expense accounts are zeroed out
-    const revenueBalance = db.prepare('select balance from account where code = ?').get(40100);
+    const revenueBalance = db.prepare('select balance from account where code = ?')?.get(40100) ?? {};
     if (revenueBalance) {
       t.assert.equal(revenueBalance.balance, 0, 'Revenue account should be closed to zero');
     }
@@ -586,7 +593,7 @@ await test('Finance Reporting Schema', async function (t) {
       `All income statement accounts should be closed to zero. Found non-zero accounts: ${JSON.stringify(incomeStatementAccounts)}`);
 
     // 2. Verify retained earnings has been updated with net income
-    const retainedEarnings = db.prepare('select balance from account where code = ?').get(30200);
+    const retainedEarnings = db.prepare('select balance from account where code = ?')?.get(30200) ?? {};
     // Net Income = Sales (100000) - Sales Returns (5000) - COGS (30000) - Utilities (20000) - Rent (15000) - Depreciation (5000) = 25000
     // Retained Earnings = Net Income (25000) - Dividends (10000) = 15000
     t.assert.equal(retainedEarnings?.balance, 15000, 'Retained earnings should reflect net income minus dividends');
@@ -597,34 +604,34 @@ await test('Finance Reporting Schema', async function (t) {
       from account
       join account_type on account.account_type_name = account_type.name
       where account_type.name in ('asset', 'contra_asset')
-    `).get().total;
+    `)?.get()?.total;
 
     const liabilities = db.prepare(`
       select sum(case when account_type.normal_balance = 'cr' then account.balance else -account.balance end) as total
       from account
       join account_type on account.account_type_name = account_type.name
       where account_type.name = 'liability'
-    `).get().total;
+    `)?.get()?.total;
 
     const equity = db.prepare(`
       select sum(case when account_type.normal_balance = 'cr' then account.balance else -account.balance end) as total
       from account
       join account_type on account.account_type_name = account_type.name
       where account_type.name = 'equity'
-    `).get().total;
+    `)?.get()?.total;
 
     t.assert.equal(Number(assets), Number(liabilities) + Number(equity),
       `Assets (${assets}) should equal Liabilities (${liabilities}) + Equity (${equity}) after closing`);
 
     // 4. Verify fiscal year is marked as posted
-    const fiscalYear = db.prepare('select post_time from fiscal_year where begin_time = ?').get(1000000000);
+    const fiscalYear = db.prepare('select post_time from fiscal_year where begin_time = ?')?.get(1000000000) ?? {};
     t.assert.notEqual(fiscalYear.post_time, null, 'Fiscal year should be marked as posted');
 
     // 5. Verify closing entries were created
     const closingEntries = db.prepare(`
       select count(*) as count from journal_entry
       where note like '%closing%' or ref >= 900
-    `).get().count;
+    `)?.get()?.count;
     t.assert.equal(Number(closingEntries) > 0, true, 'Closing entries should have been created');
 
     // 6. Generate post-closing trial balance
@@ -730,12 +737,12 @@ await test('Finance Reporting Schema', async function (t) {
     t.assert.equal(cogs.length >= 1, true, 'Should have cost of goods sold');
 
     // Verify specific amounts
-    const salesRevenue = revenues.find(function(r) { return r.account_code === 40100; });
-    const salesReturns = contraRevenues.find(function(r) { return r.account_code === 41000; });
-    const costOfGoods = cogs.find(function(r) { return r.account_code === 50700; });
-    const utilitiesExp = expenses.find(function(r) { return r.account_code === 60300; });
-    const rentExp = expenses.find(function(r) { return r.account_code === 60200; });
-    const depreciationExp = expenses.find(function(r) { return r.account_code === 61100; });
+    const salesRevenue = revenues.find(function(r) { return r.account_code === 40100; }) ?? {};
+    const salesReturns = contraRevenues.find(function(r) { return r.account_code === 41000; }) ?? {};
+    const costOfGoods = cogs.find(function(r) { return r.account_code === 50700; }) ?? {};
+    const utilitiesExp = expenses.find(function(r) { return r.account_code === 60300; }) ?? {};
+    const rentExp = expenses.find(function(r) { return r.account_code === 60200; }) ?? {};
+    const depreciationExp = expenses.find(function(r) { return r.account_code === 61100; }) ?? {};
 
     t.assert.equal(salesRevenue?.amount, 100000, 'Sales revenue should be 100000');
     t.assert.equal(salesReturns?.amount, 5000, 'Sales returns and allowances should be 5000');
@@ -745,7 +752,7 @@ await test('Finance Reporting Schema', async function (t) {
     t.assert.equal(depreciationExp?.amount, 5000, 'Depreciation expense should be 5000');
 
     // Check for net income calculation
-    const netIncome = report.find(function(line) { return line.line_type === 'net_income'; });
+    const netIncome = report.find(function(line) { return line.line_type === 'net_income'; }) ?? {};
     t.assert.notEqual(netIncome, undefined, 'Should have net income line');
 
     // Net Income = Sales (100000) - Sales Returns (5000) - COGS (30000) - Utilities (20000) - Rent (15000) - Depreciation (5000) = 25000
@@ -778,26 +785,26 @@ await test('Finance Reporting Schema', async function (t) {
     const currentAssets = report.filter(function(line) { return line.line_type === 'current_asset'; });
     t.assert.equal(currentAssets.length >= 2, true, 'Should have current asset accounts');
 
-    const cash = currentAssets.find(function (a) { return a.account_code === 10100; });
-    const inventory = currentAssets.find(function (a) { return a.account_code === 10600; });
+    const cash = currentAssets.find(function (a) { return a.account_code === 10100; }) ?? {};
+    const inventory = currentAssets.find(function (a) { return a.account_code === 10600; }) ?? {};
 
     t.assert.equal(cash?.amount, 120000, 'Cash should be 120000 after closing');
     t.assert.equal(inventory?.amount, 20000, 'Merchandise inventory should be 20000 after closing');
 
     // Check for accumulated depreciation (contra-asset)
     const nonCurrentAssets = report.filter(function (line) { return line.line_type === 'non_current_asset'; });
-    const accumulatedDepreciation = nonCurrentAssets.find(function (a) { return a.account_code === 12410; });
+    const accumulatedDepreciation = nonCurrentAssets.find(function (a) { return a.account_code === 12410; }) ?? {};
     t.assert.equal(accumulatedDepreciation?.amount, -5000, 'Accumulated depreciation should be -5000');
 
     // Check liability accounts
     const currentLiabilities = report.filter(function (line) { return line.line_type === 'current_liability'; });
-    const accountsPayable = currentLiabilities.find(function (l) { return l.account_code === 20100; });
+    const accountsPayable = currentLiabilities.find(function (l) { return l.account_code === 20100; }) ?? {};
     t.assert.equal(accountsPayable?.amount, 20000, 'Accounts payable should be 20000');
 
     // Check equity accounts (should include retained earnings after closing)
     const equity = report.filter(function (line) { return line.line_type === 'equity'; });
-    const commonStock = equity.find(function (e) { return e.account_code === 30100; });
-    const retainedEarnings = equity.find(function (e) { return e.account_code === 30200; });
+    const commonStock = equity.find(function (e) { return e.account_code === 30100; }) ?? {};
+    const retainedEarnings = equity.find(function (e) { return e.account_code === 30200; }) ?? {};
 
     t.assert.equal(commonStock?.amount, 100000, 'Common stock should be 100000');
     t.assert.equal(retainedEarnings?.amount, 15000, 'Retained earnings should be 15000 after closing');
@@ -844,7 +851,7 @@ await test('Finance Reporting Schema', async function (t) {
     t.assert.equal(totalDebits, totalCredits, 'Trial balance should be balanced');
 
     // Check specific accounts
-    const cashAccount = trialBalanceAccounts.find(acc => acc.account_code === 10100);
+    const cashAccount = trialBalanceAccounts.find(acc => acc.account_code === 10100) ?? {};
     t.assert.equal(!!cashAccount, true, 'Cash account should be in trial balance');
     t.assert.equal(Number(cashAccount.db_functional) > 0, true, 'Cash should have a debit balance');
   });
@@ -882,8 +889,8 @@ await test('Finance Reporting Schema', async function (t) {
     t.assert.equal(expenseLines.length >= 1, true, 'Should have expense lines');
 
     // Check for calculated subtotals
-    const grossProfitLine = incomeLines.find(line => line.line_type === 'gross_profit');
-    const netIncomeLine = incomeLines.find(line => line.line_type === 'net_income');
+    const grossProfitLine = incomeLines.find(line => line.line_type === 'gross_profit') ?? {};
+    const netIncomeLine = incomeLines.find(line => line.line_type === 'net_income') ?? {};
 
     t.assert.equal(!!grossProfitLine, true, 'Should have gross profit calculation');
     t.assert.equal(!!netIncomeLine, true, 'Should have net income calculation');
@@ -981,8 +988,8 @@ await test('Finance Reporting Schema', async function (t) {
       t.assert.equal(revenueItems.length >= 1, true, 'Should report gross revenue');
       t.assert.equal(contraRevenueItems.length >= 1, true, 'Should report sales returns/allowances separately');
 
-      const salesRevenue = revenueItems.find(r => r.account_code === 40100);
-      const salesReturns = contraRevenueItems.find(r => r.account_code === 41000);
+      const salesRevenue = revenueItems.find(r => r.account_code === 40100) ?? {};
+      const salesReturns = contraRevenueItems.find(r => r.account_code === 41000) ?? {};
 
       t.assert.equal(Number(salesRevenue?.amount), 100000, 'Gross sales should be reported at full amount');
       t.assert.equal(Number(salesReturns?.amount), 5000, 'Sales returns should be shown as contra-revenue');
@@ -1019,17 +1026,17 @@ await test('Finance Reporting Schema', async function (t) {
       t.assert.equal(cogsItems.length >= 1, true, 'Should have cost of goods sold');
       t.assert.equal(revenueItems.length >= 1, true, 'Should have revenue');
 
-      const cogs = cogsItems.find(c => c.account_code === 50700);
+      const cogs = cogsItems.find(c => c.account_code === 50700) ?? {};
       t.assert.equal(Number(cogs?.amount), 30000, 'COGS should be matched with sales in same period');
 
       // Verify depreciation expense is recognized systematically
       const expenseItems = incomeReport.filter(line => line.line_type === 'expense');
-      const depreciationExp = expenseItems.find(e => e.account_code === 61100);
+      const depreciationExp = expenseItems.find(e => e.account_code === 61100) ?? {};
 
       t.assert.equal(Number(depreciationExp?.amount), 5000, 'Depreciation should be systematically allocated');
 
       // Check gross profit calculation (Revenue - COGS)
-      const grossProfitLine = incomeReport.find(line => line.line_type === 'gross_profit');
+      const grossProfitLine = incomeReport.find(line => line.line_type === 'gross_profit') ?? {};
       if (grossProfitLine) {
         // Gross Profit = Net Sales (95000) - COGS (30000) = 65000
         t.assert.equal(Number(grossProfitLine.amount), 65000, 'Gross profit should be calculated correctly');
@@ -1057,23 +1064,23 @@ await test('Finance Reporting Schema', async function (t) {
       const nonCurrentAssets = balanceReport.filter(line => line.line_type === 'non_current_asset');
 
       // Cash should be classified as current asset
-      const cash = currentAssets.find(a => a.account_code === 10100);
+      const cash = currentAssets.find(a => a.account_code === 10100) ?? {};
       t.assert.equal(!!cash, true, 'Cash should be classified as current asset');
       t.assert.equal(Number(cash.amount) > 0, true, 'Cash should have positive balance');
 
       // Inventory should be classified as current asset
-      const inventory = currentAssets.find(a => a.account_code === 10600);
+      const inventory = currentAssets.find(a => a.account_code === 10600) ?? {};
       t.assert.equal(!!inventory, true, 'Merchandise inventory should be classified as current asset');
 
       // Accumulated depreciation should be shown as contra-asset (negative amount)
-      const accumDep = nonCurrentAssets.find(a => a.account_code === 12410);
+      const accumDep = nonCurrentAssets.find(a => a.account_code === 12410) ?? {};
       if (accumDep) {
         t.assert.equal(Number(accumDep.amount) < 0, true, 'Accumulated depreciation should show as negative (contra-asset)');
       }
 
       // Verify liability classification
       const currentLiabilities = balanceReport.filter(line => line.line_type === 'current_liability');
-      const accountsPayable = currentLiabilities.find(l => l.account_code === 20100);
+      const accountsPayable = currentLiabilities.find(l => l.account_code === 20100) ?? {};
 
       if (accountsPayable) {
         t.assert.equal(Number(accountsPayable.amount) > 0, true, 'Accounts payable should have positive balance');
@@ -1081,7 +1088,7 @@ await test('Finance Reporting Schema', async function (t) {
 
       // Verify equity classification
       const equity = balanceReport.filter(line => line.line_type === 'equity');
-      const commonStock = equity.find(e => e.account_code === 30100);
+      const commonStock = equity.find(e => e.account_code === 30100) ?? {};
 
       t.assert.equal(!!commonStock, true, 'Common stock should be classified as equity');
       t.assert.equal(Number(commonStock.amount), 100000, 'Common stock should show correct amount');
@@ -1158,14 +1165,14 @@ await test('Finance Reporting Schema', async function (t) {
       const balanceSheetRE = db.prepare(`
         SELECT amount FROM balance_sheet_report
         WHERE report_time = ? AND account_code = 30200
-      `).get(reportTime);
+      `)?.get(reportTime) ?? {};
 
       // Get retained earnings from trial balance
       const trialBalanceRE = db.prepare(`
         SELECT cr_functional FROM trial_balance_account tba
         JOIN trial_balance tb ON tba.trial_balance_id = tb.id
         WHERE tb.report_time = ? AND tba.account_code = 30200
-      `).get(reportTime);
+      `)?.get(reportTime) ?? {};
 
       // Both should show the same retained earnings amount
       if (balanceSheetRE && trialBalanceRE) {
@@ -1178,13 +1185,13 @@ await test('Finance Reporting Schema', async function (t) {
         SELECT SUM(CASE WHEN line_type LIKE '%asset%' THEN amount ELSE 0 END) as total_assets
         FROM balance_sheet_report
         WHERE report_time = ? AND is_subtotal = 0
-      `).get(reportTime);
+      `)?.get(reportTime) ?? {};
 
       const bsLiabEquity = db.prepare(`
         SELECT SUM(CASE WHEN line_type IN ('current_liability', 'non_current_liability', 'equity') THEN amount ELSE 0 END) as total_liab_equity
         FROM balance_sheet_report
         WHERE report_time = ? AND is_subtotal = 0
-      `).get(reportTime);
+      `)?.get(reportTime) ?? {};
 
       if (bsAssets && bsLiabEquity) {
         t.assert.equal(Number(bsAssets.total_assets), Number(bsLiabEquity.total_liab_equity),
@@ -1211,7 +1218,7 @@ await test('Finance Reporting Schema', async function (t) {
       // Verify retained earnings reflects net income minus dividends
       const retainedEarnings = db.prepare(`
         SELECT balance FROM account WHERE code = 30200
-      `).get();
+      `)?.get() ?? {};
 
       // Expected: Net Income (25000) - Dividends (10000) = 15000
       t.assert.equal(Number(retainedEarnings?.balance), 15000,
@@ -1235,7 +1242,7 @@ await test('Finance Reporting Schema', async function (t) {
           SELECT SUM(db_functional) as total_debits, SUM(cr_functional) as total_credits
           FROM journal_entry_line
           WHERE journal_entry_ref = ?
-        `).get(entry.ref);
+        `)?.get(entry.ref) ?? {};
 
         t.assert.equal(Number(entryLines.total_debits), Number(entryLines.total_credits),
           `Closing entry ${entry.ref} should be balanced`);
@@ -1264,7 +1271,7 @@ await test('Finance Reporting Schema', async function (t) {
       t.assert.equal(significantAccounts.length > 0, true, 'Should disclose material account balances');
 
       // Check that contra-assets are properly presented
-      const accumDepreciation = balanceReport.find(line => line.account_code === 12410);
+      const accumDepreciation = balanceReport.find(line => line.account_code === 12410) ?? {};
       if (accumDepreciation) {
         t.assert.equal(Number(accumDepreciation.amount) < 0, true,
           'Accumulated depreciation should be presented as reduction to assets');
@@ -1275,8 +1282,8 @@ await test('Finance Reporting Schema', async function (t) {
       t.assert.equal(subtotals.length >= 2, true, 'Should have subtotals for major categories');
 
       // Check for total assets and total liabilities + equity
-      const totalAssets = subtotals.find(s => s.line_type === 'total_asset');
-      const totalLiabEquity = subtotals.find(s => s.line_type === 'total_liability_equity');
+      const totalAssets = subtotals.find(s => s.line_type === 'total_asset') ?? {};
+      const totalLiabEquity = subtotals.find(s => s.line_type === 'total_liability_equity') ?? {};
 
       t.assert.equal(!!totalAssets, true, 'Should present total assets');
       t.assert.equal(!!totalLiabEquity, true, 'Should present total liabilities and equity');
@@ -1312,7 +1319,7 @@ await test('Finance Reporting Schema', async function (t) {
       t.assert.equal(totalExpenses >= 40000, true, 'Should recognize all period expenses');
 
       // Verify depreciation is recorded systematically (conservative asset valuation)
-      const depreciation = expenses.find(e => e.account_code === 61100);
+      const depreciation = expenses.find(e => e.account_code === 61100) ?? {};
       t.assert.equal(Number(depreciation?.amount), 5000, 'Should record systematic depreciation');
 
       // Check that COGS is properly matched (conservative inventory valuation)
