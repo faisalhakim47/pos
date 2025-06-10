@@ -83,7 +83,7 @@ async function openFile() {
   </main>
 </template>
 
-<style module scoped>
+<style module>
 main {
   height: 100%;
 }

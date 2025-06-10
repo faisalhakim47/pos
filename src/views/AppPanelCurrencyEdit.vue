@@ -35,7 +35,7 @@ const currencyFormInputs = computed(function () {
   };
 });
 
-const currencyFetcher = useAsyncIterator(async function* () {
+const currencyQuery = useAsyncIterator(async function* () {
   yield 'fetching';
   const currencyCode = route.params?.currencyCode;
   if (typeof currencyCode !== 'string' || currencyCode.length < 3) {
@@ -63,23 +63,23 @@ const currencyFetcher = useAsyncIterator(async function* () {
 });
 
 watchPostEffect(function () {
-  if (typeof currencyFetcher.state === 'object') {
+  if (typeof currencyQuery.state === 'object') {
     const {
       currencyCodeInput,
       currencyNameInput,
       currencySymbolInput,
       currencyDecimalsInput,
     } = currencyFormInputs.value;
-    currencyCodeInput.value = currencyFetcher.state.code;
-    currencyNameInput.value = currencyFetcher.state.name;
-    currencySymbolInput.value = currencyFetcher.state.symbol;
-    currencyDecimalsInput.value = String(currencyFetcher.state.decimals);
+    currencyCodeInput.value = currencyQuery.state.code;
+    currencyNameInput.value = currencyQuery.state.name;
+    currencySymbolInput.value = currencyQuery.state.symbol;
+    currencyDecimalsInput.value = String(currencyQuery.state.decimals);
   }
 });
 
-onMounted(currencyFetcher.run);
+onMounted(currencyQuery.run);
 
-const currencyUpdater = useAsyncIterator(async function* () {
+const currencyUpdate = useAsyncIterator(async function* () {
   try {
     yield 'updating';
 
@@ -111,7 +111,7 @@ const currencyUpdater = useAsyncIterator(async function* () {
     yield 'reporting';
 
     await Promise.all([
-      currencyFetcher.run(),
+      currencyQuery.run(),
       sleep(2000),
     ]);
 
@@ -124,9 +124,9 @@ const currencyUpdater = useAsyncIterator(async function* () {
 });
 
 const disabledCurrencyForm = computed(function () {
-  return currencyFetcher.state === 'fetching'
-    || currencyUpdater.state === 'updating'
-    || currencyUpdater.state === 'reporting';
+  return currencyQuery.state === 'fetching'
+    || currencyUpdate.state === 'updating'
+    || currencyUpdate.state === 'reporting';
 });
 </script>
 
@@ -137,7 +137,7 @@ const disabledCurrencyForm = computed(function () {
     </header>
     <form
       ref="currencyForm"
-      @submit.prevent="currencyUpdater.run"
+      @submit.prevent="currencyUpdate.run"
       :aria-disabled="disabledCurrencyForm"
       style="max-width: 480px;"
     >
@@ -193,16 +193,16 @@ const disabledCurrencyForm = computed(function () {
           type="submit"
           :disabled="disabledCurrencyForm"
         ><TextWithLoadingIndicator
-          :busy="currencyUpdater.state === 'updating'"
+          :busy="currencyUpdate.state === 'updating'"
           :busy-label="t('currencyEditUpdateCtaProgressLabel')"
         >{{
-          currencyUpdater.state === 'reporting'
+          currencyUpdate.state === 'reporting'
             ? t('currencyEditUpdateCtaSuccessLabel')
             : t('currencyEditUpdateCtaLabel')
         }}</TextWithLoadingIndicator></button>
       </div>
-      <UnhandledError :error="currencyFetcher.error"/>
-      <UnhandledError :error="currencyUpdater.error"/>
+      <UnhandledError :error="currencyQuery.error"/>
+      <UnhandledError :error="currencyUpdate.error"/>
     </form>
   </main>
 </template>

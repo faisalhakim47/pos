@@ -28,7 +28,7 @@ const style = useCssModule();
   </span>
 </template>
 
-<style module scoped>
+<style module>
 .container {
   position: relative;
 }
