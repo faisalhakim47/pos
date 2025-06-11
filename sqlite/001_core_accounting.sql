@@ -561,14 +561,7 @@ select
   from_currency_code as to_currency_code,
   1.0 / rate as rate,
   rate_date
-from latest_exchange_rate
-union all
-select
-  code as from_currency_code,
-  code as to_currency_code,
-  1.0 as rate,
-  1704067200 as rate_date -- 2024-01-01 00:00:00 UTC
-from currency;
+from latest_exchange_rate;
 
 -- Multi-currency account balance view
 -- NOTE: Returns NULL for balance_functional_currency when no exchange rate exists

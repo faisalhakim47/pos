@@ -202,14 +202,14 @@ begin
           case
             when account.currency_code = fsc.reporting_currency_code
             then journal_entry_line.db
-            else cast(journal_entry_line.db_functional * coalesce(erl_reporting.rate, 1.0) as integer)
+            else cast(journal_entry_line.db_functional * erl_reporting.rate as integer)
           end
         ), 0)
         - coalesce(sum(
           case
             when account.currency_code = fsc.reporting_currency_code
             then journal_entry_line.cr
-            else cast(journal_entry_line.cr_functional * coalesce(erl_reporting.rate, 1.0) as integer)
+            else cast(journal_entry_line.cr_functional * erl_reporting.rate as integer)
           end
         ), 0)
       ) as net_balance_reporting,

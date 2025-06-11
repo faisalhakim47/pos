@@ -285,13 +285,13 @@ select
   a.balance as balance_original_currency,
   case
     when a.currency_code = fc.code then a.balance
-    else round(a.balance * coalesce(er.rate, 1.0))
+    when er.rate is not null then round(a.balance * er.rate)
+    else null
   end as balance_functional_currency,
   fc.code as functional_currency_code
 from account a
 cross join (select code from currency where is_functional_currency = 1) fc
-left join latest_exchange_rate er on er.from_currency_code = a.currency_code and er.to_currency_code = fc.code
-where a.balance != 0;
+left join latest_exchange_rate er on er.from_currency_code = a.currency_code and er.to_currency_code = fc.code;
 
 -- Multi-Currency Trial Balance View
 drop view if exists trial_balance_multicurrency;
@@ -303,7 +303,8 @@ select
   a.balance as balance_original_currency,
   case
     when a.currency_code = fc.code then a.balance
-    else round(a.balance * coalesce(er.rate, 1.0))
+    when er.rate is not null then round(a.balance * er.rate)
+    else null
   end as balance_functional_currency,
   case
     when a.currency_code = fc.code then
@@ -312,12 +313,13 @@ select
         when a.balance < 0 and at.normal_balance = 'cr' then -a.balance
         else 0
       end
-    else
+    when er.rate is not null then
       case
-        when a.balance > 0 and at.normal_balance = 'db' then round(a.balance * coalesce(er.rate, 1.0))
-        when a.balance < 0 and at.normal_balance = 'cr' then -round(a.balance * coalesce(er.rate, 1.0))
+        when a.balance > 0 and at.normal_balance = 'db' then round(a.balance * er.rate)
+        when a.balance < 0 and at.normal_balance = 'cr' then -round(a.balance * er.rate)
         else 0
       end
+    else null
   end as debit_balance_functional,
   case
     when a.currency_code = fc.code then
@@ -326,12 +328,13 @@ select
         when a.balance < 0 and at.normal_balance = 'db' then -a.balance
         else 0
       end
-    else
+    when er.rate is not null then
       case
-        when a.balance > 0 and at.normal_balance = 'cr' then round(a.balance * coalesce(er.rate, 1.0))
-        when a.balance < 0 and at.normal_balance = 'db' then -round(a.balance * coalesce(er.rate, 1.0))
+        when a.balance > 0 and at.normal_balance = 'cr' then round(a.balance * er.rate)
+        when a.balance < 0 and at.normal_balance = 'db' then -round(a.balance * er.rate)
         else 0
       end
+    else null
   end as credit_balance_functional,
   fc.code as functional_currency_code
 from account a

@@ -199,6 +199,31 @@ await test('Foreign Exchange - Exchange Rates', async function (t) {
     t.assert.equal(Math.abs((Number(eurUsd.rate) * Number(usdEur.rate)) - 1.0) < 0.001, true, 'Inverse rates should multiply to ~1');
   });
 
+  await t.test('should not include same-currency conversions in exchange rate lookup', function (t) {
+    // Verify that same-currency conversions (USD->USD, EUR->EUR) are not included
+    const sameCurrencyRates = fixture.db.prepare(`
+      select from_currency_code, to_currency_code, rate
+      from exchange_rate_lookup
+      where from_currency_code = to_currency_code
+    `).all();
+
+    t.assert.equal(sameCurrencyRates.length, 0, 'Should not have any same-currency conversion rates');
+  });
+
+  await t.test('should return null for missing exchange rates instead of defaulting to 1.0', function (t) {
+    // Test that when we look for a non-existent rate, we get no results instead of a default 1.0
+    // Create a test currency with no exchange rates
+    fixture.db.prepare('insert into currency (code, name, symbol, decimals, is_functional_currency, is_active) values (?, ?, ?, ?, ?, ?)').run('XYZ', 'Test Currency', 'XYZ', 2, 0, 1);
+
+    const missingRate = fixture.db.prepare(`
+      select rate
+      from exchange_rate_lookup
+      where from_currency_code = 'XYZ' and to_currency_code = 'USD'
+    `).get();
+
+    t.assert.equal(missingRate, undefined, 'Should return undefined for missing exchange rate instead of default 1.0');
+  });
+
   fixture.cleanup();
 });
 
