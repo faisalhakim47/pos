@@ -8,6 +8,9 @@ import { installDbRequiredGuard } from '@/src/router/guards/db-required-guard.js
 import { installUnsupportedPlatformGuard } from '@/src/router/guards/unsupported-platform-guard.js';
 import AppPanelOnboarding from '@/src/views/AppOnboarding.vue';
 import AppPanel from '@/src/views/AppPanel.vue';
+import AppPanelAccountCreation from '@/src/views/AppPanelAccountCreation.vue';
+import AppPanelAccountEdit from '@/src/views/AppPanelAccountEdit.vue';
+import AppPanelAccountItem from '@/src/views/AppPanelAccountItem.vue';
 import AppPanelAccountList from '@/src/views/AppPanelAccountList.vue';
 import AppPanelCurrencyCreation from '@/src/views/AppPanelCurrencyCreation.vue';
 import AppPanelCurrencyEdit from '@/src/views/AppPanelCurrencyEdit.vue';
@@ -21,6 +24,9 @@ import AppUnsupportedPlatform from '@/src/views/AppUnsupportedPlatform.vue';
 /** @typedef {import('vue-router').RouteRecordRaw} RouteRecordRaw */
 
 export const AppOnboardingRoute = Symbol('AppPanelOnboarding');
+export const AppPanelAccountCreationRoute = Symbol('AppPanelAccountCreation');
+export const AppPanelAccountEditRoute = Symbol('AppPanelAccountEdit');
+export const AppPanelAccountItemRoute = Symbol('AppPanelAccountItem');
 export const AppPanelAccountListRoute = Symbol('AppPanelAccountList');
 export const AppPanelCurrencyCreationRoute = Symbol('AppPanelCurrencyCreation');
 export const AppPanelCurrencyEditRoute = Symbol('AppPanelCurrencyEdit');
@@ -53,6 +59,9 @@ function createRoutes() {
           path: 'panel',
           children: [
             { name: AppPanelIndexRoute, path: '', redirect: { name: AppOnboardingRoute, replace: true } },
+            { name: AppPanelAccountCreationRoute, component: AppPanelAccountCreation, path: 'accounts/create' },
+            { name: AppPanelAccountEditRoute, component: AppPanelAccountEdit, path: 'accounts/:accountCode/edit' },
+            { name: AppPanelAccountItemRoute, component: AppPanelAccountItem, path: 'accounts/:accountCode' },
             { name: AppPanelAccountListRoute, component: AppPanelAccountList, path: 'accounts' },
             { name: AppPanelCurrencyCreationRoute, component: AppPanelCurrencyCreation, path: 'currencies/create' },
             { name: AppPanelCurrencyEditRoute, component: AppPanelCurrencyEdit, path: 'currencies/:currencyCode/edit' },
