@@ -7,7 +7,7 @@ import en from '../src/i18n/langs/en.js';
 test('Account Management', async function ({ page }) {
   // for debugging purposes
   page.addListener('console', function (msg) {
-    console[msg.type()]('PageConsole', msg.text());
+    console.debug('PageConsole', msg.type(), msg.text());
   });
   page.addListener('pageerror', function (error) {
     console.error('PageError', error);

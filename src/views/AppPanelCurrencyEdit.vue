@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watchPostEffect } from 'vue';
+import { computed, onMounted, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 
 import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
@@ -7,32 +7,17 @@ import UnhandledError from '@/src/components/UnhandledError.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { assertInstanceOf } from '@/src/tools/assertion.js';
 import { sleep } from '@/src/tools/promise.js';
 
 const { sql } = useDb();
 const { t } = useI18n();
 const route = useRoute();
 
-const currencyForm = ref(null);
-
-const currencyFormInputs = computed(function () {
-  const form = currencyForm.value;
-  assertInstanceOf(HTMLFormElement, form);
-  const currencyCodeInput = form.elements.namedItem('currencyCode');
-  const currencyNameInput = form.elements.namedItem('currencyName');
-  const currencySymbolInput = form.elements.namedItem('currencySymbol');
-  const currencyDecimalsInput = form.elements.namedItem('currencyDecimals');
-  assertInstanceOf(HTMLInputElement, currencyCodeInput);
-  assertInstanceOf(HTMLInputElement, currencyNameInput);
-  assertInstanceOf(HTMLInputElement, currencySymbolInput);
-  assertInstanceOf(HTMLInputElement, currencyDecimalsInput);
-  return {
-    currencyCodeInput,
-    currencyNameInput,
-    currencySymbolInput,
-    currencyDecimalsInput,
-  };
+const currencyForm = reactive({
+  code: '',
+  name: '',
+  symbol: '',
+  decimals: 0,
 });
 
 const currencyQuery = useAsyncIterator(async function* () {
@@ -54,27 +39,11 @@ const currencyQuery = useAsyncIterator(async function* () {
     throw new Error('Currency not found');
   }
   const row = currencyQueryRes[0].values[0];
-  yield {
-    code: String(row[0]),
-    name: String(row[1]),
-    symbol: String(row[2]),
-    decimals: Number(row[3]),
-  };
-});
-
-watchPostEffect(function () {
-  if (typeof currencyQuery.state === 'object') {
-    const {
-      currencyCodeInput,
-      currencyNameInput,
-      currencySymbolInput,
-      currencyDecimalsInput,
-    } = currencyFormInputs.value;
-    currencyCodeInput.value = currencyQuery.state.code;
-    currencyNameInput.value = currencyQuery.state.name;
-    currencySymbolInput.value = currencyQuery.state.symbol;
-    currencyDecimalsInput.value = String(currencyQuery.state.decimals);
-  }
+  currencyForm.code = String(row[0]);
+  currencyForm.name = String(row[1]);
+  currencyForm.symbol = String(row[2]);
+  currencyForm.decimals = Number(row[3]);
+  yield { ...currencyForm };
 });
 
 onMounted(currencyQuery.run);
@@ -88,22 +57,12 @@ const currencyUpdate = useAsyncIterator(async function* () {
       throw new Error('Invalid currency code');
     }
 
-    const {
-      currencyDecimalsInput,
-      currencyNameInput,
-      currencySymbolInput,
-    } = currencyFormInputs.value;
-
-    const currencyName = currencyNameInput.value.trim();
-    const currencySymbol = currencySymbolInput.value.trim();
-    const currencyDecimals = parseInt(currencyDecimalsInput.value.trim(), 10);
-
     await sql`begin transaction`;
     await sql`
       update currency set
-        name = ${currencyName},
-        symbol = ${currencySymbol},
-        decimals = ${currencyDecimals}
+        name = ${currencyForm.name.trim()},
+        symbol = ${currencyForm.symbol.trim()},
+        decimals = ${Number(currencyForm.decimals)}
       where code = ${currencyCode}
     `;
     await sql`commit transaction`;
@@ -136,7 +95,6 @@ const disabledCurrencyForm = computed(function () {
       <h1>{{ t('currencyEditTitle') }}</h1>
     </header>
     <form
-      ref="currencyForm"
       @submit.prevent="currencyUpdate.run"
       :aria-disabled="disabledCurrencyForm"
       style="max-width: 480px;"
@@ -152,6 +110,7 @@ const disabledCurrencyForm = computed(function () {
         minlength="3"
         required
         disabled
+        :value="currencyForm.code"
       />
       <label
         for="currencyNameInput"
@@ -163,6 +122,7 @@ const disabledCurrencyForm = computed(function () {
         type="text"
         required
         :disabled="disabledCurrencyForm"
+        v-model="currencyForm.name"
       />
       <label
         for="currencySymbolInput"
@@ -174,6 +134,7 @@ const disabledCurrencyForm = computed(function () {
         type="text"
         required
         :disabled="disabledCurrencyForm"
+        v-model="currencyForm.symbol"
       />
       <label
         for="currencyDecimalsInput"
@@ -186,6 +147,7 @@ const disabledCurrencyForm = computed(function () {
         min="0" required
         :disabled="disabledCurrencyForm"
         aria-describedby="currencyDecimalsHelpText"
+        v-model.number="currencyForm.decimals"
       />
       <p id="currencyDecimalsHelpText">{{ t('currencyFormDecimalsHelpText') }}</p>
       <div>

@@ -1,24 +1,13 @@
 <script setup>
-import { onMounted, reactive } from 'vue';
-
+import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 
 const { t } = useI18n();
 const db = useDb();
 
-const state = reactive({
-  accounts: [{
-    code: 0,
-    name: '',
-    accountTypeName: '',
-    balance: 0,
-    currencyCode: '',
-    currencySymbol: '',
-  }].slice(1),
-});
-
-onMounted(async function () {
+const accountListQuery = useAsyncIterator(async function* () {
+  yield 'fetching';
   const accountQueryRes = await db.sql`
     select
       account.code,
@@ -31,7 +20,7 @@ onMounted(async function () {
     join currency on currency.code = account.currency_code
     order by account.code asc
   `;
-  state.accounts = accountQueryRes[0].values.map(function (row) {
+  yield accountQueryRes[0].values.map(function (row) {
     return {
       code: Number(row[0]),
       name: String(row[1]),
@@ -58,12 +47,17 @@ onMounted(async function () {
           <th style="text-align: right; width: 200px;">{{ t('literal.balance') }}</th>
         </tr>
       </thead>
-      <tbody>
-        <tr v-for="account in state.accounts" :key="account.code">
+      <tbody v-if="Array.isArray(accountListQuery.state)">
+        <tr v-for="account in accountListQuery.state" :key="account.code">
           <td style="text-align: center; width: 128px;">{{ account.code }}</td>
           <td style="text-align: center; width: 160px;">{{ t(`literal.${account.accountTypeName}`) }}</td>
           <td style="text-align: left;">{{ account.name }}</td>
           <td style="text-align: right; width: 200px;">{{ account.currencySymbol }}{{ account.balance }}</td>
+        </tr>
+      </tbody>
+      <tbody>
+        <tr v-if="accountListQuery.state === 'fetching'">
+          <td colspan="4" style="text-align: center;">{{ t('literal.fetching') }}</td>
         </tr>
       </tbody>
     </table>

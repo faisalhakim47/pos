@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 
 import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
@@ -8,48 +8,21 @@ import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { AppPanelCurrencyListRoute } from '@/src/router/router.js';
-import { assertInstanceOf } from '@/src/tools/assertion.js';
 
 const { sql } = useDb();
 const { t } = useI18n();
 const router = useRouter();
 
-const currencyForm = ref(null);
-
-const currencyFormInputs = computed(function () {
-  const form = currencyForm.value;
-  assertInstanceOf(HTMLFormElement, form);
-  const currencyCodeInput = form.elements.namedItem('currencyCode');
-  const currencyNameInput = form.elements.namedItem('currencyName');
-  const currencySymbolInput = form.elements.namedItem('currencySymbol');
-  const currencyDecimalsInput = form.elements.namedItem('currencyDecimals');
-  assertInstanceOf(HTMLInputElement, currencyCodeInput);
-  assertInstanceOf(HTMLInputElement, currencyNameInput);
-  assertInstanceOf(HTMLInputElement, currencySymbolInput);
-  assertInstanceOf(HTMLInputElement, currencyDecimalsInput);
-  return {
-    currencyCodeInput,
-    currencyNameInput,
-    currencySymbolInput,
-    currencyDecimalsInput,
-  };
+const currencyForm = reactive({
+  code: '',
+  name: '',
+  symbol: '',
+  decimals: 0,
 });
 
 const currencyCreator = useAsyncIterator(async function* () {
   try {
     yield 'creating';
-
-    const {
-      currencyCodeInput,
-      currencyNameInput,
-      currencySymbolInput,
-      currencyDecimalsInput,
-    } = currencyFormInputs.value;
-
-    const currencyCode = currencyCodeInput.value.trim().toUpperCase();
-    const currencyName = currencyNameInput.value.trim();
-    const currencySymbol = currencySymbolInput.value.trim();
-    const currencyDecimals = parseInt(currencyDecimalsInput.value.trim(), 10);
 
     await sql`begin transaction`;
     const currencyCreationResult = await sql`
@@ -61,10 +34,10 @@ const currencyCreator = useAsyncIterator(async function* () {
         is_functional_currency,
         is_active
       ) values (
-        ${currencyCode},
-        ${currencyName},
-        ${currencySymbol},
-        ${currencyDecimals},
+        ${currencyForm.code.trim().toUpperCase()},
+        ${currencyForm.name.trim()},
+        ${currencyForm.symbol.trim()},
+        ${Number(currencyForm.decimals)},
         0,
         1
       )
@@ -100,7 +73,6 @@ const disabledCurrencyForm = computed(function () {
       <h1>{{ t('currencyCreationTitle') }}</h1>
     </header>
     <form
-      ref="currencyForm"
       @submit.prevent="currencyCreator.run"
       :aria-disabled="disabledCurrencyForm"
       style="max-width: 480px;"
@@ -117,6 +89,7 @@ const disabledCurrencyForm = computed(function () {
         required
         :disabled="disabledCurrencyForm"
         style="text-transform: uppercase;"
+        v-model="currencyForm.code"
       />
       <label
         for="currencyNameInput"
@@ -128,6 +101,7 @@ const disabledCurrencyForm = computed(function () {
         type="text"
         required
         :disabled="disabledCurrencyForm"
+        v-model="currencyForm.name"
       />
       <label
         for="currencySymbolInput"
@@ -139,6 +113,7 @@ const disabledCurrencyForm = computed(function () {
         type="text"
         required
         :disabled="disabledCurrencyForm"
+        v-model="currencyForm.symbol"
       />
       <label
         for="currencyDecimalsInput"
@@ -148,9 +123,11 @@ const disabledCurrencyForm = computed(function () {
         name="currencyDecimals"
         :placeholder="t('currencyFormDecimalsPlaceholder')"
         type="number"
-        min="0" required
+        min="0"
+        required
         :disabled="disabledCurrencyForm"
         aria-describedby="currencyDecimalsHelpText"
+        v-model.number="currencyForm.decimals"
       />
       <p id="currencyDecimalsHelpText">{{ t('currencyFormDecimalsHelpText') }}</p>
       <div>

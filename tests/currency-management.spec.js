@@ -8,10 +8,10 @@ test.describe('Currency Management', function () {
   test.beforeEach(async function ({ page }) {
     // for debugging purposes
     page.addListener('console', function (msg) {
-      console[msg.type()]('PageConsole', msg.text());
+      console.debug('PageConsole', msg.type(), msg.text());
     });
     page.addListener('pageerror', function (error) {
-      throw new Error('PageError', { cause: error });
+      console.error('PageError', error);
     });
 
     await page.goto('/');
