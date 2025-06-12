@@ -78,7 +78,12 @@ const currencyCreator = useAsyncIterator(async function* () {
     await router.replace({ name: AppPanelCurrencyListRoute });
   }
   catch (error) {
-    await sql`rollback transaction`;
+    try {
+      await sql`rollback transaction`;
+    } catch (rollbackError) {
+      // Ignore rollback errors if no transaction is active
+      console.warn('Rollback failed:', rollbackError);
+    }
     throw error;
   }
 });
@@ -95,6 +100,7 @@ const disabledCurrencyForm = computed(function () {
       <h1>{{ t('currencyCreationTitle') }}</h1>
     </header>
     <form
+      ref="currencyForm"
       @submit.prevent="currencyCreator.run"
       :aria-disabled="disabledCurrencyForm"
       style="max-width: 480px;"
