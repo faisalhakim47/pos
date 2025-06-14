@@ -17,17 +17,17 @@ const style = useCssModule();
       <nav>
         <ul :class="style.sidebarMenuList">
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: AppPanelDashboardRoute }">
+            <RouterLink :to="{ name: AppPanelDashboardRoute }" replace>
               <SvgIcon :src="MaterialSymbolDashboardUrl" :alt="t('menuItemDashboardLabel')" />
             </RouterLink>
           </li>
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: AppPanelCurrencyListRoute }">
+            <RouterLink :to="{ name: AppPanelCurrencyListRoute }" replace>
               <SvgIcon :src="MaterialSymbolUniversalCurrencyAltUrl" :alt="t('menuItemCurrencyListLabel')" />
             </RouterLink>
           </li>
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: AppPanelAccountListRoute }">
+            <RouterLink :to="{ name: AppPanelAccountListRoute }" replace>
               <SvgIcon :src="MaterialSymbolAccountUrl" :alt="t('menuItemAccountLabel')" />
             </RouterLink>
           </li>
