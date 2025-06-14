@@ -105,7 +105,7 @@ test.describe('Account Management', function () {
     await expect(page.getByText(en.literal.asset, { exact: true })).toBeVisible();
 
     // Check navigation links
-    await expect(page.getByRole('link', { name: 'Back to List' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Back to List' })).toBeVisible();
     await expect(page.getByRole('link', { name: en.accountEditNavLabel })).toBeVisible();
   });
 
@@ -158,8 +158,12 @@ test.describe('Account Management', function () {
     await page.getByRole('link', { name: en.accountEditNavLabel }).click();
     await expect(page.getByText(`${en.accountEditTitle} 10100`, { exact: true })).toBeVisible();
 
-    // Use "Back to List" link
-    await page.getByRole('link', { name: 'Back to List' }).click();
+    // Use "Back to Item" button (hierarchical navigation: Edit -> Item -> List)
+    await page.getByRole('button', { name: 'Back to Item' }).click();
+    await expect(page.getByText(`${en.accountItemTitle} 10100`, { exact: true })).toBeVisible();
+
+    // Now use "Back to List" button to go to list
+    await page.getByRole('button', { name: 'Back to List' }).click();
     await expect(page.getByText(en.accountListTitle, { exact: true })).toBeVisible();
   });
 

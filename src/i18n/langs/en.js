@@ -3,6 +3,7 @@
 export default {
   literal: {
     asset: 'Asset',
+    back: 'Back',
     balance: 'Balance',
     code: 'Code',
     cogs: 'Cost of Goods Sold',

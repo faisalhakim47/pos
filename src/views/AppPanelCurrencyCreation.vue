@@ -2,16 +2,25 @@
 import { computed, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
+import SvgIcon from '@/src/components/SvgIcon.vue';
 import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
 import UnhandledError from '@/src/components/UnhandledError.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
+import { useHierarchicalNavigation } from '@/src/composables/use-hierarchical-navigation.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelCurrencyListRoute } from '@/src/router/router.js';
+import { AppPanelCurrencyCreationRoute, AppPanelCurrencyListRoute } from '@/src/router/router.js';
+import * as routes from '@/src/router/router.js';
 
 const { sql } = useDb();
 const { t } = useI18n();
 const router = useRouter();
+const { navigateToParent } = useHierarchicalNavigation();
+
+function handleBackClick() {
+  navigateToParent(AppPanelCurrencyCreationRoute, routes);
+}
 
 const currencyForm = reactive({
   code: '',
@@ -70,6 +79,9 @@ const disabledCurrencyForm = computed(function () {
 <template>
   <main class="page">
     <header>
+      <button type="button" @click="handleBackClick" aria-label="Back to List">
+        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+      </button>
       <h1>{{ t('currencyCreationTitle') }}</h1>
     </header>
     <form

@@ -1,21 +1,30 @@
 <script setup>
 import { computed, onMounted } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { useRoute } from 'vue-router';
 
+import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
+import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
+import { useHierarchicalNavigation } from '@/src/composables/use-hierarchical-navigation.js';
 import { useDb } from '@/src/context/db.js';
 import { useFormatter } from '@/src/context/formatter.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelAccountEditRoute } from '@/src/router/router.js';
+import { AppPanelAccountEditRoute, AppPanelAccountItemRoute } from '@/src/router/router.js';
+import * as routes from '@/src/router/router.js';
 
 const { t } = useI18n();
 const db = useDb();
 const formatter = useFormatter();
 const route = useRoute();
+const { navigateToParent } = useHierarchicalNavigation();
 
 const accountCode = computed(function () {
   return parseInt(String(route.params.accountCode), 10);
 });
+
+function handleBackClick() {
+  navigateToParent(AppPanelAccountItemRoute, routes, { accountCode: accountCode.value });
+}
 
 // Fetch account details
 const accountQuery = useAsyncIterator(async function* () {
@@ -58,6 +67,9 @@ onMounted(accountQuery.run);
 <template>
   <main class="page">
     <header>
+      <button type="button" @click="handleBackClick" aria-label="Back to List">
+        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+      </button>
       <h1>{{ t('accountItemTitle') }} {{ accountCode }}</h1>
     </header>
 
