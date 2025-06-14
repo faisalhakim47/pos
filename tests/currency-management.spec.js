@@ -23,15 +23,16 @@ test.describe('Currency Management', function () {
 
   test('should display pre-seeded currency list', async function ({ page }) {
     // Check that the currency list contains pre-seeded currencies (may have extra currencies from previous test runs)
-    const currencyRows = page.locator('tbody tr');
+    const currencyTable = page.getByRole('table');
+    const currencyRows = currencyTable.getByRole('row').filter({ hasNotText: en.literal.code }); // Exclude header row
     const count = await currencyRows.count();
     expect(count).toBeGreaterThanOrEqual(29); // At least the seeded currencies
 
     // Verify that headers are present
-    await expect(page.getByText(en.literal.code)).toBeVisible();
-    await expect(page.getByText(en.literal.symbol)).toBeVisible();
-    await expect(page.getByText(en.literal.name)).toBeVisible();
-    await expect(page.getByText(en.literal.decimals)).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: en.literal.code })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: en.literal.symbol })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: en.literal.name })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: en.literal.decimals })).toBeVisible();
 
     // Verify some expected currencies are present
     await expect(page.getByText('US Dollar')).toBeVisible();
@@ -88,9 +89,11 @@ test.describe('Currency Management', function () {
     // Wait for the data to load - the currencyFetcher might be still loading
     await page.waitForTimeout(2000);
 
-    // Just verify that the page structure exists and some content is visible
-    await expect(page.locator('dl')).toBeVisible(); // Definition list should be present
-    await expect(page.locator('dt')).toHaveCount(4); // Should have 4 definition terms (code, name, symbol, decimals)
+    // Verify the currency details are displayed by checking for key-value pairs
+    await expect(page.getByText(en.literal.code, { exact: true })).toBeVisible();
+    await expect(page.getByText(en.literal.name, { exact: true })).toBeVisible();
+    await expect(page.getByText(en.literal.symbol, { exact: true })).toBeVisible();
+    await expect(page.getByText(en.literal.decimals, { exact: true })).toBeVisible();
 
     // Verify edit link is present
     await expect(page.getByRole('link', { name: en.currencyEditNavLabel })).toBeVisible();
@@ -201,14 +204,19 @@ test.describe('Currency Management', function () {
   });
 
   test('should display currencies in alphabetical order by code', async function ({ page }) {
-    const currencyRows = page.locator('tbody tr');
+    const currencyTable = page.getByRole('table');
+    const currencyRows = currencyTable.getByRole('row').filter({ hasNotText: en.literal.code }); // Exclude header row
     const count = await currencyRows.count();
     expect(count).toBeGreaterThanOrEqual(29); // At least the seeded currencies
 
     // Get the first few currency codes and verify they're in alphabetical order
-    const firstCode = await currencyRows.nth(0).locator('td').nth(0).textContent();
-    const secondCode = await currencyRows.nth(1).locator('td').nth(0).textContent();
-    const thirdCode = await currencyRows.nth(2).locator('td').nth(0).textContent();
+    const firstRow = currencyRows.nth(0);
+    const secondRow = currencyRows.nth(1);
+    const thirdRow = currencyRows.nth(2);
+
+    const firstCode = await firstRow.getByRole('cell').nth(0).textContent();
+    const secondCode = await secondRow.getByRole('cell').nth(0).textContent();
+    const thirdCode = await thirdRow.getByRole('cell').nth(0).textContent();
 
     // Verify alphabetical ordering
     expect(firstCode?.localeCompare(secondCode || '')).toBeLessThanOrEqual(0);
@@ -216,8 +224,9 @@ test.describe('Currency Management', function () {
   });
 
   test('should display correct currency information in table', async function ({ page }) {
-    // Find USD row and verify all columns
-    const usdRow = page.locator('tbody tr').filter({ hasText: 'USD' });
+    // Find USD row by looking for a row that contains USD
+    const currencyTable = page.getByRole('table');
+    const usdRow = currencyTable.getByRole('row').filter({ hasText: 'USD' });
     await expect(usdRow).toBeVisible();
 
     // Check that USD row contains expected data

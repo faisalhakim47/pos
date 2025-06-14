@@ -7,22 +7,18 @@ import SvgIcon from '@/src/components/SvgIcon.vue';
 import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
 import UnhandledError from '@/src/components/UnhandledError.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
-import { useHierarchicalNavigation } from '@/src/composables/use-hierarchical-navigation.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelCurrencyEditRoute } from '@/src/router/router.js';
-import * as routes from '@/src/router/router.js';
+import { AppPanelCurrencyItemRoute } from '@/src/router/router.js';
 import { sleep } from '@/src/tools/promise.js';
 
 const { sql } = useDb();
 const { t } = useI18n();
 const route = useRoute();
-const { navigateToParent } = useHierarchicalNavigation();
 
-function handleBackClick() {
-  const currencyCode = route.params?.currencyCode;
-  navigateToParent(AppPanelCurrencyEditRoute, routes, { currencyCode });
-}
+const currencyCode = computed(function () {
+  return route.params?.currencyCode;
+});
 
 const currencyForm = reactive({
   code: '',
@@ -103,9 +99,9 @@ const disabledCurrencyForm = computed(function () {
 <template>
   <main class="page">
     <header>
-      <button type="button" @click="handleBackClick" aria-label="Back to Item">
+      <RouterLink :to="{ name: AppPanelCurrencyItemRoute, params: { currencyCode } }" replace :aria-label="t('literal.back')">
         <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
-      </button>
+      </RouterLink>
       <h1>{{ t('currencyEditTitle') }}</h1>
     </header>
     <form

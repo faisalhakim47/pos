@@ -6,21 +6,13 @@ import { useRoute } from 'vue-router';
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
 import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
-import { useHierarchicalNavigation } from '@/src/composables/use-hierarchical-navigation.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelCurrencyEditRoute, AppPanelCurrencyItemRoute } from '@/src/router/router.js';
-import * as routes from '@/src/router/router.js';
+import { AppPanelCurrencyEditRoute, AppPanelCurrencyListRoute } from '@/src/router/router.js';
 
 const route = useRoute();
 const { sql } = useDb();
 const { t } = useI18n();
-const { navigateToParent } = useHierarchicalNavigation();
-
-function handleBackClick() {
-  const currencyCode = route.params?.currencyCode;
-  navigateToParent(AppPanelCurrencyItemRoute, routes, { currencyCode });
-}
 
 const currencyFetcher = useAsyncIterator(async function* () {
   yield undefined;
@@ -55,9 +47,9 @@ onMounted(currencyFetcher.run);
 <template>
   <main class="page">
     <header>
-      <button type="button" @click="handleBackClick" aria-label="Back to List">
+      <RouterLink :to="{ name: AppPanelCurrencyListRoute }" replace :aria-label="t('literal.back')">
         <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
-      </button>
+      </RouterLink>
       <h1>{{ t('currencyItemTitle') }} {{ route.params?.currencyCode }}</h1>
     </header>
     <dl>

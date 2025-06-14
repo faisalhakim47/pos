@@ -53,8 +53,8 @@ test.describe('Account Management', function () {
     // Fill out the form
     await page.getByLabel(en.accountFormCodeLabel).fill(String(uniqueCode));
     await page.getByLabel(en.accountFormNameLabel).fill('Test Asset Account');
-    await page.getByLabel(en.accountFormTypeLabel).selectOption('asset');
-    await page.locator('#currency-code').selectOption('USD');
+    await page.getByRole('combobox', { name: en.accountFormTypeLabel }).selectOption('asset');
+    await page.getByRole('combobox', { name: en.accountFormCurrencyLabel }).selectOption('USD');
 
     // Submit the form
     await page.getByRole('button', { name: en.accountCreationSaveCtaLabel }).click();
@@ -87,7 +87,7 @@ test.describe('Account Management', function () {
     await expect(submitButton).toBeDisabled();
 
     // Fill account type
-    await page.locator('#account-type').selectOption('liability');
+    await page.getByRole('combobox', { name: en.accountFormTypeLabel }).selectOption('liability');
 
     // Now the button should be enabled (currency has a default value)
     await expect(submitButton).toBeEnabled();
@@ -105,7 +105,7 @@ test.describe('Account Management', function () {
     await expect(page.getByText(en.literal.asset, { exact: true })).toBeVisible();
 
     // Check navigation links
-    await expect(page.getByRole('button', { name: 'Back to List' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Back' })).toBeVisible();
     await expect(page.getByRole('link', { name: en.accountEditNavLabel })).toBeVisible();
   });
 
@@ -158,12 +158,12 @@ test.describe('Account Management', function () {
     await page.getByRole('link', { name: en.accountEditNavLabel }).click();
     await expect(page.getByText(`${en.accountEditTitle} 10100`, { exact: true })).toBeVisible();
 
-    // Use "Back to Item" button (hierarchical navigation: Edit -> Item -> List)
-    await page.getByRole('button', { name: 'Back to Item' }).click();
+    // Use "Back to Item" link (hierarchical navigation: Edit -> Item -> List)
+    await page.getByRole('link', { name: 'Back' }).click();
     await expect(page.getByText(`${en.accountItemTitle} 10100`, { exact: true })).toBeVisible();
 
-    // Now use "Back to List" button to go to list
-    await page.getByRole('button', { name: 'Back to List' }).click();
+    // Now use "Back to List" link to go to list
+    await page.getByRole('link', { name: 'Back' }).click();
     await expect(page.getByText(en.accountListTitle, { exact: true })).toBeVisible();
   });
 

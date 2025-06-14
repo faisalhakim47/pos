@@ -58,11 +58,11 @@ onMounted(accountListQuery.run);
     <table>
       <thead>
         <tr class="sticky">
-          <th style="text-align: center; width: 128px;">{{ t('literal.code') }}</th>
-          <th style="text-align: center; width: 160px;">{{ t('literal.type') }}</th>
-          <th style="text-align: left;">{{ t('literal.name') }}</th>
-          <th style="text-align: center; width: 100px;">{{ t('literal.currency') }}</th>
-          <th style="text-align: right; width: 200px;">{{ t('literal.balance') }}</th>
+          <th scope="col" style="text-align: center; width: 128px;">{{ t('literal.code') }}</th>
+          <th scope="col" style="text-align: center; width: 160px;">{{ t('literal.type') }}</th>
+          <th scope="col" style="text-align: left;">{{ t('literal.name') }}</th>
+          <th scope="col" style="text-align: center; width: 100px;">{{ t('literal.currency') }}</th>
+          <th scope="col" style="text-align: right; width: 200px;">{{ t('literal.balance') }}</th>
         </tr>
       </thead>
       <tbody v-if="Array.isArray(accountListQuery.state)">

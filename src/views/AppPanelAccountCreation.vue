@@ -5,25 +5,18 @@ import { useRouter } from 'vue-router';
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
 import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
-import { useHierarchicalNavigation } from '@/src/composables/use-hierarchical-navigation.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelAccountCreationRoute, AppPanelAccountListRoute } from '@/src/router/router.js';
-import * as routes from '@/src/router/router.js';
+import { AppPanelAccountListRoute } from '@/src/router/router.js';
 
 const { t } = useI18n();
 const db = useDb();
 const router = useRouter();
-const { navigateToParent } = useHierarchicalNavigation();
 
 const accountCode = ref('');
 const accountName = ref('');
 const accountType = ref('');
 const currencyCode = ref('USD');
-
-function handleBackClick() {
-  navigateToParent(AppPanelAccountCreationRoute, routes);
-}
 
 // Fetch account types
 const accountTypesQuery = useAsyncIterator(async function* () {
@@ -95,9 +88,9 @@ function handleSubmit() {
 <template>
   <main class="page">
     <header>
-      <button type="button" @click="handleBackClick" aria-label="Back to List">
+      <RouterLink :to="{ name: AppPanelAccountListRoute }" replace :aria-label="t('literal.back')">
         <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
-      </button>
+      </RouterLink>
       <h1>{{ t('accountCreationTitle') }}</h1>
     </header>
 
@@ -128,7 +121,7 @@ function handleSubmit() {
 
         <label for="account-type">{{ t('accountFormTypeLabel') }}</label>
         <select id="account-type" v-model="accountType" required>
-          <option value="">Select account type</option>
+          <option value="">{{ t('accountFormTypeLabel') }}</option>
           <template v-if="Array.isArray(accountTypesQuery.state)">
             <option
               v-for="type in accountTypesQuery.state"

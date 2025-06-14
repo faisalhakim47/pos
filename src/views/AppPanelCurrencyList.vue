@@ -49,10 +49,10 @@ onMounted(currencyListFetcher.run);
     <table>
       <thead>
         <tr class="sticky">
-          <th style="text-align: center; width: 128px;">{{ t('literal.code') }}</th>
-          <th style="text-align: center; width: 128px;">{{ t('literal.symbol') }}</th>
-          <th style="text-align: left;">{{ t('literal.name') }}</th>
-          <th style="text-align: center; width: 128px;">{{ t('literal.decimals') }}</th>
+          <th scope="col" style="text-align: center; width: 128px;">{{ t('literal.code') }}</th>
+          <th scope="col" style="text-align: center; width: 128px;">{{ t('literal.symbol') }}</th>
+          <th scope="col" style="text-align: left;">{{ t('literal.name') }}</th>
+          <th scope="col" style="text-align: center; width: 128px;">{{ t('literal.decimals') }}</th>
         </tr>
       </thead>
       <tbody v-if="Array.isArray(currencyListFetcher.state)" >

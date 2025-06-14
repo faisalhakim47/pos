@@ -5,25 +5,18 @@ import { useRoute, useRouter } from 'vue-router';
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
 import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
-import { useHierarchicalNavigation } from '@/src/composables/use-hierarchical-navigation.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelAccountEditRoute, AppPanelAccountItemRoute } from '@/src/router/router.js';
-import * as routes from '@/src/router/router.js';
+import { AppPanelAccountItemRoute } from '@/src/router/router.js';
 
 const { t } = useI18n();
 const db = useDb();
 const router = useRouter();
 const route = useRoute();
-const { navigateToParent } = useHierarchicalNavigation();
 
 const accountCode = computed(function () {
   return parseInt(String(route.params.accountCode), 10);
 });
-
-function handleBackClick() {
-  navigateToParent(AppPanelAccountEditRoute, routes, { accountCode: accountCode.value });
-}
 
 const accountName = ref('');
 const accountType = ref('');
@@ -136,9 +129,9 @@ function handleSubmit() {
 <template>
   <main class="page">
     <header>
-      <button type="button" @click="handleBackClick" aria-label="Back to Item">
+      <RouterLink :to="{ name: AppPanelAccountItemRoute, params: { accountCode } }" replace :aria-label="t('literal.back')">
         <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
-      </button>
+      </RouterLink>
       <h1>{{ t('accountEditTitle') }} {{ accountCode }}</h1>
     </header>
 
@@ -171,7 +164,7 @@ function handleSubmit() {
 
         <label for="account-type">{{ t('accountFormTypeLabel') }}</label>
         <select id="account-type" v-model="accountType" required>
-          <option value="">Select account type</option>
+          <option value="">{{ t('accountFormTypeLabel') }}</option>
           <template v-if="Array.isArray(accountTypesQuery.state)">
             <option
               v-for="type in accountTypesQuery.state"
