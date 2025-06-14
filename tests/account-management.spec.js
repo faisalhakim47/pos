@@ -78,17 +78,21 @@ test.describe('Account Management', function () {
     // Click the create new account link
     await page.getByRole('link', { name: en.accountCreationNavLabel }).click();
 
-    // Try to submit without filling any fields
+    // Submit button should always be enabled (only disabled when loading)
     const submitButton = page.getByRole('button', { name: en.accountCreationSaveCtaLabel });
-    await expect(submitButton).toBeDisabled();
+    await expect(submitButton).toBeEnabled();
+
+    // Try to submit without filling any fields - should trigger validation
+    await submitButton.click();
+    // Browser should show HTML5 validation for required fields, preventing submission
 
     // Fill only account code
     await page.getByLabel(en.accountFormCodeLabel).fill(String(uniqueCode));
-    await expect(submitButton).toBeDisabled();
+    await expect(submitButton).toBeEnabled();
 
     // Fill account name as well
     await page.getByLabel(en.accountFormNameLabel).fill('Test Account');
-    await expect(submitButton).toBeDisabled();
+    await expect(submitButton).toBeEnabled();
 
     // Fill account type
     await page.getByRole('combobox', { name: en.accountFormTypeLabel }).selectOption('liability');

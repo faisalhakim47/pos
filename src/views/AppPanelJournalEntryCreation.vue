@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
 
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
+import ComboboxSelect from '@/src/components/ComboboxSelect.vue';
 import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
@@ -22,6 +23,9 @@ const lines = ref([
   { accountCode: '', debit: '', credit: '' },
   { accountCode: '', debit: '', credit: '' },
 ]);
+
+// Form saving state
+const isSaving = ref(false);
 
 // Form validation
 const isValid = computed(function () {
@@ -97,6 +101,27 @@ const functionalCurrencyQuery = useAsyncIterator(async function* () {
   };
 });
 
+// Transform data for ComboboxSelect components
+const accountOptions = computed(function () {
+  if (!Array.isArray(accountsQuery.state)) return [];
+  return accountsQuery.state.map(function (account) {
+    return {
+      value: String(account.code),
+      label: `${account.code} - ${account.name}`,
+    };
+  });
+});
+
+const currencyOptions = computed(function () {
+  if (!Array.isArray(currenciesQuery.state)) return [];
+  return currenciesQuery.state.map(function (currency) {
+    return {
+      value: currency.code,
+      label: `${currency.code} - ${currency.name}`,
+    };
+  });
+});
+
 function addLine() {
   lines.value.push({ accountCode: '', debit: '', credit: '' });
 }
@@ -127,6 +152,8 @@ async function saveJournalEntry() {
   if (!isValid.value) return;
 
   try {
+    isSaving.value = true;
+
     // Get next journal entry reference number
     const refQueryRes = await db.sql`
       select coalesce(max(ref), 0) + 1 as next_ref from journal_entry
@@ -172,6 +199,8 @@ async function saveJournalEntry() {
     await db.sql`rollback`;
     console.error('Failed to save journal entry:', error);
     alert('Failed to save journal entry. Please try again.');
+  } finally {
+    isSaving.value = false;
   }
 }
 
@@ -189,16 +218,9 @@ onMounted(function () {
         <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
       </RouterLink>
       <h1>{{ t('journalEntryCreationTitle') }}</h1>
-      <nav>
-        <ul>
-          <li>
-            <RouterLink :to="{ name: AppPanelJournalEntryListRoute }" replace>{{ t('literal.back') }}</RouterLink>
-          </li>
-        </ul>
-      </nav>
     </header>
 
-    <form @submit.prevent="saveJournalEntry" style="max-width: 1200px;">
+    <form @submit.prevent="saveJournalEntry">
       <fieldset>
         <legend>{{ t('journalEntryInformationTitle') }}</legend>
 
@@ -211,58 +233,53 @@ onMounted(function () {
         />
 
         <label for="currency">{{ t('literal.currency') }}</label>
-        <select
+        <ComboboxSelect
           id="currency"
           v-model="transactionCurrencyCode"
+          :options="currencyOptions"
+          :placeholder="t('selectCurrencyPlaceholder')"
           required
-        >
-          <template v-if="Array.isArray(currenciesQuery.state)">
-            <option v-for="currency in currenciesQuery.state"
-              :key="currency.code"
-              :value="currency.code"
-            >
-              {{ currency.code }} - {{ currency.name }}
-            </option>
-          </template>
-        </select>
+        />
       </fieldset>
 
       <fieldset>
         <legend>{{ t('journalEntryLinesTitle') }}</legend>
 
+        <div>
+          <button type="button" @click="addLine" :aria-label="t('addLineLabel')">
+            {{ t('addLineLabel') }}
+          </button>
+        </div>
+
         <table>
           <thead>
             <tr>
-              <th style="width: 1fr;">{{ t('literal.account') }}</th>
-              <th style="width: 150px;">{{ t('literal.debit') }}</th>
-              <th style="width: 150px;">{{ t('literal.credit') }}</th>
+              <th id="line-column" style="width: 60px;">{{ t('literal.line') }}</th>
+              <th id="account-column" style="width: 1fr;">{{ t('literal.account') }}</th>
+              <th id="debit-column" style="width: 150px;">{{ t('literal.debit') }}</th>
+              <th id="credit-column" style="width: 150px;">{{ t('literal.credit') }}</th>
               <th style="width: 100px;">{{ t('literal.actions') }}</th>
             </tr>
           </thead>
 
           <tbody>
             <tr v-for="(line, index) in lines" :key="index">
-              <td>
-                <label :for="`account-${index}`" class="sr-only">{{ t('accountForLineLabel') }} {{ index + 1 }}</label>
-                <select
-                  :id="`account-${index}`"
-                  v-model="line.accountCode"
-                  required
-                >
-                  <option value="">{{ t('selectAccountPlaceholder') }}</option>
-                  <template v-if="Array.isArray(accountsQuery.state)">
-                    <option v-for="account in accountsQuery.state"
-                      :key="account.code"
-                      :value="account.code"
-                    >
-                      {{ account.code }} - {{ account.name }}
-                    </option>
-                  </template>
-                </select>
+              <td style="text-align: center;">
+                <label :id="`line-${index + 1}`">{{ index + 1 }}</label>
               </td>
 
               <td>
-                <label :for="`debit-${index}`" class="sr-only">{{ t('debitAmountForLineLabel') }} {{ index + 1 }}</label>
+                <ComboboxSelect
+                  :id="`account-${index}`"
+                  v-model="line.accountCode"
+                  :options="accountOptions"
+                  :placeholder="t('selectAccountPlaceholder')"
+                  :ariaLabelledby="`account-column line-${index + 1}`"
+                  required
+                />
+              </td>
+
+              <td>
                 <input
                   :id="`debit-${index}`"
                   type="number"
@@ -271,11 +288,11 @@ onMounted(function () {
                   :value="line.debit"
                   @input="handleDebitInput(index, $event)"
                   :placeholder="t('amountPlaceholder')"
+                  :aria-labelledby="`debit-column line-${index + 1}`"
                 />
               </td>
 
               <td>
-                <label :for="`credit-${index}`" class="sr-only">{{ t('creditAmountForLineLabel') }} {{ index + 1 }}</label>
                 <input
                   :id="`credit-${index}`"
                   type="number"
@@ -284,12 +301,14 @@ onMounted(function () {
                   :value="line.credit"
                   @input="handleCreditInput(index, $event)"
                   :placeholder="t('amountPlaceholder')"
+                  :aria-labelledby="`credit-column line-${index + 1}`"
                 />
               </td>
 
-              <td>
+              <td style="text-align: center;">
                 <button
                   type="button"
+                  class="btn-danger"
                   @click="removeLine(index)"
                   :disabled="lines.length <= 2"
                   :aria-label="`${t('removeLineLabel')} ${index + 1}`"
@@ -302,19 +321,13 @@ onMounted(function () {
 
           <tfoot>
             <tr>
-              <td><strong>{{ t('literal.total') }}:</strong></td>
+              <td colspan="2" style="text-align: right;"><strong>{{ t('literal.total') }}:</strong></td>
               <td style="text-align: right;"><strong>{{ (functionalCurrencyQuery.state && typeof functionalCurrencyQuery.state === 'object') ? formatter.formatCurrency(Math.round(totalDebits * 100), functionalCurrencyQuery.state.code, functionalCurrencyQuery.state.decimals) : '' }}</strong></td>
               <td style="text-align: right;"><strong>{{ (functionalCurrencyQuery.state && typeof functionalCurrencyQuery.state === 'object') ? formatter.formatCurrency(Math.round(totalCredits * 100), functionalCurrencyQuery.state.code, functionalCurrencyQuery.state.decimals) : '' }}</strong></td>
-              <td></td>
+              <td style="text-align: center;"></td>
             </tr>
           </tfoot>
         </table>
-
-        <div>
-          <button type="button" @click="addLine" :aria-label="t('addLineLabel')">
-            {{ t('addLineLabel') }}
-          </button>
-        </div>
 
         <div v-if="!isValid && totalDebits !== totalCredits" aria-role="alert">
           {{ t('journalEntryUnbalancedError') }}
@@ -324,9 +337,9 @@ onMounted(function () {
       <div>
         <button
           type="submit"
-          :disabled="!isValid"
+          :disabled="isSaving"
         >
-          {{ t('saveJournalEntryLabel') }}
+          {{ isSaving ? t('saveJournalEntryProgressLabel') : t('saveJournalEntryLabel') }}
         </button>
       </div>
     </form>
@@ -334,51 +347,42 @@ onMounted(function () {
 </template>
 
 <style scoped>
-/* Screen reader only content */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Form layout optimized for 1368x768 desktop */
 form {
-  margin: 0 auto;
-}
-
-form fieldset:first-of-type {
-  display: grid;
-  grid-template-columns: 1fr 200px;
+  display: grid !important;
+  grid-template-columns: 1fr 2fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "info lines"
+    "actions lines";
   gap: 1rem;
-  margin-bottom: 1rem;
-}
 
-/* Table input sizing for journal lines */
-table input,
-table select {
-  width: 100%;
-  box-sizing: border-box;
-}
+  &> fieldset:first-of-type {
+    grid-area: info;
+    position: sticky;
+  }
 
-/* Remove button styling */
-tbody button[type="button"] {
-  background-color: #ef4444;
-  color: white;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-}
+  &> fieldset:last-of-type {
+    grid-area: lines;
 
-tbody button[type="button"]:hover:not(:disabled) {
-  background-color: #dc2626;
-}
+    &> div {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 0.5rem;
 
-tbody button[type="button"]:disabled {
-  opacity: 0.5;
+      button {
+        margin-left: 0.5rem;
+      }
+    }
+
+    label {
+      display: inline-block;
+      margin: 0;
+    }
+  }
+
+  &> div {
+    grid-area: actions;
+    position: sticky;
+  }
 }
 </style>

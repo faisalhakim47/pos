@@ -56,8 +56,8 @@ test.describe('Journal Entry Management', function () {
     await expect(page.getByText(en.journalEntryLinesTitle)).toBeVisible();
 
     // Check for at least 2 lines by default
-    const firstAccountSelect = page.locator('select[id="account-0"]');
-    const secondAccountSelect = page.locator('select[id="account-1"]');
+    const firstAccountSelect = page.getByRole('combobox', { name: 'Account 1' });
+    const secondAccountSelect = page.getByRole('combobox', { name: 'Account 2' });
     await expect(firstAccountSelect).toBeVisible();
     await expect(secondAccountSelect).toBeVisible();
   });
@@ -73,17 +73,24 @@ test.describe('Journal Entry Management', function () {
     await page.getByPlaceholder('Enter description for this journal entry').fill('Test Journal Entry');
 
     // Select accounts and enter amounts for first line (debit)
-    // Wait for accounts to load by checking the select has options
-    const firstAccountSelect = page.locator('select[id="account-0"]');
-    await expect(firstAccountSelect.locator('option[value="10100"]')).toHaveCount(1); // Wait for specific account option to exist
-    await firstAccountSelect.selectOption('10100');
+    // Wait for accounts to load by checking the combobox is ready
+    const firstAccountSelect = page.getByRole('combobox', { name: 'Account 1' });
+    await expect(firstAccountSelect).toBeVisible();
+
+    // Type in the combobox to search and select account
+    await firstAccountSelect.fill('10100');
+    await firstAccountSelect.press('ArrowDown');
+    await firstAccountSelect.press('Enter');
 
     // Fill debit amount for first line
     const firstDebitInput = page.locator('input[id="debit-0"]');
     await firstDebitInput.fill('1000');
 
     // Select account and enter amount for second line (credit)
-    await page.locator('select[id="account-1"]').selectOption('30100');
+    const secondAccountSelect = page.getByRole('combobox', { name: 'Account 2' });
+    await secondAccountSelect.fill('30100');
+    await secondAccountSelect.press('ArrowDown');
+    await secondAccountSelect.press('Enter');
 
     // Fill credit amount for second line
     const secondCreditInput = page.locator('input[id="credit-1"]');
@@ -112,27 +119,36 @@ test.describe('Journal Entry Management', function () {
 
     // First line: $1000 debit
     // Wait for accounts to load first
-    const firstAccountSelect = page.locator('select[id="account-0"]');
-    await expect(firstAccountSelect.locator('option[value="10100"]')).toHaveCount(1); // Wait for specific account option to exist
-    await firstAccountSelect.selectOption('10100');
+    const firstAccountSelect = page.getByRole('combobox', { name: 'Account 1' });
+    await expect(firstAccountSelect).toBeVisible();
+    await firstAccountSelect.fill('10100');
+    await firstAccountSelect.press('ArrowDown');
+    await firstAccountSelect.press('Enter');
 
     // Fill debit for first line
     const firstDebitInput = page.locator('input[id="debit-0"]');
     await firstDebitInput.fill('1000');
 
     // Second line: $500 credit (unbalanced)
-    await page.locator('select[id="account-1"]').selectOption('30100');
+    const secondAccountSelect = page.getByRole('combobox', { name: 'Account 2' });
+    await secondAccountSelect.fill('30100');
+    await secondAccountSelect.press('ArrowDown');
+    await secondAccountSelect.press('Enter');
 
     // Fill credit for second line (but with unbalanced amount)
     const secondCreditInput = page.locator('input[id="credit-1"]');
     await secondCreditInput.fill('500');
 
-    // Save button should be disabled
+    // Save button should remain enabled (only disabled when loading)
     const saveButton = page.getByText('Save Journal Entry');
-    await expect(saveButton).toBeDisabled();
+    await expect(saveButton).toBeEnabled();
 
     // Should show validation error
     await expect(page.getByText('Debits must equal credits')).toBeVisible();
+
+    // Clicking the save button should not proceed due to validation logic
+    await saveButton.click();
+    // Should still be on the same page due to validation preventing submission
   });
 
   test('should navigate back to journal entry list', async function ({ page }) {

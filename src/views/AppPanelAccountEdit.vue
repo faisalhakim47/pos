@@ -192,7 +192,7 @@ function handleSubmit() {
         <div>
           <button
             type="submit"
-            :disabled="updateAccountQuery.state === 'saving' || !accountName || !accountType || !currencyCode"
+            :disabled="updateAccountQuery.state === 'saving'"
           >
             {{
               updateAccountQuery.state === 'saving'

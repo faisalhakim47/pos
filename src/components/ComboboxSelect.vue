@@ -13,11 +13,11 @@ const props = defineProps({
   modelValue: { type: String, default: '' },
   options: { type: Array, required: true },
   placeholder: { type: String, default: '' },
-  label: { type: String, required: true },
   id: { type: String, required: true },
   disabled: { type: Boolean, default: false },
   required: { type: Boolean, default: false },
   name: { type: String, default: '' },
+  ariaLabelledby: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue', 'change']);
@@ -88,18 +88,47 @@ const flatOptions = computed(function () {
   return flat;
 });
 
-// Watch for model value changes to update search query
-watch(function () {
-  return props.modelValue;
-}, function (newValue) {
-  if (newValue !== searchQuery.value) {
-    searchQuery.value = newValue;
-  }
+// Find the selected option based on model value
+const selectedOption = computed(function () {
+  return props.options.find(function (option) {
+    const opt = /** @type {{value: string, label: string, group?: string}} */ (option);
+    return opt.value === props.modelValue;
+  });
 });
 
-// Initialize search query with model value
+// Input value - always shows the actual value for semantic correctness
+const inputValue = computed(function () {
+  return props.modelValue;
+});
+
+// Visual display value - shows label when not actively typing/searching
+const visualDisplayValue = computed(function () {
+  // Show label if we have a selected option and not actively searching
+  if (selectedOption.value && !isExpanded.value) {
+    const opt = /** @type {{value: string, label: string, group?: string}} */ (selectedOption.value);
+    return opt.label;
+  }
+  // When searching, show the search query
+  if (isExpanded.value) {
+    return searchQuery.value;
+  }
+  // Default to model value
+  return props.modelValue;
+});
+
+// Watch for model value changes to reset search state when selection changes externally
+watch(function () {
+  return props.modelValue;
+}, function () {
+  // Reset search query when model value changes externally
+  searchQuery.value = '';
+  closeListbox();
+});
+
+// Initialize component state
 onMounted(function () {
-  searchQuery.value = props.modelValue;
+  // Start with empty search query
+  searchQuery.value = '';
 });
 
 // Functions
@@ -129,7 +158,6 @@ function updateActiveDescendant() {
 
 function selectOption(option) {
   const opt = /** @type {{value: string, label: string, group?: string}} */ (option);
-  searchQuery.value = opt.label;
   emit('update:modelValue', opt.value);
   emit('change', opt);
   closeListbox();
@@ -241,11 +269,34 @@ function handleInputKeydown(event) {
   }
 }
 
+function handleInputFocus() {
+  // When input gains focus and we have a selected option, switch to search mode
+  if (selectedOption.value && !isExpanded.value) {
+    const opt = /** @type {{value: string, label: string, group?: string}} */ (selectedOption.value);
+    searchQuery.value = opt.label;
+    openListbox();
+  }
+}
+
 function handleInputInput(event) {
   const target = /** @type {HTMLInputElement} */ (event.target);
   const value = target.value;
   searchQuery.value = value;
-  emit('update:modelValue', value);
+
+  // Check if the input value matches any option's label exactly
+  const matchingOption = props.options.find(function (option) {
+    const opt = /** @type {{value: string, label: string, group?: string}} */ (option);
+    return opt.label === value;
+  });
+
+  if (matchingOption) {
+    // If input matches a label exactly, emit the corresponding value
+    const opt = /** @type {{value: string, label: string, group?: string}} */ (matchingOption);
+    emit('update:modelValue', opt.value);
+  } else {
+    // For partial matches or free text, emit empty value to indicate no selection
+    emit('update:modelValue', '');
+  }
 
   // Auto-open listbox when user starts typing
   if (!isExpanded.value && value.length > 0) {
@@ -299,24 +350,31 @@ onUnmounted(function () {
 
 <template>
   <div role="combobox" :aria-expanded="isExpanded" aria-haspopup="listbox">
-    <label :for="id">{{ label }}</label>
     <div>
+      <!-- Hidden input containing the actual semantic value -->
+      <input
+        type="hidden"
+        :name="name"
+        :value="inputValue"
+      />
+      <!-- Visible input for user interaction showing labels/search -->
       <input
         :id="id"
         ref="inputRef"
         type="text"
         role="combobox"
-        :name="name"
-        :value="searchQuery"
+        :value="visualDisplayValue"
         :placeholder="placeholder"
         :disabled="disabled"
         :required="required"
         :aria-expanded="isExpanded"
         :aria-controls="listboxId"
+        :aria-labelledby="ariaLabelledby || undefined"
         aria-autocomplete="list"
         :aria-activedescendant="activeDescendantId"
         @input="handleInputInput"
         @keydown="handleInputKeydown"
+        @focus="handleInputFocus"
       />
       <button
         :id="buttonId"
@@ -324,7 +382,7 @@ onUnmounted(function () {
         type="button"
         tabindex="-1"
         :disabled="disabled"
-        :aria-label="`${label} dropdown`"
+        aria-label="dropdown"
         :aria-expanded="isExpanded"
         :aria-controls="listboxId"
         @click="handleButtonClick"
@@ -350,7 +408,6 @@ onUnmounted(function () {
       :id="listboxId"
       ref="listboxRef"
       role="listbox"
-      :aria-label="label"
     >
       <!-- Render grouped options with headers -->
       <template v-for="(group, groupIndex) in groupedOptions" :key="groupIndex">
@@ -387,16 +444,9 @@ div[role="combobox"] {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-
-  label {
-    display: block;
-    font-weight: 500;
-    margin-bottom: 4px;
-  }
 
   /* Input group container */
-  > div {
+  &> div {
     position: relative;
     display: flex;
   }
@@ -405,7 +455,6 @@ div[role="combobox"] {
     display: block;
     height: 30px;
     width: 100%;
-    padding: 0 40px 0 8px;
     border-radius: 4px;
     border: 1px solid var(--app-input-border-color);
     box-sizing: border-box;

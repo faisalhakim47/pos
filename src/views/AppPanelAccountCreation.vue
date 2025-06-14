@@ -149,7 +149,7 @@ function handleSubmit() {
         <div>
           <button
             type="submit"
-            :disabled="createAccountQuery.state === 'saving' || !accountCode || !accountName || !accountType"
+            :disabled="createAccountQuery.state === 'saving'"
           >
             {{
               createAccountQuery.state === 'saving'
