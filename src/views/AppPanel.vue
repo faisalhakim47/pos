@@ -5,7 +5,7 @@ import { RouterView, RouterLink } from 'vue-router';
 import { MaterialSymbolAccountUrl, MaterialSymbolDashboardUrl, MaterialSymbolUniversalCurrencyAltUrl } from '@/src/assets/material-symbols.js';
 import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelAccountListRoute, AppPanelCurrencyListRoute, AppPanelDashboardRoute } from '@/src/router/router.js';
+import { AppPanelAccountListRoute, AppPanelCurrencyListRoute, AppPanelDashboardRoute, AppPanelJournalEntryListRoute } from '@/src/router/router.js';
 
 const { t } = useI18n();
 const style = useCssModule();
@@ -29,6 +29,11 @@ const style = useCssModule();
           <li :class="style.sidebarMenuItem">
             <RouterLink :to="{ name: AppPanelAccountListRoute }" replace>
               <SvgIcon :src="MaterialSymbolAccountUrl" :alt="t('menuItemAccountLabel')" />
+            </RouterLink>
+          </li>
+          <li :class="style.sidebarMenuItem">
+            <RouterLink :to="{ name: AppPanelJournalEntryListRoute }" replace>
+              <SvgIcon :src="MaterialSymbolAccountUrl" :alt="t('menuItemJournalEntryLabel')" />
             </RouterLink>
           </li>
         </ul>

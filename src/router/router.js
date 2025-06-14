@@ -17,6 +17,9 @@ import AppPanelCurrencyEdit from '@/src/views/AppPanelCurrencyEdit.vue';
 import AppPanelCurrencyItem from '@/src/views/AppPanelCurrencyItem.vue';
 import AppPanelCurrencyList from '@/src/views/AppPanelCurrencyList.vue';
 import AppPanelDashboard from '@/src/views/AppPanelDashboard.vue';
+import AppPanelJournalEntryCreation from '@/src/views/AppPanelJournalEntryCreation.vue';
+import AppPanelJournalEntryItem from '@/src/views/AppPanelJournalEntryItem.vue';
+import AppPanelJournalEntryList from '@/src/views/AppPanelJournalEntryList.vue';
 import AppRoot from '@/src/views/AppRoot.vue';
 import AppUnsupportedPlatform from '@/src/views/AppUnsupportedPlatform.vue';
 
@@ -33,6 +36,9 @@ export const AppPanelCurrencyEditRoute = Symbol('AppPanelCurrencyEdit');
 export const AppPanelCurrencyItemRoute = Symbol('AppPanelCurrencyItem');
 export const AppPanelCurrencyListRoute = Symbol('AppPanelCurrencyList');
 export const AppPanelDashboardRoute = Symbol('AppPanelDashboard');
+export const AppPanelJournalEntryCreationRoute = Symbol('AppPanelJournalEntryCreation');
+export const AppPanelJournalEntryItemRoute = Symbol('AppPanelJournalEntryItem');
+export const AppPanelJournalEntryListRoute = Symbol('AppPanelJournalEntryList');
 export const AppPanelRoute = Symbol('AppPanel');
 export const AppRootRoute = Symbol('AppRoot');
 export const AppUnsupportedPlatformRoute = Symbol('AppUnsupportedPlatform');
@@ -68,6 +74,9 @@ function createRoutes() {
             { name: AppPanelCurrencyItemRoute, component: AppPanelCurrencyItem, path: 'currencies/:currencyCode' },
             { name: AppPanelCurrencyListRoute, component: AppPanelCurrencyList, path: 'currencies' },
             { name: AppPanelDashboardRoute, component: AppPanelDashboard, path: 'dashboard' },
+            { name: AppPanelJournalEntryCreationRoute, component: AppPanelJournalEntryCreation, path: 'journal-entries/create' },
+            { name: AppPanelJournalEntryItemRoute, component: AppPanelJournalEntryItem, path: 'journal-entries/:journalEntryRef' },
+            { name: AppPanelJournalEntryListRoute, component: AppPanelJournalEntryList, path: 'journal-entries' },
           ],
         },
       ],

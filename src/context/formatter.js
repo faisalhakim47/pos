@@ -10,6 +10,8 @@ import { inject } from 'vue';
 /**
  * @typedef {object} FormatterContext
  * @property {(numeric: Numeric) => string} formatNumber
+ * @property {(amount: number) => string} formatCurrency
+ * @property {(date: Date) => string} formatDate
  */
 
 export const formatterKey = /** @type {InjectionKey<FormatterContext>} */ (Symbol());
@@ -24,6 +26,18 @@ export const formatter = {
       maximumFractionDigits: 0,
     });
 
+    const currencyFormatter = new Intl.NumberFormat(detectedLocale, {
+      style: 'currency',
+      currency: 'USD',
+      roundingMode: 'halfEven',
+    });
+
+    const dateFormatter = new Intl.DateTimeFormat(detectedLocale, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+
     app.provide(formatterKey, {
       formatNumber(numeric) {
         if (isNaN(Number(numeric))) {
@@ -35,6 +49,16 @@ export const formatter = {
         else {
           return numberFormatter.format(numeric);
         }
+      },
+      formatCurrency(amount) {
+        if (isNaN(amount)) {
+          return 'Invalid';
+        }
+        // Convert from cents to dollars
+        return currencyFormatter.format(amount / 100);
+      },
+      formatDate(date) {
+        return dateFormatter.format(date);
       },
     });
   },

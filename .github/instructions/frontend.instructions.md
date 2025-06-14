@@ -20,15 +20,29 @@ applyTo: 'src/**/*.js,src/**/*.vue'
 - Prefer `function` declarations over arrow functions including as callbacks.
 
 # UI/UX Guidelines
-- Use adaptive design targeting specific screen sizes rather than responsive design. Each view component in `src/views/*.vue` should be optimized for a particular screen size (currently targeting 1368x768 desktop screens)
+
+## Design Approach
+- Implement **adaptive design** targeting specific screen sizes rather than responsive design
+- Each view component in `src/views/*.vue` should be optimized for a particular screen size (currently targeting 1368x768 desktop screens)
+
+## Accessibility Requirements
 - All UI implementations must follow accessibility best practices
-- CSS styling follows a three-tier approach:
-  - **Global Styles**: Defined in `src/global.css` for application-wide defaults
-  - **Vue SFC Style**: Used for component-specific layout styling
-  - **Inline Styles**: Applied for element-specific attributes (e.g., table column widths)
-- Avoid using custom classes or data-* identifier to style elements, use semantic HTML structure and accessibility attributes instead.
-- Use custom classes only when absolutely necessary, such as for complex animations or specific layout requirements that cannot be achieved with semantic HTML and accessibility attributes.
-- Use nested css selectors to represent the hierarchy of the HTML structure, ensuring that styles are applied in a way that reflects the logical structure of the document.
+- Maintain uniform structure conventions across all views
+- Include all necessary accessibility attributes to ensure proper screen reader support
+- Avoid redundant `role` attributes on semantic elements (e.g., do not use `role="button"` on `<button>` elements)
+
+## CSS Architecture
+The application follows a three-tier styling approach:
+- **Global Styles**: Defined in `src/global.css` for application-wide defaults and basic element styling
+- **Vue SFC Styles**: Used for component-specific layout and structure
+- **Inline Styles**: Applied for element-specific attributes (e.g., table column widths, dynamic positioning)
+
+## Styling Guidelines
+- Prioritize semantic HTML structure and accessibility attributes over custom classes for styling
+- Avoid using custom classes or `data-*` identifiers for styling purposes
+- Use custom classes only when absolutely necessary (e.g., complex animations or specific layout requirements that cannot be achieved through semantic HTML)
+- Utilize nested CSS selectors to reflect the logical hierarchy of HTML structure
+- Ensure all basic elements (buttons, inputs, selects, tables, etc.) use Global Styles for consistent appearance throughout the application
 
 # Navigation Guidelines
 - The application implements **hierarchical navigation** rather than **chronological navigation**, ensuring back button behavior follows the logical application structure instead of user click history
