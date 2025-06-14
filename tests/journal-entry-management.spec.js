@@ -49,8 +49,8 @@ test.describe('Journal Entry Management', function () {
     await expect(page.getByText(en.journalEntryCreationTitle, { exact: true })).toBeVisible();
 
     // Check for form fields
-    await expect(page.getByText('Description:')).toBeVisible();
-    await expect(page.getByText('Currency:')).toBeVisible();
+    await expect(page.getByText('Description')).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Currency' })).toBeVisible();
 
     // Check for journal entry lines section
     await expect(page.getByText(en.journalEntryLinesTitle)).toBeVisible();
@@ -141,7 +141,7 @@ test.describe('Journal Entry Management', function () {
     await page.getByText(en.journalEntryCreationNavLabel).click();
 
     // Click back button
-    await page.getByText('Back').click();
+    await page.getByRole('link', { name: 'Back' }).last().click();
 
     // Should be back on the journal entries list
     await expect(page.getByRole('heading', { name: en.journalEntryListTitle })).toBeVisible();

@@ -20,6 +20,22 @@ const journalEntryRef = computed(function () {
 const journalEntryQuery = useAsyncIterator(async function* () {
   yield 'fetching';
 
+  // Get functional currency information
+  const functionalCurrencyRes = await db.sql`
+    select code, decimals
+    from currency
+    where is_functional_currency = 1
+  `;
+
+  if (functionalCurrencyRes[0].values.length === 0) {
+    throw new Error('No functional currency found');
+  }
+
+  const functionalCurrency = {
+    code: String(functionalCurrencyRes[0].values[0][0]),
+    decimals: Number(functionalCurrencyRes[0].values[0][1]),
+  };
+
   // Get journal entry header information
   const headerQueryRes = await db.sql`
     select
@@ -89,6 +105,7 @@ const journalEntryQuery = useAsyncIterator(async function* () {
     lines: lines,
     totalDebit: lines.reduce((sum, line) => sum + line.debitFunctional, 0),
     totalCredit: lines.reduce((sum, line) => sum + line.creditFunctional, 0),
+    functionalCurrency: functionalCurrency,
   };
 });
 
@@ -180,12 +197,12 @@ onMounted(journalEntryQuery.run);
               <td style="text-align: left;" role="gridcell">{{ line.accountName }}</td>
               <td style="text-align: right; width: 120px;" role="gridcell">
                 <span v-if="line.debitFunctional > 0">
-                  {{ formatter.formatCurrency(line.debitFunctional) }}
+                  {{ formatter.formatCurrency(line.debitFunctional, journalEntryQuery.state.functionalCurrency.code, journalEntryQuery.state.functionalCurrency.decimals) }}
                 </span>
               </td>
               <td style="text-align: right; width: 120px;" role="gridcell">
                 <span v-if="line.creditFunctional > 0">
-                  {{ formatter.formatCurrency(line.creditFunctional) }}
+                  {{ formatter.formatCurrency(line.creditFunctional, journalEntryQuery.state.functionalCurrency.code, journalEntryQuery.state.functionalCurrency.decimals) }}
                 </span>
               </td>
             </tr>
@@ -194,10 +211,10 @@ onMounted(journalEntryQuery.run);
             <tr role="row">
               <td colspan="3" style="text-align: right; font-weight: bold;" role="gridcell">{{ t('literal.total') }}:</td>
               <td style="text-align: right; font-weight: bold;" role="gridcell">
-                {{ formatter.formatCurrency(journalEntryQuery.state.totalDebit) }}
+                {{ formatter.formatCurrency(journalEntryQuery.state.totalDebit, journalEntryQuery.state.functionalCurrency.code, journalEntryQuery.state.functionalCurrency.decimals) }}
               </td>
               <td style="text-align: right; font-weight: bold;" role="gridcell">
-                {{ formatter.formatCurrency(journalEntryQuery.state.totalCredit) }}
+                {{ formatter.formatCurrency(journalEntryQuery.state.totalCredit, journalEntryQuery.state.functionalCurrency.code, journalEntryQuery.state.functionalCurrency.decimals) }}
               </td>
             </tr>
           </tfoot>

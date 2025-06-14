@@ -10,7 +10,7 @@ import { inject } from 'vue';
 /**
  * @typedef {object} FormatterContext
  * @property {(numeric: Numeric) => string} formatNumber
- * @property {(amount: number) => string} formatCurrency
+ * @property {(amount: number, currencyCode?: string, decimals?: number) => string} formatCurrency
  * @property {(date: Date) => string} formatDate
  */
 
@@ -26,11 +26,8 @@ export const formatter = {
       maximumFractionDigits: 0,
     });
 
-    const currencyFormatter = new Intl.NumberFormat(detectedLocale, {
-      style: 'currency',
-      currency: 'USD',
-      roundingMode: 'halfEven',
-    });
+    // Cache for currency formatters to avoid creating new instances repeatedly
+    const currencyFormatterCache = new Map();
 
     const dateFormatter = new Intl.DateTimeFormat(detectedLocale, {
       year: 'numeric',
@@ -50,12 +47,42 @@ export const formatter = {
           return numberFormatter.format(numeric);
         }
       },
-      formatCurrency(amount) {
+      formatCurrency(amount, currencyCode = 'USD', decimals = 2) {
         if (isNaN(amount)) {
           return 'Invalid';
         }
-        // Convert from cents to dollars
-        return currencyFormatter.format(amount / 100);
+
+        // Create cache key for the currency formatter
+        const cacheKey = `${currencyCode}-${decimals}`;
+
+        // Get or create formatter for this currency
+        if (!currencyFormatterCache.has(cacheKey)) {
+          try {
+            const formatter = new Intl.NumberFormat(detectedLocale, {
+              style: 'currency',
+              currency: currencyCode,
+              roundingMode: 'halfEven',
+              minimumFractionDigits: decimals,
+              maximumFractionDigits: decimals,
+            });
+            currencyFormatterCache.set(cacheKey, formatter);
+          } catch {
+            // Fallback for invalid currency codes
+            const formatter = new Intl.NumberFormat(detectedLocale, {
+              style: 'currency',
+              currency: 'USD',
+              roundingMode: 'halfEven',
+              minimumFractionDigits: decimals,
+              maximumFractionDigits: decimals,
+            });
+            currencyFormatterCache.set(cacheKey, formatter);
+          }
+        }
+
+        const formatter = currencyFormatterCache.get(cacheKey);
+        // Convert from smallest unit (e.g., cents) to main unit (e.g., dollars)
+        const divisor = Math.pow(10, decimals);
+        return formatter.format(amount / divisor);
       },
       formatDate(date) {
         return dateFormatter.format(date);

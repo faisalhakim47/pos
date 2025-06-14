@@ -18,6 +18,10 @@ test.describe('Account Management', function () {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: en.onboardingNewFileCtaDefaultLabel }).click();
+    await expect(page.getByText(en.dashboardTitle, { exact: true })).toBeVisible();
+
+    // Navigate to account list from sidebar
+    await page.getByRole('link', { name: en.menuItemAccountLabel, exact: true }).click();
     await expect(page.getByText(en.accountListTitle, { exact: true })).toBeVisible();
   });
 

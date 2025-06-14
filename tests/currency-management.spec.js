@@ -17,13 +17,21 @@ test.describe('Currency Management', function () {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: en.onboardingNewFileCtaDefaultLabel }).click();
-    await page.getByLabel(en.menuItemCurrencyListLabel).click();
+    await expect(page.getByText(en.dashboardTitle, { exact: true })).toBeVisible();
+
+    // Navigate to currency list from sidebar
+    await page.getByRole('link', { name: en.menuItemCurrencyListLabel }).click();
     await expect(page.getByText(en.currencyListTitle, { exact: true })).toBeVisible();
   });
 
   test('should display pre-seeded currency list', async function ({ page }) {
-    // Check that the currency list contains pre-seeded currencies (may have extra currencies from previous test runs)
+    // Wait for the currency data to load
     const currencyTable = page.getByRole('table');
+
+    // Wait for at least one currency row to be visible (excluding header)
+    await expect(currencyTable.getByRole('row').nth(1)).toBeVisible();
+
+    // Check that the currency list contains pre-seeded currencies (may have extra currencies from previous test runs)
     const currencyRows = currencyTable.getByRole('row').filter({ hasNotText: en.literal.code }); // Exclude header row
     const count = await currencyRows.count();
     expect(count).toBeGreaterThanOrEqual(29); // At least the seeded currencies
@@ -60,7 +68,7 @@ test.describe('Currency Management', function () {
     await expect(page.getByText('Test Cryptocurrency')).toBeVisible();
     await expect(page.getByText(uniqueCode.toUpperCase())).toBeVisible(); // Should be uppercase in display
     await expect(page.getByText('Ⓧ')).toBeVisible();
-    await expect(page.getByText('8')).toBeVisible();
+    await expect(page.getByRole('cell', { name: '8', exact: true })).toBeVisible();
   });
 
   test('should validate required fields in currency creation', async function ({ page }) {
@@ -198,13 +206,18 @@ test.describe('Currency Management', function () {
     await expect(page.getByText(en.currencyEditTitle)).toBeVisible();
 
     // Navigate back to currency list using sidebar
-    await page.getByLabel(en.menuItemCurrencyListLabel).click();
+    await page.getByRole('link', { name: en.menuItemCurrencyListLabel }).click();
     await expect(page.getByText(en.currencyListTitle, { exact: true })).toBeVisible();
     await expect(page.getByText('British Pound')).toBeVisible();
   });
 
   test('should display currencies in alphabetical order by code', async function ({ page }) {
+    // Wait for the currency data to load
     const currencyTable = page.getByRole('table');
+
+    // Wait for at least one currency row to be visible (excluding header)
+    await expect(currencyTable.getByRole('row').nth(1)).toBeVisible();
+
     const currencyRows = currencyTable.getByRole('row').filter({ hasNotText: en.literal.code }); // Exclude header row
     const count = await currencyRows.count();
     expect(count).toBeGreaterThanOrEqual(29); // At least the seeded currencies

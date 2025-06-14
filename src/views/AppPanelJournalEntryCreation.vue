@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
 
+import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
+import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useFormatter } from '@/src/context/formatter.js';
@@ -77,6 +79,24 @@ const currenciesQuery = useAsyncIterator(async function* () {
   });
 });
 
+const functionalCurrencyQuery = useAsyncIterator(async function* () {
+  yield 'fetching';
+  const functionalCurrencyRes = await db.sql`
+    select code, decimals
+    from currency
+    where is_functional_currency = 1
+  `;
+
+  if (functionalCurrencyRes[0].values.length === 0) {
+    throw new Error('No functional currency found');
+  }
+
+  yield {
+    code: String(functionalCurrencyRes[0].values[0][0]),
+    decimals: Number(functionalCurrencyRes[0].values[0][1]),
+  };
+});
+
 function addLine() {
   lines.value.push({ accountCode: '', debit: '', credit: '' });
 }
@@ -144,7 +164,7 @@ async function saveJournalEntry() {
     await db.sql`commit`;
 
     // Navigate to the new journal entry
-    router.push({
+    router.replace({
       name: AppPanelJournalEntryItemRoute,
       params: { journalEntryRef: nextRef },
     });
@@ -158,82 +178,76 @@ async function saveJournalEntry() {
 onMounted(function () {
   accountsQuery.run();
   currenciesQuery.run();
+  functionalCurrencyQuery.run();
 });
 </script>
 
 <template>
   <main class="page">
     <header>
+      <RouterLink :to="{ name: AppPanelJournalEntryListRoute }" replace :aria-label="t('literal.back')">
+        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+      </RouterLink>
       <h1>{{ t('journalEntryCreationTitle') }}</h1>
-      <nav aria-label="Journal entry navigation">
+      <nav>
         <ul>
           <li>
-            <RouterLink :to="{ name: AppPanelJournalEntryListRoute, replace: true }">{{ t('literal.back') }}</RouterLink>
+            <RouterLink :to="{ name: AppPanelJournalEntryListRoute }" replace>{{ t('literal.back') }}</RouterLink>
           </li>
         </ul>
       </nav>
     </header>
 
-    <form @submit.prevent="saveJournalEntry" aria-label="Create new journal entry">
-      <!-- Header Information -->
-      <fieldset aria-labelledby="form-header-legend">
-        <legend id="form-header-legend" class="visually-hidden">Journal entry basic information</legend>
-        <div>
-          <label for="note">{{ t('literal.description') }}:</label>
-          <input
-            id="note"
-            type="text"
-            v-model="note"
-            :placeholder="t('journalEntryNotePlaceholder')"
-            aria-describedby="note-help"
-          />
-          <div id="note-help" class="visually-hidden">Optional description for this journal entry</div>
-        </div>
+    <form @submit.prevent="saveJournalEntry" style="max-width: 1200px;">
+      <fieldset>
+        <legend>{{ t('journalEntryInformationTitle') }}</legend>
 
-        <div>
-          <label for="currency">{{ t('literal.currency') }}:</label>
-          <select
-            id="currency"
-            v-model="transactionCurrencyCode"
-            required
-            aria-describedby="currency-help"
-          >
-            <template v-if="Array.isArray(currenciesQuery.state)">
-              <option v-for="currency in currenciesQuery.state"
-                :key="currency.code"
-                :value="currency.code"
-              >
-                {{ currency.code }} - {{ currency.name }}
-              </option>
-            </template>
-          </select>
-          <div id="currency-help" class="visually-hidden">Select the transaction currency for this journal entry</div>
-        </div>
+        <label for="note">{{ t('literal.description') }}</label>
+        <input
+          id="note"
+          type="text"
+          v-model="note"
+          :placeholder="t('journalEntryNotePlaceholder')"
+        />
+
+        <label for="currency">{{ t('literal.currency') }}</label>
+        <select
+          id="currency"
+          v-model="transactionCurrencyCode"
+          required
+        >
+          <template v-if="Array.isArray(currenciesQuery.state)">
+            <option v-for="currency in currenciesQuery.state"
+              :key="currency.code"
+              :value="currency.code"
+            >
+              {{ currency.code }} - {{ currency.name }}
+            </option>
+          </template>
+        </select>
       </fieldset>
 
-      <!-- Journal Entry Lines -->
-      <fieldset aria-labelledby="form-lines-legend">
-        <legend id="form-lines-legend">{{ t('journalEntryLinesTitle') }}</legend>
+      <fieldset>
+        <legend>{{ t('journalEntryLinesTitle') }}</legend>
 
-        <table role="table" aria-label="Journal entry lines form">
+        <table>
           <thead>
-            <tr role="row">
-              <th scope="col" style="width: 1fr;" role="columnheader">{{ t('literal.account') }}</th>
-              <th scope="col" style="width: 150px;" role="columnheader">{{ t('literal.debit') }}</th>
-              <th scope="col" style="width: 150px;" role="columnheader">{{ t('literal.credit') }}</th>
-              <th scope="col" style="width: 100px;" role="columnheader">{{ t('literal.actions') }}</th>
+            <tr>
+              <th style="width: 1fr;">{{ t('literal.account') }}</th>
+              <th style="width: 150px;">{{ t('literal.debit') }}</th>
+              <th style="width: 150px;">{{ t('literal.credit') }}</th>
+              <th style="width: 100px;">{{ t('literal.actions') }}</th>
             </tr>
           </thead>
 
-          <tbody role="rowgroup">
-            <tr v-for="(line, index) in lines" :key="index" role="row">
-              <td role="gridcell">
-                <label :for="`account-${index}`" class="visually-hidden">Account for line {{ index + 1 }}</label>
+          <tbody>
+            <tr v-for="(line, index) in lines" :key="index">
+              <td>
+                <label :for="`account-${index}`" class="sr-only">{{ t('accountForLineLabel') }} {{ index + 1 }}</label>
                 <select
                   :id="`account-${index}`"
                   v-model="line.accountCode"
                   required
-                  :aria-describedby="`account-${index}-help`"
                 >
                   <option value="">{{ t('selectAccountPlaceholder') }}</option>
                   <template v-if="Array.isArray(accountsQuery.state)">
@@ -245,11 +259,10 @@ onMounted(function () {
                     </option>
                   </template>
                 </select>
-                <div :id="`account-${index}-help`" class="visually-hidden">Select an account for this line</div>
               </td>
 
-              <td role="gridcell">
-                <label :for="`debit-${index}`" class="visually-hidden">Debit amount for line {{ index + 1 }}</label>
+              <td>
+                <label :for="`debit-${index}`" class="sr-only">{{ t('debitAmountForLineLabel') }} {{ index + 1 }}</label>
                 <input
                   :id="`debit-${index}`"
                   type="number"
@@ -258,13 +271,11 @@ onMounted(function () {
                   :value="line.debit"
                   @input="handleDebitInput(index, $event)"
                   :placeholder="t('amountPlaceholder')"
-                  :aria-describedby="`debit-${index}-help`"
                 />
-                <div :id="`debit-${index}-help`" class="visually-hidden">Enter debit amount for this line</div>
               </td>
 
-              <td role="gridcell">
-                <label :for="`credit-${index}`" class="visually-hidden">Credit amount for line {{ index + 1 }}</label>
+              <td>
+                <label :for="`credit-${index}`" class="sr-only">{{ t('creditAmountForLineLabel') }} {{ index + 1 }}</label>
                 <input
                   :id="`credit-${index}`"
                   type="number"
@@ -273,17 +284,15 @@ onMounted(function () {
                   :value="line.credit"
                   @input="handleCreditInput(index, $event)"
                   :placeholder="t('amountPlaceholder')"
-                  :aria-describedby="`credit-${index}-help`"
                 />
-                <div :id="`credit-${index}-help`" class="visually-hidden">Enter credit amount for this line</div>
               </td>
 
-              <td role="gridcell">
+              <td>
                 <button
                   type="button"
                   @click="removeLine(index)"
                   :disabled="lines.length <= 2"
-                  :aria-label="`Remove line ${index + 1}`"
+                  :aria-label="`${t('removeLineLabel')} ${index + 1}`"
                 >
                   {{ t('literal.remove') }}
                 </button>
@@ -291,44 +300,42 @@ onMounted(function () {
             </tr>
           </tbody>
 
-          <tfoot role="rowgroup">
-            <tr role="row">
-              <td role="gridcell"><strong>{{ t('literal.total') }}:</strong></td>
-              <td role="gridcell" style="text-align: right;"><strong>{{ formatter.formatCurrency(Math.round(totalDebits * 100)) }}</strong></td>
-              <td role="gridcell" style="text-align: right;"><strong>{{ formatter.formatCurrency(Math.round(totalCredits * 100)) }}</strong></td>
-              <td role="gridcell"></td>
+          <tfoot>
+            <tr>
+              <td><strong>{{ t('literal.total') }}:</strong></td>
+              <td style="text-align: right;"><strong>{{ (functionalCurrencyQuery.state && typeof functionalCurrencyQuery.state === 'object') ? formatter.formatCurrency(Math.round(totalDebits * 100), functionalCurrencyQuery.state.code, functionalCurrencyQuery.state.decimals) : '' }}</strong></td>
+              <td style="text-align: right;"><strong>{{ (functionalCurrencyQuery.state && typeof functionalCurrencyQuery.state === 'object') ? formatter.formatCurrency(Math.round(totalCredits * 100), functionalCurrencyQuery.state.code, functionalCurrencyQuery.state.decimals) : '' }}</strong></td>
+              <td></td>
             </tr>
           </tfoot>
         </table>
 
         <div>
-          <button type="button" @click="addLine" aria-label="Add new journal entry line">
+          <button type="button" @click="addLine" :aria-label="t('addLineLabel')">
             {{ t('addLineLabel') }}
           </button>
         </div>
 
-        <div v-if="!isValid && totalDebits !== totalCredits" role="alert" aria-live="polite">
+        <div v-if="!isValid && totalDebits !== totalCredits" aria-role="alert">
           {{ t('journalEntryUnbalancedError') }}
         </div>
       </fieldset>
 
-      <!-- Submit Button -->
       <div>
         <button
           type="submit"
           :disabled="!isValid"
-          :aria-describedby="!isValid ? 'submit-help' : undefined"
         >
           {{ t('saveJournalEntryLabel') }}
         </button>
-        <div v-if="!isValid" id="submit-help" class="visually-hidden">Fix validation errors before saving</div>
       </div>
     </form>
   </main>
 </template>
 
 <style scoped>
-.visually-hidden {
+/* Screen reader only content */
+.sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -340,175 +347,38 @@ onMounted(function () {
   border: 0;
 }
 
-form[aria-label="Create new journal entry"] {
-  max-width: 1200px;
+/* Form layout optimized for 1368x768 desktop */
+form {
   margin: 0 auto;
 }
 
-fieldset[aria-labelledby="form-header-legend"] {
+form fieldset:first-of-type {
   display: grid;
   grid-template-columns: 1fr 200px;
   gap: 1rem;
-  margin-bottom: 2rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 0.5rem;
-  border: none;
-}
-
-fieldset[aria-labelledby="form-header-legend"] > div {
-  display: flex;
-  flex-direction: column;
-}
-
-fieldset[aria-labelledby="form-header-legend"] label {
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-  color: #374151;
-}
-
-fieldset[aria-labelledby="form-header-legend"] input,
-fieldset[aria-labelledby="form-header-legend"] select {
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-}
-
-fieldset[aria-labelledby="form-header-legend"] input:focus,
-fieldset[aria-labelledby="form-header-legend"] select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px #3b82f6;
-}
-
-fieldset[aria-labelledby="form-lines-legend"] {
-  border: none;
-  padding: 0;
-  margin: 0;
-}
-
-fieldset[aria-labelledby="form-lines-legend"] legend {
-  font-size: 1.125rem;
-  font-weight: 600;
   margin-bottom: 1rem;
 }
 
-table[aria-label="Journal entry lines form"] {
+/* Table input sizing for journal lines */
+table input,
+table select {
   width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 1rem;
+  box-sizing: border-box;
 }
 
-table[aria-label="Journal entry lines form"] thead th {
-  font-weight: 600;
-  padding: 0.75rem;
-  background-color: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  text-align: left;
-}
-
-table[aria-label="Journal entry lines form"] tbody td {
-  padding: 0.5rem;
-  border: 1px solid #e5e7eb;
-}
-
-table[aria-label="Journal entry lines form"] tfoot td {
-  padding: 0.75rem;
-  background-color: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-top: 2px solid #374151;
-  font-weight: 600;
-}
-
-table[aria-label="Journal entry lines form"] select,
-table[aria-label="Journal entry lines form"] input {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-}
-
-table[aria-label="Journal entry lines form"] select:focus,
-table[aria-label="Journal entry lines form"] input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px #3b82f6;
-}
-
-button[aria-label*="Remove line"] {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+/* Remove button styling */
+tbody button[type="button"] {
   background-color: #ef4444;
   color: white;
-  border: none;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  transition: all 0.2s;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
 }
 
-button[aria-label*="Remove line"]:hover:not(:disabled) {
+tbody button[type="button"]:hover:not(:disabled) {
   background-color: #dc2626;
 }
 
-button[aria-label*="Remove line"]:disabled {
+tbody button[type="button"]:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
-}
-
-button[aria-label="Add new journal entry line"] {
-  padding: 0.5rem 1rem;
-  background-color: #6b7280;
-  color: white;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-bottom: 1rem;
-}
-
-button[aria-label="Add new journal entry line"]:hover {
-  background-color: #4b5563;
-}
-
-div[role="alert"] {
-  color: #ef4444;
-  font-weight: 500;
-  padding: 0.5rem;
-  background-color: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 0.375rem;
-  margin-bottom: 1rem;
-}
-
-form[aria-label="Create new journal entry"] > div:last-child {
-  text-align: center;
-  padding-top: 2rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-form[aria-label="Create new journal entry"] > div:last-child button {
-  min-width: 200px;
-  padding: 0.5rem 1rem;
-  background-color: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-form[aria-label="Create new journal entry"] > div:last-child button:hover:not(:disabled) {
-  background-color: #2563eb;
-}
-
-form[aria-label="Create new journal entry"] > div:last-child button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 </style>

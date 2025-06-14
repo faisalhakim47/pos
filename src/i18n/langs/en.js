@@ -126,4 +126,9 @@ export default {
   amountPlaceholder: '0.00',
   addLineLabel: 'Add Line',
   saveJournalEntryLabel: 'Save Journal Entry',
+  journalEntryInformationTitle: 'Journal Entry Information',
+  accountForLineLabel: 'Account for line',
+  debitAmountForLineLabel: 'Debit amount for line',
+  creditAmountForLineLabel: 'Credit amount for line',
+  removeLineLabel: 'Remove line',
 };
