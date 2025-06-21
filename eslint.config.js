@@ -53,6 +53,7 @@ export default defineConfig([
           caseInsensitive: true,
         },
       }],
+      'vue/component-name-in-template-casing': ['error', 'kebab-case', { registeredComponentsOnly: true }],
       'indent': ['error', 2, { SwitchCase: 1 }],
       'no-constant-binary-expression': ['off'],
       'no-unused-vars': ['warn', { args: 'none' }],

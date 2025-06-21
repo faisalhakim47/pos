@@ -9,7 +9,7 @@ import { platform } from '@/src/context/platform.js';
 import { loadFonts } from '@/src/font.js';
 import { i18n } from '@/src/i18n/i18n.js';
 import { router } from '@/src/router/router.js';
-import AppRoot from '@/src/views/AppRoot.vue';
+import AppRoot from '@/src/views/app-root.vue';
 
 window.addEventListener('load', async function () {
   const appElement = document.createElement('div');

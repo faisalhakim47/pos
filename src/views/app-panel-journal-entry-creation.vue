@@ -3,9 +3,9 @@ import { computed, onMounted, reactive } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
 
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
-import ComboboxSelect from '@/src/components/ComboboxSelect.vue';
-import SvgIcon from '@/src/components/SvgIcon.vue';
-import UnhandledError from '@/src/components/UnhandledError.vue';
+import ComboboxSelect from '@/src/components/combobox-select.vue';
+import SvgIcon from '@/src/components/svg-icon.vue';
+import UnhandledError from '@/src/components/unhandled-error.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useFormatter } from '@/src/context/formatter.js';
@@ -252,16 +252,16 @@ onMounted(function () {
 <template>
   <main class="page">
     <header>
-      <RouterLink :to="{ name: AppPanelJournalEntryListRoute }" replace :aria-label="t('literal.back')">
-        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
-      </RouterLink>
+      <router-link :to="{ name: AppPanelJournalEntryListRoute }" replace :aria-label="t('literal.back')">
+        <svg-icon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+      </router-link>
       <h1>{{ t('journalEntryCreationTitle') }}</h1>
     </header>
 
 
     <form @submit.prevent>
-      <UnhandledError :error="functionalCurrencyQuery.error" />
-      <UnhandledError :error="currenciesQuery.error" />
+      <unhandled-error :error="functionalCurrencyQuery.error" />
+      <unhandled-error :error="currenciesQuery.error" />
 
       <fieldset>
         <legend>{{ t('journalEntryInformationTitle') }}</legend>
@@ -275,7 +275,7 @@ onMounted(function () {
         />
 
         <label for="currency">{{ t('literal.currency') }}</label>
-        <ComboboxSelect
+        <combobox-select
           id="currency"
           v-model="journalEntryForm.currencyCode"
           :options="currencyOptions"
@@ -287,7 +287,7 @@ onMounted(function () {
       <fieldset>
         <legend>{{ t('journalEntryLinesTitle') }}</legend>
 
-        <UnhandledError :error="accountsQuery.error" />
+        <unhandled-error :error="accountsQuery.error" />
 
         <div>
           <button type="button" @click="addLine" :aria-label="t('journalEntryLineCtaAddLabel')">
@@ -313,7 +313,7 @@ onMounted(function () {
               </td>
 
               <td>
-                <ComboboxSelect
+                <combobox-select
                   :id="`account-${index}`"
                   v-model="line.accountCode"
                   :options="accountOptions"
@@ -400,7 +400,7 @@ onMounted(function () {
         </button>
       </div>
 
-      <UnhandledError :error="journalEntryCreation.error" />
+      <unhandled-error :error="journalEntryCreation.error" />
     </form>
   </main>
 </template>

@@ -1,52 +1,22 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
-import SvgIcon from '@/src/components/SvgIcon.vue';
+import SvgIcon from '@/src/components/svg-icon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelAccountItemRoute } from '@/src/router/router.js';
+import { AppPanelAccountListRoute } from '@/src/router/router.js';
 
 const { t } = useI18n();
 const db = useDb();
 const router = useRouter();
-const route = useRoute();
 
-const accountCode = computed(function () {
-  return parseInt(String(route.params.accountCode), 10);
-});
-
+const accountCode = ref('');
 const accountName = ref('');
 const accountType = ref('');
-const currencyCode = ref('');
-
-// Fetch account details
-const accountQuery = useAsyncIterator(async function* () {
-  yield 'fetching';
-  const result = await db.sql`
-    select
-      account.code,
-      account.name,
-      account.account_type_name,
-      account.currency_code
-    from account
-    where account.code = ${accountCode.value}
-  `;
-
-  if (result[0].values.length === 0) {
-    throw new Error('Account not found');
-  }
-
-  const row = result[0].values[0];
-  yield {
-    code: Number(row[0]),
-    name: String(row[1]),
-    accountTypeName: String(row[2]),
-    currencyCode: String(row[3]),
-  };
-});
+const currencyCode = ref('USD');
 
 // Fetch account types
 const accountTypesQuery = useAsyncIterator(async function* () {
@@ -82,76 +52,63 @@ const currenciesQuery = useAsyncIterator(async function* () {
   });
 });
 
-// Update account
-const updateAccountQuery = useAsyncIterator(async function* () {
+// Create account
+const createAccountQuery = useAsyncIterator(async function* () {
   yield 'saving';
 
+  const code = parseInt(accountCode.value, 10);
+  if (isNaN(code) || code < 10000 || code > 99999) {
+    throw new Error('Account code must be a 5-digit number between 10000 and 99999');
+  }
+
   await db.sql`
-    update account
-    set name = ${accountName.value},
-        account_type_name = ${accountType.value},
-        currency_code = ${currencyCode.value}
-    where code = ${accountCode.value}
+    insert into account (code, name, account_type_name, currency_code)
+    values (${code}, ${accountName.value}, ${accountType.value}, ${currencyCode.value})
   `;
 
   yield 'success';
 
-  // Navigate back to account detail
-  router.push({ name: AppPanelAccountItemRoute, params: { accountCode: accountCode.value } });
+  // Navigate back to account list
+  router.push({ name: AppPanelAccountListRoute });
 });
 
-// Watch for account data and populate form
-watch(
-  function () { return accountQuery.state; },
-  function (account) {
-    if (account && typeof account === 'object') {
-      accountName.value = account.name;
-      accountType.value = account.accountTypeName;
-      currencyCode.value = account.currencyCode;
-    }
-  },
-);
-
 onMounted(function () {
-  accountQuery.run();
   accountTypesQuery.run();
   currenciesQuery.run();
 });
 
 function handleSubmit() {
-  if (!accountName.value || !accountType.value || !currencyCode.value) {
+  if (!accountCode.value || !accountName.value || !accountType.value) {
     return;
   }
-  updateAccountQuery.run();
+  createAccountQuery.run();
 }
 </script>
 
 <template>
   <main class="page">
     <header>
-      <RouterLink :to="{ name: AppPanelAccountItemRoute, params: { accountCode } }" replace :aria-label="t('literal.back')">
-        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
-      </RouterLink>
-      <h1>{{ t('accountEditTitle') }} {{ accountCode }}</h1>
+      <router-link :to="{ name: AppPanelAccountListRoute }" replace :aria-label="t('literal.back')">
+        <svg-icon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+      </router-link>
+      <h1>{{ t('accountCreationTitle') }}</h1>
     </header>
 
-    <div v-if="accountQuery.state === 'fetching'">
-      {{ t('literal.fetching') }}
-    </div>
-
-    <form v-else-if="accountQuery.state && typeof accountQuery.state === 'object'" @submit.prevent="handleSubmit" style="max-width: 480px;">
+    <form @submit.prevent="handleSubmit" style="max-width: 480px;">
       <fieldset>
-        <legend>{{ t('accountEditTitle') }}</legend>
+        <legend>{{ t('accountCreationTitle') }}</legend>
 
         <label for="account-code">{{ t('accountFormCodeLabel') }}</label>
         <input
           id="account-code"
-          :value="accountCode"
+          v-model="accountCode"
           type="number"
-          disabled
-          readonly
+          min="10000"
+          max="99999"
+          step="1"
+          :placeholder="t('accountFormCodePlaceholder')"
+          required
         />
-        <small>Account code cannot be changed</small>
 
         <label for="account-name">{{ t('accountFormNameLabel') }}</label>
         <input
@@ -192,12 +149,12 @@ function handleSubmit() {
         <div>
           <button
             type="submit"
-            :disabled="updateAccountQuery.state === 'saving'"
+            :disabled="createAccountQuery.state === 'saving'"
           >
             {{
-              updateAccountQuery.state === 'saving'
-                ? t('accountEditUpdateCtaProgressLabel')
-                : t('accountEditUpdateCtaLabel')
+              createAccountQuery.state === 'saving'
+                ? t('accountCreationSaveCtaProgressLabel')
+                : t('accountCreationSaveCtaLabel')
             }}
           </button>
         </div>

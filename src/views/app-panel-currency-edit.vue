@@ -3,9 +3,9 @@ import { computed, onMounted, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
-import SvgIcon from '@/src/components/SvgIcon.vue';
-import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
-import UnhandledError from '@/src/components/UnhandledError.vue';
+import SvgIcon from '@/src/components/svg-icon.vue';
+import TextWithLoadingIndicator from '@/src/components/text-with-loading-indicator.vue';
+import UnhandledError from '@/src/components/unhandled-error.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
@@ -100,7 +100,7 @@ const disabledCurrencyForm = computed(function () {
   <main class="page">
     <header>
       <RouterLink :to="{ name: AppPanelCurrencyItemRoute, params: { currencyCode } }" replace :aria-label="t('literal.back')">
-        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+        <svg-icon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
       </RouterLink>
       <h1>{{ t('currencyEditTitle') }}</h1>
     </header>
@@ -164,17 +164,17 @@ const disabledCurrencyForm = computed(function () {
         <button
           type="submit"
           :disabled="disabledCurrencyForm"
-        ><TextWithLoadingIndicator
+        ><text-with-loading-indicator
           :busy="currencyUpdate.state === 'updating'"
           :busy-label="t('currencyEditUpdateCtaProgressLabel')"
         >{{
           currencyUpdate.state === 'reporting'
             ? t('currencyEditUpdateCtaSuccessLabel')
             : t('currencyEditUpdateCtaLabel')
-        }}</TextWithLoadingIndicator></button>
+        }}</text-with-loading-indicator></button>
       </div>
-      <UnhandledError :error="currencyQuery.error"/>
-      <UnhandledError :error="currencyUpdate.error"/>
+      <unhandled-error :error="currencyQuery.error"/>
+      <unhandled-error :error="currencyUpdate.error"/>
     </form>
   </main>
 </template>

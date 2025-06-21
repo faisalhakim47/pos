@@ -41,7 +41,7 @@ onMounted(currencyListFetcher.run);
       <nav>
         <ul>
           <li>
-            <RouterLink :to="{ name: AppPanelCurrencyCreationRoute }">{{ t('currencyCreationNavLabel') }}</RouterLink>
+            <router-link :to="{ name: AppPanelCurrencyCreationRoute }">{{ t('currencyCreationNavLabel') }}</router-link>
           </li>
         </ul>
       </nav>
@@ -58,13 +58,13 @@ onMounted(currencyListFetcher.run);
       <tbody v-if="Array.isArray(currencyListFetcher.state)" >
         <tr v-for="currency in currencyListFetcher.state" :key="currency.code">
           <td style="text-align: center; width: 128px;">
-            <RouterLink
+            <router-link
               :to="{
                 name: AppPanelCurrencyItemRoute,
                 params: { currencyCode: currency.code }
               }"
               :title="`View currency with code ${currency.code}`"
-            >{{ currency.code }}</RouterLink>
+            >{{ currency.code }}</router-link>
           </td>
           <td style="text-align: center; width: 128px;">{{ currency.symbol }}</td>
           <td style="text-align: left;">{{ currency.name }}</td>

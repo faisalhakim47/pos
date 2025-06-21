@@ -4,7 +4,7 @@ import { onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
-import SvgIcon from '@/src/components/SvgIcon.vue';
+import SvgIcon from '@/src/components/svg-icon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
@@ -48,7 +48,7 @@ onMounted(currencyFetcher.run);
   <main class="page">
     <header>
       <RouterLink :to="{ name: AppPanelCurrencyListRoute }" replace :aria-label="t('literal.back')">
-        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+        <svg-icon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
       </RouterLink>
       <h1>{{ t('currencyItemTitle') }} {{ route.params?.currencyCode }}</h1>
     </header>

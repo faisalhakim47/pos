@@ -64,7 +64,8 @@ class TestFixture {
           throw new Error(`${tableName} table was not created for test: ${this.label}`);
         }
       }
-    } catch (error) {
+    }
+    catch (error) {
       throw new Error(`Schema execution failed for ${this.label}: ${error.message}`);
     }
 
@@ -920,7 +921,8 @@ await test('Asset Register Views and Reporting', async function (t) {
         1672531200,
       );
       t.assert.fail('Should not allow zero useful life');
-    } catch (error) {
+    }
+    catch (error) {
       t.assert.equal(error.message.includes('CHECK constraint failed'), true, 'Should reject zero useful life');
     }
 
@@ -973,7 +975,8 @@ await test('Asset Register Views and Reporting', async function (t) {
         1672531200,
       );
       t.assert.fail('Should not allow zero useful life units');
-    } catch (error) {
+    }
+    catch (error) {
       t.assert.equal(error.message.includes('CHECK constraint failed'), true, 'Should reject zero useful life units');
     }
   });

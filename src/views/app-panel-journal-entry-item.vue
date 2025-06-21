@@ -119,7 +119,7 @@ onMounted(journalEntryQuery.run);
       <nav aria-label="Journal entry navigation">
         <ul>
           <li>
-            <RouterLink :to="{ name: AppPanelJournalEntryListRoute, replace: true }">{{ t('literal.back') }}</RouterLink>
+            <router-link :to="{ name: AppPanelJournalEntryListRoute, replace: true }">{{ t('literal.back') }}</router-link>
           </li>
         </ul>
       </nav>
@@ -155,24 +155,24 @@ onMounted(journalEntryQuery.run);
 
           <dt v-if="journalEntryQuery.state.reversedByJournalEntryRef">{{ t('literal.reversedBy') }}:</dt>
           <dd v-if="journalEntryQuery.state.reversedByJournalEntryRef">
-            <RouterLink
+            <router-link
               :to="{
                 name: AppPanelJournalEntryItemRoute,
                 params: { journalEntryRef: journalEntryQuery.state.reversedByJournalEntryRef }
               }"
               :aria-label="`View reversal journal entry ${journalEntryQuery.state.reversedByJournalEntryRef}`"
-            >{{ t('journalEntryItemTitle') }} #{{ journalEntryQuery.state.reversedByJournalEntryRef }}</RouterLink>
+            >{{ t('journalEntryItemTitle') }} #{{ journalEntryQuery.state.reversedByJournalEntryRef }}</router-link>
           </dd>
 
           <dt v-if="journalEntryQuery.state.correctedByJournalEntryRef">{{ t('literal.correctedBy') }}:</dt>
           <dd v-if="journalEntryQuery.state.correctedByJournalEntryRef">
-            <RouterLink
+            <router-link
               :to="{
                 name: AppPanelJournalEntryItemRoute,
                 params: { journalEntryRef: journalEntryQuery.state.correctedByJournalEntryRef }
               }"
               :aria-label="`View correction journal entry ${journalEntryQuery.state.correctedByJournalEntryRef}`"
-            >{{ t('journalEntryItemTitle') }} #{{ journalEntryQuery.state.correctedByJournalEntryRef }}</RouterLink>
+            >{{ t('journalEntryItemTitle') }} #{{ journalEntryQuery.state.correctedByJournalEntryRef }}</router-link>
           </dd>
         </dl>
       </section>

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, useCssModule } from 'vue';
 
-import TextWithLoadingIndicator from '@/src/components/TextWithLoadingIndicator.vue';
+import TextWithLoadingIndicator from '@/src/components/text-with-loading-indicator.vue';
 import { useDb } from '@/src/context/db.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { assertInstanceOf } from '@/src/tools/assertion.js';
@@ -62,10 +62,10 @@ async function openFile() {
           value="open"
           :disabled="ctaDisabled"
         >
-          <TextWithLoadingIndicator
+          <text-with-loading-indicator
             :busy="submission.action === 'open'"
             :busy-label="t('onboardingOpenFileCtaProgressLabel')"
-          >{{ t('onboardingOpenFileCtaDefaultLabel') }}</TextWithLoadingIndicator>
+          >{{ t('onboardingOpenFileCtaDefaultLabel') }}</text-with-loading-indicator>
         </button>
         <button
           type="submit"
@@ -73,10 +73,10 @@ async function openFile() {
           value="new"
           :disabled="ctaDisabled"
         >
-          <TextWithLoadingIndicator
+          <text-with-loading-indicator
             :busy="submission.action === 'new'"
             :busy-label="t('onboardingNewFileCtaProgressLabel')"
-          >{{ t('onboardingNewFileCtaDefaultLabel') }}</TextWithLoadingIndicator>
+          >{{ t('onboardingNewFileCtaDefaultLabel') }}</text-with-loading-indicator>
         </button>
       </div>
     </form>

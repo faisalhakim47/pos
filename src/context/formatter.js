@@ -66,7 +66,8 @@ export const formatter = {
               maximumFractionDigits: decimals,
             });
             currencyFormatterCache.set(cacheKey, formatter);
-          } catch {
+          }
+          catch {
             // Fallback for invalid currency codes
             const formatter = new Intl.NumberFormat(detectedLocale, {
               style: 'currency',

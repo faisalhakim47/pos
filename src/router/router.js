@@ -6,22 +6,22 @@ import { createRouter, createWebHistory, useRoute } from 'vue-router';
 import { useDb } from '@/src/context/db.js';
 import { installDbRequiredGuard } from '@/src/router/guards/db-required-guard.js';
 import { installUnsupportedPlatformGuard } from '@/src/router/guards/unsupported-platform-guard.js';
-import AppPanelOnboarding from '@/src/views/AppOnboarding.vue';
-import AppPanel from '@/src/views/AppPanel.vue';
-import AppPanelAccountCreation from '@/src/views/AppPanelAccountCreation.vue';
-import AppPanelAccountEdit from '@/src/views/AppPanelAccountEdit.vue';
-import AppPanelAccountItem from '@/src/views/AppPanelAccountItem.vue';
-import AppPanelAccountList from '@/src/views/AppPanelAccountList.vue';
-import AppPanelCurrencyCreation from '@/src/views/AppPanelCurrencyCreation.vue';
-import AppPanelCurrencyEdit from '@/src/views/AppPanelCurrencyEdit.vue';
-import AppPanelCurrencyItem from '@/src/views/AppPanelCurrencyItem.vue';
-import AppPanelCurrencyList from '@/src/views/AppPanelCurrencyList.vue';
-import AppPanelDashboard from '@/src/views/AppPanelDashboard.vue';
-import AppPanelJournalEntryCreation from '@/src/views/AppPanelJournalEntryCreation.vue';
-import AppPanelJournalEntryItem from '@/src/views/AppPanelJournalEntryItem.vue';
-import AppPanelJournalEntryList from '@/src/views/AppPanelJournalEntryList.vue';
-import AppRoot from '@/src/views/AppRoot.vue';
-import AppUnsupportedPlatform from '@/src/views/AppUnsupportedPlatform.vue';
+import AppPanelOnboarding from '@/src/views/app-onboarding.vue';
+import AppPanelAccountCreation from '@/src/views/app-panel-account-creation.vue';
+import AppPanelAccountEdit from '@/src/views/app-panel-account-edit.vue';
+import AppPanelAccountItem from '@/src/views/app-panel-account-item.vue';
+import AppPanelAccountList from '@/src/views/app-panel-account-list.vue';
+import AppPanelCurrencyCreation from '@/src/views/app-panel-currency-creation.vue';
+import AppPanelCurrencyEdit from '@/src/views/app-panel-currency-edit.vue';
+import AppPanelCurrencyItem from '@/src/views/app-panel-currency-item.vue';
+import AppPanelCurrencyList from '@/src/views/app-panel-currency-list.vue';
+import AppPanelDashboard from '@/src/views/app-panel-dashboard.vue';
+import AppPanelJournalEntryCreation from '@/src/views/app-panel-journal-entry-creation.vue';
+import AppPanelJournalEntryItem from '@/src/views/app-panel-journal-entry-item.vue';
+import AppPanelJournalEntryList from '@/src/views/app-panel-journal-entry-list.vue';
+import AppPanel from '@/src/views/app-panel.vue';
+import AppRoot from '@/src/views/app-root.vue';
+import AppUnsupportedPlatform from '@/src/views/app-unsupported-platform.vue';
 
 /** @template T @typedef {import('vue').Plugin<T>} Plugin */
 /** @typedef {import('vue-router').RouteRecordRaw} RouteRecordRaw */

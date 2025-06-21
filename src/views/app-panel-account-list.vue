@@ -50,7 +50,7 @@ onMounted(accountListQuery.run);
       <nav>
         <ul>
           <li>
-            <RouterLink :to="{ name: AppPanelAccountCreationRoute }">{{ t('accountCreationNavLabel') }}</RouterLink>
+            <router-link :to="{ name: AppPanelAccountCreationRoute }">{{ t('accountCreationNavLabel') }}</router-link>
           </li>
         </ul>
       </nav>
@@ -68,13 +68,13 @@ onMounted(accountListQuery.run);
       <tbody v-if="Array.isArray(accountListQuery.state)">
         <tr v-for="account in accountListQuery.state" :key="account.code">
           <td style="text-align: center; width: 128px;">
-            <RouterLink
+            <router-link
               :to="{
                 name: AppPanelAccountItemRoute,
                 params: { accountCode: account.code }
               }"
               :title="`View account ${account.code}`"
-            >{{ account.code }}</RouterLink>
+            >{{ account.code }}</router-link>
           </td>
           <td style="text-align: center; width: 160px;">{{ t(`literal.${account.accountTypeName}`) }}</td>
           <td style="text-align: left;">{{ account.name }}</td>

@@ -74,7 +74,7 @@ onMounted(journalEntryListQuery.run);
       <nav>
         <ul>
           <li>
-            <RouterLink :to="{ name: AppPanelJournalEntryCreationRoute }">{{ t('journalEntryCreationNavLabel') }}</RouterLink>
+            <router-link :to="{ name: AppPanelJournalEntryCreationRoute }">{{ t('journalEntryCreationNavLabel') }}</router-link>
           </li>
         </ul>
       </nav>
@@ -94,13 +94,13 @@ onMounted(journalEntryListQuery.run);
       <tbody v-if="journalEntryListQuery.state && typeof journalEntryListQuery.state === 'object'">
         <tr v-for="entry in journalEntryListQuery.state.entries" :key="entry.ref">
           <td style="text-align: center; width: 80px;">
-            <RouterLink
+            <router-link
               :to="{
                 name: AppPanelJournalEntryItemRoute,
                 params: { journalEntryRef: entry.ref }
               }"
               :title="`View journal entry ${entry.ref}`"
-            >{{ entry.ref }}</RouterLink>
+            >{{ entry.ref }}</router-link>
           </td>
           <td style="text-align: center; width: 120px;">
             {{ formatter.formatDate(new Date(entry.transactionTime * 1000)) }}

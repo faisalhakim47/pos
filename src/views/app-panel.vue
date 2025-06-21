@@ -3,7 +3,7 @@ import { useCssModule } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 
 import { MaterialSymbolAccountBalanceWalletUrl, MaterialSymbolDashboardUrl, MaterialSymbolUniversalCurrencyAltUrl, MaterialSymbolTwoPagerUrl } from '@/src/assets/material-symbols.js';
-import SvgIcon from '@/src/components/SvgIcon.vue';
+import SvgIcon from '@/src/components/svg-icon.vue';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { AppPanelAccountListRoute, AppPanelCurrencyListRoute, AppPanelDashboardRoute, AppPanelJournalEntryListRoute } from '@/src/router/router.js';
 
@@ -17,30 +17,30 @@ const style = useCssModule();
       <nav>
         <ul :class="style.sidebarMenuList">
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: AppPanelDashboardRoute }" replace>
-              <SvgIcon :src="MaterialSymbolDashboardUrl" :alt="t('menuItemDashboardLabel')" />
-            </RouterLink>
+            <router-link :to="{ name: AppPanelDashboardRoute }" replace>
+              <svg-icon :src="MaterialSymbolDashboardUrl" :alt="t('menuItemDashboardLabel')" />
+            </router-link>
           </li>
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: AppPanelCurrencyListRoute }" replace>
-              <SvgIcon :src="MaterialSymbolUniversalCurrencyAltUrl" :alt="t('menuItemCurrencyListLabel')" />
-            </RouterLink>
+            <router-link :to="{ name: AppPanelCurrencyListRoute }" replace>
+              <svg-icon :src="MaterialSymbolUniversalCurrencyAltUrl" :alt="t('menuItemCurrencyListLabel')" />
+            </router-link>
           </li>
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: AppPanelAccountListRoute }" replace>
-              <SvgIcon :src="MaterialSymbolAccountBalanceWalletUrl" :alt="t('menuItemAccountLabel')" />
-            </RouterLink>
+            <router-link :to="{ name: AppPanelAccountListRoute }" replace>
+              <svg-icon :src="MaterialSymbolAccountBalanceWalletUrl" :alt="t('menuItemAccountLabel')" />
+            </router-link>
           </li>
           <li :class="style.sidebarMenuItem">
-            <RouterLink :to="{ name: AppPanelJournalEntryListRoute }" replace>
-              <SvgIcon :src="MaterialSymbolTwoPagerUrl" :alt="t('menuItemJournalEntryLabel')" />
-            </RouterLink>
+            <router-link :to="{ name: AppPanelJournalEntryListRoute }" replace>
+              <svg-icon :src="MaterialSymbolTwoPagerUrl" :alt="t('menuItemJournalEntryLabel')" />
+            </router-link>
           </li>
         </ul>
       </nav>
     </aside>
     <div :class="style.content">
-      <RouterView></RouterView>
+      <router-view></router-view>
     </div>
   </div>
 </template>

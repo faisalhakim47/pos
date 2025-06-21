@@ -614,7 +614,8 @@ await test('Purchase Management Schema', async function (t) {
                                       unit_cost, warehouse_location_id)
         values (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(receiptId, 1, poLineId, 1, 15, 'EACH', 100, 1); // More than ordered quantity of 10
-    } catch (/** @type {any} */ error) {
+    }
+    catch (/** @type {any} */ error) {
       errorThrown = true;
       t.assert.equal(error.message.includes('exceeds remaining order quantity'), true, 'Should prevent over-receipt');
     }

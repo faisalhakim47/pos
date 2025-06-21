@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
-import SvgIcon from '@/src/components/SvgIcon.vue';
+import SvgIcon from '@/src/components/svg-icon.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useFormatter } from '@/src/context/formatter.js';
@@ -60,9 +60,9 @@ onMounted(accountQuery.run);
 <template>
   <main class="page">
     <header>
-      <RouterLink :to="{ name: AppPanelAccountListRoute }" replace :aria-label="t('literal.back')">
-        <SvgIcon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
-      </RouterLink>
+      <router-link :to="{ name: AppPanelAccountListRoute }" replace :aria-label="t('literal.back')">
+        <svg-icon :src="MaterialSymbolArrowBackUrl" :alt="t('literal.back')" />
+      </router-link>
       <h1>{{ t('accountItemTitle') }} {{ accountCode }}</h1>
     </header>
 
@@ -86,9 +86,9 @@ onMounted(accountQuery.run);
         </dd>
       </dl>
       <div>
-        <RouterLink
+        <router-link
           :to="{ name: AppPanelAccountEditRoute, params: { accountCode: accountQuery.state.code } }"
-        >{{ t('accountEditNavLabel') }}</RouterLink>
+        >{{ t('accountEditNavLabel') }}</router-link>
       </div>
     </div>
   </main>
