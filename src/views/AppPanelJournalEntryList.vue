@@ -125,5 +125,3 @@ onMounted(journalEntryListQuery.run);
     </table>
   </main>
 </template>
-
-

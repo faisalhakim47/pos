@@ -1,67 +1,68 @@
 :root {
   --app-recommended-width: 1440px;
 
-  --app-default-focus-outline-color: oklch(0.708 0 0);
+  --app-default-focus-outline-color: darkgray;
 
-  --app-input-border-color: oklch(0.704 0.04 256.788);
-  --app-input-focus-border-color: oklch(0.623 0.214 259.815);
-  --app-input-invalid-border-color: oklch(0.637 0.237 25.331);
-  --app-input-invalid-text-color: oklch(0.505 0.213 27.518);
+  --app-input-border-color: lightslategray;
+  --app-input-focus-border-color: steelblue;
+  --app-input-invalid-border-color: orangered;
+  --app-input-invalid-text-color: firebrick;
 
-  --app-link-base-text-color: oklch(0.623 0.214 259.815);
-  --app-link-hover-text-color: oklch(0.828 0.111 230.318);
-  --app-link-visited-text-color: oklch(0.585 0.233 277.117);
-  --app-main-bg-color: oklch(0.985 0.002 247.839);
-  --app-main-text-color: oklch(0.147 0.004 49.25);
+  --app-link-base-text-color: dodgerblue;
+  --app-link-hover-text-color: turquoise;
+  --app-link-visited-text-color: slateblue;
+  --app-main-bg-color: aliceblue;
+  --app-main-text-color: darkblue;
 
-  --app-btnflat-active-bg-color: oklch(0.872 0.01 258.338);
-  --app-btnflat-active-text-color: oklch(0.21 0.034 264.665);
+  --app-btnflat-active-bg-color: lavender;
+  --app-btnflat-active-text-color: indigo;
   --app-btnflat-default-bg-color: var(--app-main-bg-color);
   --app-btnflat-default-text-color: var(--app-main-text-color);
-  --app-btnflat-hover-bg-color: oklch(0.928 0.006 264.531);
-  --app-btnflat-hover-text-color: oklch(0.21 0.034 264.665);
+  --app-btnflat-hover-bg-color: lavenderblush;
+  --app-btnflat-hover-text-color: indigo;
 
-  --app-btn-danger-bg-color: #ef4444;
-  --app-btn-danger-text-color: white;
-  --app-btn-danger-hover-bg-color: #dc2626;
-  --app-btn-danger-hover-text-color: white;
-  --app-btn-danger-active-bg-color: #b91c1c;
-  --app-btn-danger-active-text-color: white;
-  --app-btn-danger-disabled-bg-color: #ef4444;
-  --app-btn-danger-disabled-text-color: white;
+  --app-btn-danger-bg-color: lightcoral;
+  --app-btn-danger-text-color: brown;
+  --app-btn-danger-hover-bg-color: salmon;
+  --app-btn-danger-hover-text-color: brown;
+  --app-btn-danger-active-bg-color: tomato;
+  --app-btn-danger-active-text-color: brown;
+  --app-btn-danger-disabled-bg-color: lightcoral;
+  --app-btn-danger-disabled-text-color: brown;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --app-link-base-text-color: oklch(0.623 0.214 259.815);
-    --app-link-hover-text-color: oklch(0.828 0.111 230.318);
-    --app-link-visited-text-color: oklch(0.673 0.182 276.935);
-    --app-main-bg-color: oklch(0.21 0.034 264.665);
-    --app-main-text-color: oklch(0.985 0.001 106.423);
-    --app-light-text-color: oklch(0.872 0.01 258.338);
+    --app-main-bg-color: black;
+    --app-main-text-color: white;
+    --app-light-text-color: lavender;
 
-    --app-input-border-color: oklch(0.554 0.046 257.417);
-    --app-input-focus-border-color: oklch(0.707 0.165 254.624);
-    --app-input-invalid-border-color: oklch(0.704 0.191 22.216);
-    --app-input-invalid-text-color: oklch(0.808 0.114 19.571);
+    --app-link-base-text-color: cornflowerblue;
+    --app-link-hover-text-color: deepskyblue;
+    --app-link-visited-text-color: mediumslateblue;
 
-    --app-btn-active-bg-color: oklch(0.708 0 0);
+    --app-input-border-color: slategray;
+    --app-input-focus-border-color: steelblue;
+    --app-input-invalid-border-color: orangered;
+    --app-input-invalid-text-color: firebrick;
+
+    --app-btn-active-bg-color: dimgray;
     --app-btn-active-text-color: var(--app-btn-default-text-color);
-    --app-btn-default-bg-color: #fff;
-    --app-btn-default-text-color: #000;
-    --app-btn-disabled-bg-color:oklch(0.87 0 0);
-    --app-btn-disabled-text-color: oklch(0.439 0 0);
-    --app-btn-hover-bg-color: oklch(0.87 0 0);
+    --app-btn-default-bg-color: white;
+    --app-btn-default-text-color: black;
+    --app-btn-disabled-bg-color: gainsboro;
+    --app-btn-disabled-text-color: gray;
+    --app-btn-hover-bg-color: gainsboro;
     --app-btn-hover-text-color: var(--app-btn-default-text-color);
 
-    --app-btnflat-active-bg-color: oklch(0.446 0.03 256.802);
-    --app-btnflat-active-text-color: oklch(0.985 0.002 247.839);
+    --app-btnflat-active-bg-color: slateblue;
+    --app-btnflat-active-text-color: white;
     --app-btnflat-default-bg-color: var(--app-main-bg-color);
     --app-btnflat-default-text-color: var(--app-main-text-color);
-    --app-btnflat-focus-bg-color: oklch(0.446 0.03 256.802);
-    --app-btnflat-focus-text-color: oklch(0.985 0.002 247.839);
-    --app-btnflat-hover-bg-color: oklch(0.373 0.034 259.733);
-    --app-btnflat-hover-text-color: oklch(0.985 0.002 247.839);
+    --app-btnflat-focus-bg-color: slateblue;
+    --app-btnflat-focus-text-color: white;
+    --app-btnflat-hover-bg-color: darkslateblue;
+    --app-btnflat-hover-text-color: white;
   }
 }
 
@@ -77,7 +78,7 @@ body {
 
 html,
 button {
-  font-family: 'Source Sans 3', sans-serif;
+  font-family: 'SourceSans3', sans-serif;
 }
 
 
@@ -99,8 +100,8 @@ button {
   display: inline-block;
   height: 30px;
   line-height: 30px;
-  background-color: #fff;
-  color: #000;
+  background-color: white;
+  color: black;
   padding: 0px 16px;
   border: none;
   border-radius: 8px;
@@ -154,10 +155,10 @@ button {
 main.page {
   overflow-y: scroll;
   scrollbar-width: thin;
-  scrollbar-color: var(--color-slate-200) transparent;
+  scrollbar-color: lightgray transparent;
 
   @media (prefers-color-scheme: dark) {
-    scrollbar-color: var(--app-light-text-color) transparent;
+    scrollbar-color: lavender transparent;
   }
 
   header {
@@ -167,7 +168,7 @@ main.page {
     grid-template-areas: "main-nav header nav";
     align-items: center;
 
-    &:not(:has(a:first-child)) {
+    &:not(:has(> a:first-child)) {
       grid-template-columns: 1fr auto;
       grid-template-areas: "header nav";
     }
@@ -232,14 +233,14 @@ main.page {
         top: 0;
         background-color: var(--app-main-bg-color);
         border: none;
-        border-bottom: 0px solid oklch(0.554 0.046 257.417);
+        border-bottom: 0px solid slategray;
       }
     }
 
     th,
     td {
       padding: 4px 8px;
-      border: 1px solid oklch(0.554 0.046 257.417);
+      border: 1px solid slategray;
       box-sizing: border-box;
       line-height: 26px;
       white-space: nowrap;
@@ -360,9 +361,9 @@ main.page {
   [aria-role="alert"] {
     display: block;
     padding: 8px;
-    background-color: oklch(0.936 0.032 17.717);
-    color: oklch(0.396 0.141 25.723);
-    border: 1px solid oklch(0.808 0.114 19.571);
+    background-color: lemonchiffon;
+    color: saddlebrown;
+    border: 1px solid firebrick;
     border-radius: 4px;
     margin-top: 8px;
     font-size: 0.92rem;

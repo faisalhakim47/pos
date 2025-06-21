@@ -37,7 +37,7 @@ onMounted(currencyListFetcher.run);
 <template>
   <main class="page">
     <header>
-      <h1 style="font-size: 1.5rem;">{{ t('currencyListTitle') }}</h1>
+      <h1>{{ t('currencyListTitle') }}</h1>
       <nav>
         <ul>
           <li>

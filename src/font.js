@@ -19,7 +19,7 @@ async function fetchFonts() {
   for (const fontStyle of fontStyles) {
     for (const fontWeight of fontWeights) {
       const fontFileBuffer = await fontStyle.fontBufferPromise;
-      const font = new FontFace('Source Sans 3', fontFileBuffer, {
+      const font = new FontFace('SourceSans3', fontFileBuffer, {
         display: 'swap',
         style: fontStyle.style,
         weight: fontWeight,
