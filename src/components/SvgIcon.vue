@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, useCssModule, watchPostEffect } from 'vue';
+import { onMounted, ref, watchPostEffect } from 'vue';
 
 /** @template T @typedef {import('vue').Ref<T>} Ref */
 
@@ -9,8 +9,6 @@ const props = defineProps({
   width: { type: [String, Number], default: '24' },
   height: { type: [String, Number], default: '24' },
 });
-
-const style = useCssModule();
 
 const containerRef = ref(/** @type {HTMLSpanElement} */ (null));
 const svgText = ref('');
@@ -27,6 +25,8 @@ watchPostEffect(function () {
     svgEl.prepend(titleEl);
     svgEl.setAttribute('role', 'img');
     svgEl.setAttribute('aria-label', props.alt);
+    svgEl.setAttribute('width', props.width.toString());
+    svgEl.setAttribute('height', props.height.toString());
   }
 });
 
@@ -45,18 +45,19 @@ onMounted(async function () {
 </script>
 
 <template>
-  <span ref="containerRef" :class="style.container"></span>
+  <span ref="containerRef"></span>
 </template>
 
-<style module>
-.container {
-  display: inline-block;
-  width: v-bind('props.width')px;
-  height: v-bind('props.height')px;
-}
-.container svg {
-  display: block;
-  width: inherit;
-  height: inherit;
+<style scoped>
+span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    display: block;
+    width: inherit;
+    height: inherit;
+  }
 }
 </style>

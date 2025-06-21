@@ -97,14 +97,14 @@ a {
 
 button {
   display: inline-block;
-  height: 32px;
-  line-height: 32px;
+  height: 30px;
+  line-height: 30px;
   background-color: #fff;
   color: #000;
   padding: 0px 16px;
   border: none;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 14px;
   font-weight: 500;
 
   &:disabled {
@@ -152,13 +152,20 @@ button {
 }
 
 main.page {
+  overflow-y: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-slate-200) transparent;
+
+  @media (prefers-color-scheme: dark) {
+    scrollbar-color: var(--app-light-text-color) transparent;
+  }
+
   header {
     display: grid;
     grid-template-columns: 44px 1fr auto;
     grid-template-rows: 44px;
     grid-template-areas: "main-nav header nav";
     align-items: center;
-    gap: 12px;
 
     &:not(:has(a:first-child)) {
       grid-template-columns: 1fr auto;
@@ -187,7 +194,8 @@ main.page {
 
     h1 {
       grid-area: header;
-      font-size: 1.5rem;
+      font-size: 1.25rem;
+      font-weight: 600;
       margin: 0px;
       flex: 1;
     }
@@ -203,6 +211,9 @@ main.page {
     }
   }
 
+
+
+
   table {
     position: relative;
     width: 100%;
@@ -211,14 +222,17 @@ main.page {
     font-variant-numeric: tabular-nums;
 
     thead {
-      tr.sticky {
-        th {
-          position: sticky;
-          top: 0;
-          background-color: var(--app-main-bg-color);
-          border: none;
-          border-bottom: 0px solid oklch(0.554 0.046 257.417);
-        }
+      th {
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      tr.sticky th {
+        position: sticky;
+        top: 0;
+        background-color: var(--app-main-bg-color);
+        border: none;
+        border-bottom: 0px solid oklch(0.554 0.046 257.417);
       }
     }
 
@@ -242,10 +256,21 @@ main.page {
     gap: 4px;
     padding: 4px;
 
+    fieldset {
+      border: 1px solid var(--app-input-border-color);
+    }
+
     label {
       display: block;
       margin-top: 8px;
+      font-size: 14px;
       font-weight: 500;
+    }
+
+    label + input,
+    label + textarea,
+    label + select {
+      margin-top: 2px;
     }
 
     input {
@@ -297,7 +322,7 @@ main.page {
       }
     }
 
-    &> div:has(button) {
+    div:has(button[type="submit"]) {
       display: flex;
       justify-content: flex-end;
       margin-top: 8px;

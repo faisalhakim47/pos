@@ -2,7 +2,7 @@
 import { useCssModule } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 
-import { MaterialSymbolAccountUrl, MaterialSymbolDashboardUrl, MaterialSymbolUniversalCurrencyAltUrl } from '@/src/assets/material-symbols.js';
+import { MaterialSymbolAccountBalanceWalletUrl, MaterialSymbolDashboardUrl, MaterialSymbolUniversalCurrencyAltUrl, MaterialSymbolTwoPagerUrl } from '@/src/assets/material-symbols.js';
 import SvgIcon from '@/src/components/SvgIcon.vue';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { AppPanelAccountListRoute, AppPanelCurrencyListRoute, AppPanelDashboardRoute, AppPanelJournalEntryListRoute } from '@/src/router/router.js';
@@ -28,12 +28,12 @@ const style = useCssModule();
           </li>
           <li :class="style.sidebarMenuItem">
             <RouterLink :to="{ name: AppPanelAccountListRoute }" replace>
-              <SvgIcon :src="MaterialSymbolAccountUrl" :alt="t('menuItemAccountLabel')" />
+              <SvgIcon :src="MaterialSymbolAccountBalanceWalletUrl" :alt="t('menuItemAccountLabel')" />
             </RouterLink>
           </li>
           <li :class="style.sidebarMenuItem">
             <RouterLink :to="{ name: AppPanelJournalEntryListRoute }" replace>
-              <SvgIcon :src="MaterialSymbolAccountUrl" :alt="t('menuItemJournalEntryLabel')" />
+              <SvgIcon :src="MaterialSymbolTwoPagerUrl" :alt="t('menuItemJournalEntryLabel')" />
             </RouterLink>
           </li>
         </ul>
@@ -128,7 +128,5 @@ const style = useCssModule();
 .content {
   grid-area: content;
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-slate-200) transparent;
 }
 </style>

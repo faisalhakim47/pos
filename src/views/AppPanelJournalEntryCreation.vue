@@ -1,54 +1,65 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { computed, onMounted, reactive } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
 
 import { MaterialSymbolArrowBackUrl } from '@/src/assets/material-symbols.js';
 import ComboboxSelect from '@/src/components/ComboboxSelect.vue';
 import SvgIcon from '@/src/components/SvgIcon.vue';
+import UnhandledError from '@/src/components/UnhandledError.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useFormatter } from '@/src/context/formatter.js';
+import { usePlatform } from '@/src/context/platform.js';
 import { useI18n } from '@/src/i18n/i18n.js';
 import { AppPanelJournalEntryListRoute, AppPanelJournalEntryItemRoute } from '@/src/router/router.js';
+import { assertInstanceOf } from '@/src/tools/assertion.js';
+import { sleep } from '@/src/tools/promise.js';
 
 const { t } = useI18n();
 const db = useDb();
 const formatter = useFormatter();
 const router = useRouter();
+const platform = usePlatform();
 
-// Form state
-const note = ref('');
-const transactionCurrencyCode = ref('USD');
-const lines = ref([
-  { accountCode: '', debit: '', credit: '' },
-  { accountCode: '', debit: '', credit: '' },
-]);
-
-// Form saving state
-const isSaving = ref(false);
+const journalEntryForm = reactive({
+  note: '',
+  currencyCode: 'USD',
+  mode: '',
+  lines: [
+    { accountCode: '', debit: '', credit: '' },
+    { accountCode: '', debit: '', credit: '' },
+  ],
+});
 
 // Form validation
 const isValid = computed(function () {
   // Check if at least 2 lines have account codes
-  const validLines = lines.value.filter(function (line) {
+  const validLines = journalEntryForm.lines.filter(function (line) {
     return line.accountCode && (parseFloat(line.debit) > 0 || parseFloat(line.credit) > 0);
   });
 
-  if (validLines.length < 2) return false;
+  if (validLines.length % 2 !== 0) return false;
 
-  // Check if debits equal credits
-  const totalDebits = validLines.reduce((sum, line) => sum + (parseFloat(line.debit) || 0), 0);
-  const totalCredits = validLines.reduce((sum, line) => sum + (parseFloat(line.credit) || 0), 0);
+  const totalDebits = validLines.reduce(function (sum, line) {
+    return sum + (parseFloat(line.debit) || 0);
+  }, 0);
+  const totalCredits = validLines.reduce(function (sum, line) {
+    return sum + (parseFloat(line.credit) || 0);
+  }, 0);
 
   return Math.abs(totalDebits - totalCredits) < 0.01; // Allow for small rounding differences
 });
 
 const totalDebits = computed(function () {
-  return lines.value.reduce((sum, line) => sum + (parseFloat(line.debit) || 0), 0);
+  return journalEntryForm.lines.reduce(function (sum, line) {
+    return sum + (parseFloat(line.debit) || 0);
+  }, 0);
 });
 
 const totalCredits = computed(function () {
-  return lines.value.reduce((sum, line) => sum + (parseFloat(line.credit) || 0), 0);
+  return journalEntryForm.lines.reduce(function (sum, line) {
+    return sum + (parseFloat(line.credit) || 0);
+  }, 0);
 });
 
 // Account lookup
@@ -70,7 +81,7 @@ const accountsQuery = useAsyncIterator(async function* () {
 const currenciesQuery = useAsyncIterator(async function* () {
   yield 'fetching';
   const currencyQueryRes = await db.sql`
-    select code, name
+    select code, name, decimals
     from currency
     where is_active = 1
     order by code asc
@@ -79,12 +90,14 @@ const currenciesQuery = useAsyncIterator(async function* () {
     return {
       code: String(row[0]),
       name: String(row[1]),
+      decimals: Number(row[2]),
     };
   });
 });
 
 const functionalCurrencyQuery = useAsyncIterator(async function* () {
   yield 'fetching';
+
   const functionalCurrencyRes = await db.sql`
     select code, decimals
     from currency
@@ -99,6 +112,13 @@ const functionalCurrencyQuery = useAsyncIterator(async function* () {
     code: String(functionalCurrencyRes[0].values[0][0]),
     decimals: Number(functionalCurrencyRes[0].values[0][1]),
   };
+});
+
+const transactionCurrencyDetails = computed(function () {
+  if (!Array.isArray(currenciesQuery.state)) return null;
+  return currenciesQuery.state.find(function (currency) {
+    return currency.code === journalEntryForm.currencyCode;
+  });
 });
 
 // Transform data for ComboboxSelect components
@@ -123,86 +143,104 @@ const currencyOptions = computed(function () {
 });
 
 function addLine() {
-  lines.value.push({ accountCode: '', debit: '', credit: '' });
+  journalEntryForm.lines.push({ accountCode: '', debit: '', credit: '' });
 }
 
 function removeLine(index) {
-  if (lines.value.length > 2) {
-    lines.value.splice(index, 1);
+  if (journalEntryForm.lines.length > 2) {
+    journalEntryForm.lines.splice(index, 1);
   }
 }
 
+/**
+ * @param {number} index
+ * @param {Event} event
+ */
 function handleDebitInput(index, event) {
+  assertInstanceOf(HTMLInputElement, event.target);
   const value = event.target.value;
-  lines.value[index].debit = value;
+  journalEntryForm.lines[index].debit = value;
   if (value) {
-    lines.value[index].credit = '';
+    journalEntryForm.lines[index].credit = '';
   }
 }
 
+/**
+ * @param {number} index
+ * @param {Event} event
+ */
 function handleCreditInput(index, event) {
+  assertInstanceOf(HTMLInputElement, event.target);
   const value = event.target.value;
-  lines.value[index].credit = value;
+  journalEntryForm.lines[index].credit = value;
   if (value) {
-    lines.value[index].debit = '';
+    journalEntryForm.lines[index].debit = '';
   }
 }
 
-async function saveJournalEntry() {
-  if (!isValid.value) return;
-
+const journalEntryCreation = useAsyncIterator(async function* (/** @type {{ draft: boolean }} */ options) {
   try {
-    isSaving.value = true;
+    if (!isValid.value) return;
 
-    // Get next journal entry reference number
-    const refQueryRes = await db.sql`
-      select coalesce(max(ref), 0) + 1 as next_ref from journal_entry
-    `;
-    const nextRef = Number(refQueryRes[0].values[0][0]);
+    yield 'submitting';
 
-    // Convert amounts to integers (cents)
-    const validLines = lines.value.filter(function (line) {
-      return line.accountCode && (parseFloat(line.debit) > 0 || parseFloat(line.credit) > 0);
-    });
+    const nowTime = Math.round(platform.date().getTime() / 1000);
+
+    // Get transaction currency decimals for proper conversion
+    const currencyDecimals = transactionCurrencyDetails.value?.decimals ?? 2;
+    const multiplier = Math.pow(10, currencyDecimals);
 
     await db.sql`begin transaction`;
 
-    // Insert journal entry header
-    await db.sql`
-      insert into journal_entry (ref, transaction_time, note, transaction_currency_code)
-      values (${nextRef}, ${Math.floor(Date.now() / 1000)}, ${note.value}, ${transactionCurrencyCode.value})
+    const journalEntryInsert = await db.sql`
+      insert into journal_entry (transaction_time, note, transaction_currency_code)
+      values (${nowTime}, ${journalEntryForm.note}, ${journalEntryForm.currencyCode})
+      returning ref
     `;
+    const journalEntryRef = Number(journalEntryInsert[0].values[0][0]);
 
-    // Insert journal entry lines
-    for (let i = 0; i < validLines.length; i++) {
-      const line = validLines[i];
-      const debitAmount = Math.round((parseFloat(line.debit) || 0) * 100);
-      const creditAmount = Math.round((parseFloat(line.credit) || 0) * 100);
+    for (const line of journalEntryForm.lines) {
+      // Skip empty lines
+      if (!line.accountCode || (!line.debit && !line.credit)) continue;
+
+      // Convert decimal amounts to integer using currency-specific decimals
+      const debitAmount = line.debit ? Math.round(parseFloat(line.debit) * multiplier) : 0;
+      const creditAmount = line.credit ? Math.round(parseFloat(line.credit) * multiplier) : 0;
 
       await db.sql`
         insert into journal_entry_line_auto_number (
           journal_entry_ref, account_code, db, cr, db_functional, cr_functional
         ) values (
-          ${nextRef}, ${Number(line.accountCode)}, ${debitAmount}, ${creditAmount}, ${debitAmount}, ${creditAmount}
+          ${journalEntryRef}, ${Number(line.accountCode)}, ${debitAmount}, ${creditAmount}, ${debitAmount}, ${creditAmount}
         )
+      `;
+    }
+
+    // Post immediately if requested
+    if (options.draft === false) {
+      await db.sql`
+        update journal_entry
+        set post_time = ${nowTime}
+        where ref = ${journalEntryRef}
       `;
     }
 
     await db.sql`commit`;
 
-    // Navigate to the new journal entry
     router.replace({
       name: AppPanelJournalEntryItemRoute,
-      params: { journalEntryRef: nextRef },
+      params: { journalEntryRef },
     });
-  } catch (error) {
-    await db.sql`rollback`;
-    console.error('Failed to save journal entry:', error);
-    alert('Failed to save journal entry. Please try again.');
-  } finally {
-    isSaving.value = false;
   }
-}
+  catch (error) {
+    await db.sql`rollback`;
+    throw error;
+  }
+  finally {
+    yield 'reporting';
+    await sleep(1000);
+  }
+});
 
 onMounted(function () {
   accountsQuery.run();
@@ -220,7 +258,11 @@ onMounted(function () {
       <h1>{{ t('journalEntryCreationTitle') }}</h1>
     </header>
 
-    <form @submit.prevent="saveJournalEntry">
+
+    <form @submit.prevent>
+      <UnhandledError :error="functionalCurrencyQuery.error" />
+      <UnhandledError :error="currenciesQuery.error" />
+
       <fieldset>
         <legend>{{ t('journalEntryInformationTitle') }}</legend>
 
@@ -228,16 +270,16 @@ onMounted(function () {
         <input
           id="note"
           type="text"
-          v-model="note"
+          v-model="journalEntryForm.note"
           :placeholder="t('journalEntryNotePlaceholder')"
         />
 
         <label for="currency">{{ t('literal.currency') }}</label>
         <ComboboxSelect
           id="currency"
-          v-model="transactionCurrencyCode"
+          v-model="journalEntryForm.currencyCode"
           :options="currencyOptions"
-          :placeholder="t('selectCurrencyPlaceholder')"
+          :placeholder="t('journalEntryCurrencySelectPlaceholder')"
           required
         />
       </fieldset>
@@ -245,9 +287,11 @@ onMounted(function () {
       <fieldset>
         <legend>{{ t('journalEntryLinesTitle') }}</legend>
 
+        <UnhandledError :error="accountsQuery.error" />
+
         <div>
-          <button type="button" @click="addLine" :aria-label="t('addLineLabel')">
-            {{ t('addLineLabel') }}
+          <button type="button" @click="addLine" :aria-label="t('journalEntryLineCtaAddLabel')">
+            {{ t('journalEntryLineCtaAddLabel') }}
           </button>
         </div>
 
@@ -263,7 +307,7 @@ onMounted(function () {
           </thead>
 
           <tbody>
-            <tr v-for="(line, index) in lines" :key="index">
+            <tr v-for="(line, index) in journalEntryForm.lines" :key="index">
               <td style="text-align: center;">
                 <label :id="`line-${index + 1}`">{{ index + 1 }}</label>
               </td>
@@ -273,7 +317,7 @@ onMounted(function () {
                   :id="`account-${index}`"
                   v-model="line.accountCode"
                   :options="accountOptions"
-                  :placeholder="t('selectAccountPlaceholder')"
+                  :placeholder="t('journalEntryLineAccountSelectPlaceholder')"
                   :ariaLabelledby="`account-column line-${index + 1}`"
                   required
                 />
@@ -287,7 +331,7 @@ onMounted(function () {
                   min="0"
                   :value="line.debit"
                   @input="handleDebitInput(index, $event)"
-                  :placeholder="t('amountPlaceholder')"
+                  :placeholder="t('journalEntryLineAmountInputPlaceholder')"
                   :aria-labelledby="`debit-column line-${index + 1}`"
                 />
               </td>
@@ -300,7 +344,7 @@ onMounted(function () {
                   min="0"
                   :value="line.credit"
                   @input="handleCreditInput(index, $event)"
-                  :placeholder="t('amountPlaceholder')"
+                  :placeholder="t('journalEntryLineAmountInputPlaceholder')"
                   :aria-labelledby="`credit-column line-${index + 1}`"
                 />
               </td>
@@ -310,8 +354,8 @@ onMounted(function () {
                   type="button"
                   class="btn-danger"
                   @click="removeLine(index)"
-                  :disabled="lines.length <= 2"
-                  :aria-label="`${t('removeLineLabel')} ${index + 1}`"
+                  :disabled="journalEntryForm.lines.length <= 2"
+                  :aria-label="`${t('journalEntryLineCtaRemoveLabel')} ${index + 1}`"
                 >
                   {{ t('literal.remove') }}
                 </button>
@@ -337,11 +381,26 @@ onMounted(function () {
       <div>
         <button
           type="submit"
-          :disabled="isSaving"
+          name="mode"
+          value="draft"
+          @click="journalEntryCreation.run({ draft: true })"
+          :disabled="journalEntryCreation.state === 'submitting'"
         >
-          {{ isSaving ? t('saveJournalEntryProgressLabel') : t('saveJournalEntryLabel') }}
+          {{ journalEntryCreation.state === 'submitting' ? t('journalEntryCtaDraftProgressLabel') : t('journalEntryCtaDraftLabel') }}
+        </button>
+
+        <button
+          type="submit"
+          name="mode"
+          value="post"
+          @click="journalEntryCreation.run({ draft: false })"
+          :disabled="journalEntryCreation.state === 'submitting'"
+        >
+          {{ journalEntryCreation.state === 'submitting' ? t('journalEntryCtaPostProgressLabel') : t('journalEntryCtaPostLabel') }}
         </button>
       </div>
+
+      <UnhandledError :error="journalEntryCreation.error" />
     </form>
   </main>
 </template>
@@ -354,7 +413,7 @@ form {
   grid-template-areas:
     "info lines"
     "actions lines";
-  gap: 1rem;
+  gap: 16px;
 
   &> fieldset:first-of-type {
     grid-area: info;
@@ -382,7 +441,6 @@ form {
 
   &> div {
     grid-area: actions;
-    position: sticky;
   }
 }
 </style>

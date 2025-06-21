@@ -1,7 +1,12 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
+import { assertPropertyMaybeString, assertPropertyString } from '@/src/tools/assertion.js';
+
 /** @template T @typedef {import('vue').Ref<T>} Ref */
+/** @template T @typedef {import('vue').ComputedRef<T>} ComputedRef */
+/** @template T @typedef {T extends ComputedRef<infer U> ? U : never} UnwrapComputed */
+/** @template T @typedef {T extends Array<infer U> ? U : never} ArrayElement */
 
 /**
  * Fully accessible combobox component implementing ARIA 1.2 specification.
@@ -10,13 +15,13 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
  */
 
 const props = defineProps({
-  modelValue: { type: String, default: '' },
+  id: { type: String, required: true },
+  name: { type: String, default: '' },
   options: { type: Array, required: true },
   placeholder: { type: String, default: '' },
-  id: { type: String, required: true },
+  modelValue: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
   required: { type: Boolean, default: false },
-  name: { type: String, default: '' },
   ariaLabelledby: { type: String, default: '' },
 });
 
@@ -41,42 +46,56 @@ const buttonId = computed(function () {
   return `${props.id}-button`;
 });
 
+const options = computed(function () {
+  return props.options.map(function (option, index) {
+    assertPropertyString(option, 'label');
+    assertPropertyString(option, 'value');
+    assertPropertyMaybeString(option, 'group');
+    return option;
+  });
+});
+
+/** @typedef {ArrayElement<UnwrapComputed<options>>} OptionType */
+
 // Filter and group options based on search query
 const filteredOptions = computed(function () {
   if (!searchQuery.value.trim()) {
-    return props.options;
+    return options.value;
   }
-
   // Case-insensitive search across both value and label fields
   const query = searchQuery.value.toLowerCase();
-  return props.options.filter(function (option) {
-    const opt = /** @type {{value: string, label: string, group?: string}} */ (option);
-    return opt.label.toLowerCase().includes(query) ||
-           opt.value.toLowerCase().includes(query);
+  return options.value.filter(function (option) {
+    return false
+      || option.label.toLowerCase().includes(query)
+      || option.value.toLowerCase().includes(query);
   });
 });
 
 // Group filtered options
 const groupedOptions = computed(function () {
+  /** @type {Map<string, Array<OptionType & { originalIndex: number }>>} */
   const groups = new Map();
 
   // Preserve original index for stable IDs during filtering
   filteredOptions.value.forEach(function (option, index) {
-    const opt = /** @type {{value: string, label: string, group?: string}} */ (option);
-    const groupName = opt.group || '';
+    const groupName = option.group || '';
     if (!groups.has(groupName)) {
       groups.set(groupName, []);
     }
-    const optionWithIndex = /** @type {any} */ ({ ...opt, originalIndex: index });
-    groups.get(groupName).push(optionWithIndex);
+    groups.get(groupName).push({
+      ...option,
+      originalIndex: index,
+    });
   });
 
-  return Array.from(groups.entries()).map(function ([groupName, options]) {
-    return {
-      name: groupName,
-      options,
-    };
-  });
+  return Array
+    .from(groups.entries())
+    .map(function ([groupName, options]) {
+      return {
+        name: groupName,
+        options,
+      };
+    });
 });
 
 // Flatten grouped options for navigation
@@ -90,9 +109,8 @@ const flatOptions = computed(function () {
 
 // Find the selected option based on model value
 const selectedOption = computed(function () {
-  return props.options.find(function (option) {
-    const opt = /** @type {{value: string, label: string, group?: string}} */ (option);
-    return opt.value === props.modelValue;
+  return options.value.find(function (option) {
+    return option.value === props.modelValue;
   });
 });
 
@@ -105,8 +123,7 @@ const inputValue = computed(function () {
 const visualDisplayValue = computed(function () {
   // Show label if we have a selected option and not actively searching
   if (selectedOption.value && !isExpanded.value) {
-    const opt = /** @type {{value: string, label: string, group?: string}} */ (selectedOption.value);
-    return opt.label;
+    return selectedOption.value.label;
   }
   // When searching, show the search query
   if (isExpanded.value) {
@@ -151,7 +168,8 @@ function updateActiveDescendant() {
   if (focusedOptionIndex.value >= 0 && focusedOptionIndex.value < flatOptions.value.length) {
     const option = flatOptions.value[focusedOptionIndex.value];
     activeDescendantId.value = `${props.id}-option-${option.originalIndex}`;
-  } else {
+  }
+  else {
     activeDescendantId.value = '';
   }
 }
@@ -171,19 +189,25 @@ function selectFocusedOption() {
   }
 }
 
+/**
+ * @param {'down'|'up'|'first'|'last'} direction
+ */
 function moveFocus(direction) {
   if (flatOptions.value.length === 0) return;
 
   // Circular navigation: wrap around at boundaries
   if (direction === 'down') {
     focusedOptionIndex.value = (focusedOptionIndex.value + 1) % flatOptions.value.length;
-  } else if (direction === 'up') {
+  }
+  else if (direction === 'up') {
     focusedOptionIndex.value = focusedOptionIndex.value <= 0
       ? flatOptions.value.length - 1
       : focusedOptionIndex.value - 1;
-  } else if (direction === 'first') {
+  }
+  else if (direction === 'first') {
     focusedOptionIndex.value = 0;
-  } else if (direction === 'last') {
+  }
+  else if (direction === 'last') {
     focusedOptionIndex.value = flatOptions.value.length - 1;
   }
 
@@ -193,7 +217,6 @@ function moveFocus(direction) {
 
 async function scrollToFocusedOption() {
   if (!listboxRef.value || activeDescendantId.value === '') return;
-
   await nextTick();
   const focusedElement = listboxRef.value.querySelector(`#${activeDescendantId.value}`);
   if (focusedElement) {
@@ -210,24 +233,26 @@ function handleInputKeydown(event) {
   switch (event.key) {
     case 'ArrowDown':
       event.preventDefault();
-      if (!isExpanded.value) {
-        openListbox();
-      } else {
+      if (isExpanded.value) {
         moveFocus('down');
+      }
+      else {
+        openListbox();
       }
       break;
 
     case 'ArrowUp':
       event.preventDefault();
-      if (!isExpanded.value) {
+      if (isExpanded.value) {
+        moveFocus('up');
+      }
+      else {
         openListbox();
         // When opening with ArrowUp, start at the last option
         if (flatOptions.value.length > 0) {
           focusedOptionIndex.value = flatOptions.value.length - 1;
           updateActiveDescendant();
         }
-      } else {
-        moveFocus('up');
       }
       break;
 
@@ -256,15 +281,36 @@ function handleInputKeydown(event) {
       if (isExpanded.value) {
         event.preventDefault();
         closeListbox();
-      } else {
-        // Clear input when listbox is closed
-        searchQuery.value = '';
-        emit('update:modelValue', '');
+        // Return focus to input after closing
+        inputRef.value?.focus();
       }
+      // Note: When listbox is closed, Escape does not clear the value
+      // as this is a select-only combobox (values must come from options)
       break;
 
     case 'Tab':
       closeListbox();
+      break;
+
+    default:
+      // Handle Alt+Arrow combinations
+      if (event.altKey) {
+        if (event.key === 'ArrowDown') {
+          // Alt+Down: Open popup without moving focus (if available but not displayed)
+          event.preventDefault();
+          if (!isExpanded.value && flatOptions.value.length > 0) {
+            openListbox();
+          }
+        }
+        else if (event.key === 'ArrowUp') {
+          // Alt+Up: Close popup and return focus to combobox (if displayed)
+          event.preventDefault();
+          if (isExpanded.value) {
+            closeListbox();
+            inputRef.value?.focus();
+          }
+        }
+      }
       break;
   }
 }
@@ -284,7 +330,7 @@ function handleInputInput(event) {
   searchQuery.value = value;
 
   // Check if the input value matches any option's label exactly
-  const matchingOption = props.options.find(function (option) {
+  const matchingOption = options.value.find(function (option) {
     const opt = /** @type {{value: string, label: string, group?: string}} */ (option);
     return opt.label === value;
   });
@@ -293,7 +339,8 @@ function handleInputInput(event) {
     // If input matches a label exactly, emit the corresponding value
     const opt = /** @type {{value: string, label: string, group?: string}} */ (matchingOption);
     emit('update:modelValue', opt.value);
-  } else {
+  }
+  else {
     // For partial matches or free text, emit empty value to indicate no selection
     emit('update:modelValue', '');
   }
@@ -313,7 +360,8 @@ function handleInputInput(event) {
 function handleButtonClick() {
   if (isExpanded.value) {
     closeListbox();
-  } else {
+  }
+  else {
     openListbox();
   }
   inputRef.value?.focus();
@@ -325,8 +373,14 @@ function handleOptionClick(option) {
 }
 
 function handleOptionMouseEnter(index) {
-  focusedOptionIndex.value = index;
-  updateActiveDescendant();
+  // Find the flat index that corresponds to this original index
+  const flatIndex = flatOptions.value.findIndex(function (option) {
+    return option.originalIndex === index;
+  });
+  if (flatIndex >= 0) {
+    focusedOptionIndex.value = flatIndex;
+    updateActiveDescendant();
+  }
 }
 
 function handleClickOutside(event) {
@@ -349,7 +403,7 @@ onUnmounted(function () {
 </script>
 
 <template>
-  <div role="combobox" :aria-expanded="isExpanded" aria-haspopup="listbox">
+  <div class="combobox-container">
     <div>
       <!-- Hidden input containing the actual semantic value -->
       <input
@@ -363,12 +417,13 @@ onUnmounted(function () {
         ref="inputRef"
         type="text"
         role="combobox"
+        autocomplete="off"
         :value="visualDisplayValue"
         :placeholder="placeholder"
         :disabled="disabled"
         :required="required"
         :aria-expanded="isExpanded"
-        :aria-controls="listboxId"
+        :aria-controls="isExpanded ? listboxId : undefined"
         :aria-labelledby="ariaLabelledby || undefined"
         aria-autocomplete="list"
         :aria-activedescendant="activeDescendantId"
@@ -384,7 +439,7 @@ onUnmounted(function () {
         :disabled="disabled"
         aria-label="dropdown"
         :aria-expanded="isExpanded"
-        :aria-controls="listboxId"
+        :aria-controls="isExpanded ? listboxId : undefined"
         @click="handleButtonClick"
       >
         <svg
@@ -422,8 +477,7 @@ onUnmounted(function () {
           :key="`${groupIndex}-${optionIndex}`"
           :id="`${id}-option-${option.originalIndex}`"
           role="option"
-          :aria-selected="focusedOptionIndex === option.originalIndex"
-          :aria-current="focusedOptionIndex === option.originalIndex ? 'true' : null"
+          :aria-selected="flatOptions.findIndex(o => o.originalIndex === option.originalIndex) === focusedOptionIndex"
           @click="handleOptionClick(option)"
           @mouseenter="handleOptionMouseEnter(option.originalIndex)"
         >
@@ -440,7 +494,7 @@ onUnmounted(function () {
 </template>
 
 <style scoped>
-div[role="combobox"] {
+div.combobox-container {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -548,7 +602,7 @@ div[role="combobox"] {
       }
 
       /* Visual indicator for keyboard-focused option */
-      &[aria-current="true"] {
+      &[aria-selected="true"] {
         background-color: var(--app-btnflat-active-bg-color);
         border-top: 2px solid var(--app-input-focus-border-color);
         border-bottom: 2px solid var(--app-input-focus-border-color);

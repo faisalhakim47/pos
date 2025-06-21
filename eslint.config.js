@@ -36,6 +36,7 @@ export default defineConfig([
       },
     },
     rules: {
+      'brace-style': ['error', 'stroustrup', { allowSingleLine: true }],
       'comma-dangle': ['error', 'always-multiline'],
       'import/no-unresolved': ['off'],
       'import/order': ['error', {
