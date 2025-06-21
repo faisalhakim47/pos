@@ -53,7 +53,7 @@ test.describe('Journal Entry Management', function () {
     await expect(page.getByRole('combobox', { name: 'Currency' })).toBeVisible();
 
     // Check for journal entry lines section
-    await expect(page.getByText(en.journalEntryLinesTitle)).toBeVisible();
+    await expect(page.getByText(en.journalEntryCreationLinesTitle)).toBeVisible();
 
     // Check for at least 2 lines by default
     const firstAccountSelect = page.getByRole('combobox', { name: 'Account 1' });

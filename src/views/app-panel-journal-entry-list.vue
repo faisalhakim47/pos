@@ -2,6 +2,7 @@
 import { onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 
+import UnhandledError from '@/src/components/unhandled-error.vue';
 import { useAsyncIterator } from '@/src/composables/use-async-iterator.js';
 import { useDb } from '@/src/context/db.js';
 import { useFormatter } from '@/src/context/formatter.js';
@@ -48,7 +49,7 @@ const journalEntryListQuery = useAsyncIterator(async function* () {
   `;
   yield {
     functionalCurrency,
-    entries: journalEntryQueryRes[0].values.map(function (row) {
+    entries: journalEntryQueryRes[0]?.values.map(function (row) {
       return {
         ref: Number(row[0]),
         transactionTime: Number(row[1]),
@@ -60,7 +61,7 @@ const journalEntryListQuery = useAsyncIterator(async function* () {
         lineCount: Number(row[7]),
         isPosted: Boolean(row[4]),
       };
-    }),
+    }) ?? [],
   };
 });
 
@@ -79,6 +80,7 @@ onMounted(journalEntryListQuery.run);
         </ul>
       </nav>
     </header>
+    <unhandled-error :error="journalEntryListQuery.error" />
     <table>
       <thead>
         <tr class="sticky">
@@ -92,6 +94,9 @@ onMounted(journalEntryListQuery.run);
         </tr>
       </thead>
       <tbody v-if="journalEntryListQuery.state && typeof journalEntryListQuery.state === 'object'">
+        <tr v-if="journalEntryListQuery.state.entries.length === 0">
+          <td colspan="7" style="text-align: center;">{{ t('journalEntryListEmpty') }}</td>
+        </tr>
         <tr v-for="entry in journalEntryListQuery.state.entries" :key="entry.ref">
           <td style="text-align: center; width: 80px;">
             <router-link

@@ -264,14 +264,14 @@ onMounted(function () {
       <unhandled-error :error="currenciesQuery.error" />
 
       <fieldset>
-        <legend>{{ t('journalEntryInformationTitle') }}</legend>
+        <legend>{{ t('journalEntryCreationInformationTitle') }}</legend>
 
         <label for="note">{{ t('literal.description') }}</label>
         <input
           id="note"
           type="text"
           v-model="journalEntryForm.note"
-          :placeholder="t('journalEntryNotePlaceholder')"
+          :placeholder="t('journalEntryCreationNotePlaceholder')"
         />
 
         <label for="currency">{{ t('literal.currency') }}</label>
@@ -279,19 +279,19 @@ onMounted(function () {
           id="currency"
           v-model="journalEntryForm.currencyCode"
           :options="currencyOptions"
-          :placeholder="t('journalEntryCurrencySelectPlaceholder')"
+          :placeholder="t('journalEntryCreationCurrencySelectPlaceholder')"
           required
         />
       </fieldset>
 
       <fieldset>
-        <legend>{{ t('journalEntryLinesTitle') }}</legend>
+        <legend>{{ t('journalEntryCreationLinesTitle') }}</legend>
 
         <unhandled-error :error="accountsQuery.error" />
 
         <div>
-          <button type="button" @click="addLine" :aria-label="t('journalEntryLineCtaAddLabel')">
-            {{ t('journalEntryLineCtaAddLabel') }}
+          <button type="button" @click="addLine" :aria-label="t('journalEntryCreationLineCtaAddLabel')">
+            {{ t('journalEntryCreationLineCtaAddLabel') }}
           </button>
         </div>
 
@@ -317,7 +317,7 @@ onMounted(function () {
                   :id="`account-${index}`"
                   v-model="line.accountCode"
                   :options="accountOptions"
-                  :placeholder="t('journalEntryLineAccountSelectPlaceholder')"
+                  :placeholder="t('journalEntryCreationLineAccountSelectPlaceholder')"
                   :ariaLabelledby="`account-column line-${index + 1}`"
                   required
                 />
@@ -331,7 +331,7 @@ onMounted(function () {
                   min="0"
                   :value="line.debit"
                   @input="handleDebitInput(index, $event)"
-                  :placeholder="t('journalEntryLineAmountInputPlaceholder')"
+                  :placeholder="t('journalEntryCreationLineAmountInputPlaceholder')"
                   :aria-labelledby="`debit-column line-${index + 1}`"
                 />
               </td>
@@ -344,7 +344,7 @@ onMounted(function () {
                   min="0"
                   :value="line.credit"
                   @input="handleCreditInput(index, $event)"
-                  :placeholder="t('journalEntryLineAmountInputPlaceholder')"
+                  :placeholder="t('journalEntryCreationLineAmountInputPlaceholder')"
                   :aria-labelledby="`credit-column line-${index + 1}`"
                 />
               </td>
@@ -355,7 +355,7 @@ onMounted(function () {
                   class="btn-danger"
                   @click="removeLine(index)"
                   :disabled="journalEntryForm.lines.length <= 2"
-                  :aria-label="`${t('journalEntryLineCtaRemoveLabel')} ${index + 1}`"
+                  :aria-label="`${t('journalEntryCreationLineCtaRemoveLabel')} ${index + 1}`"
                 >
                   {{ t('literal.remove') }}
                 </button>
@@ -374,7 +374,7 @@ onMounted(function () {
         </table>
 
         <div v-if="!isValid && totalDebits !== totalCredits" aria-role="alert">
-          {{ t('journalEntryUnbalancedError') }}
+          {{ t('journalEntryCreationUnbalancedError') }}
         </div>
       </fieldset>
 
@@ -386,7 +386,7 @@ onMounted(function () {
           @click="journalEntryCreation.run({ draft: true })"
           :disabled="journalEntryCreation.state === 'submitting'"
         >
-          {{ journalEntryCreation.state === 'submitting' ? t('journalEntryCtaDraftProgressLabel') : t('journalEntryCtaDraftLabel') }}
+          {{ journalEntryCreation.state === 'submitting' ? t('journalEntryCreationCtaDraftProgressLabel') : t('journalEntryCreationCtaDraftLabel') }}
         </button>
 
         <button
@@ -396,7 +396,7 @@ onMounted(function () {
           @click="journalEntryCreation.run({ draft: false })"
           :disabled="journalEntryCreation.state === 'submitting'"
         >
-          {{ journalEntryCreation.state === 'submitting' ? t('journalEntryCtaPostProgressLabel') : t('journalEntryCtaPostLabel') }}
+          {{ journalEntryCreation.state === 'submitting' ? t('journalEntryCreationCtaPostProgressLabel') : t('journalEntryCreationCtaPostLabel') }}
         </button>
       </div>
 

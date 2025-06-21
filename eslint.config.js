@@ -1,4 +1,7 @@
+// @ts-check
+
 import { defineConfig } from 'eslint/config';
+// @ts-ignore
 import eslintImport from 'eslint-plugin-import';
 import pluginOxlint from 'eslint-plugin-oxlint';
 import pluginVue from 'eslint-plugin-vue';
@@ -22,22 +25,18 @@ export default defineConfig([
     ],
   },
 
-  pluginVue.configs['flat/essential'],
+  ...pluginVue.configs['flat/essential'],
   ...pluginOxlint.configs['flat/recommended'],
-
-  eslintImport.flatConfigs.recommended,
+  {
+    rules: {
+      'vue/component-name-in-template-casing': ['error', 'kebab-case', { registeredComponentsOnly: true }],
+    },
+  },
 
   {
-    languageOptions: {
-      ecmaVersion: 2022,
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-      },
-    },
+    ...eslintImport.flatConfigs.recommended,
     rules: {
-      'brace-style': ['error', 'stroustrup', { allowSingleLine: true }],
-      'comma-dangle': ['error', 'always-multiline'],
+      ...eslintImport.flatConfigs.recommended.rules,
       'import/no-unresolved': ['off'],
       'import/order': ['error', {
         'groups': [
@@ -53,7 +52,20 @@ export default defineConfig([
           caseInsensitive: true,
         },
       }],
-      'vue/component-name-in-template-casing': ['error', 'kebab-case', { registeredComponentsOnly: true }],
+    },
+  },
+
+  {
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+    rules: {
+      'brace-style': ['error', 'stroustrup', { allowSingleLine: true }],
+      'comma-dangle': ['error', 'always-multiline'],
       'indent': ['error', 2, { SwitchCase: 1 }],
       'no-constant-binary-expression': ['off'],
       'no-unused-vars': ['warn', { args: 'none' }],

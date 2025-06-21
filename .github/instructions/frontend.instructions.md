@@ -33,7 +33,7 @@ applyTo: 'src/**/*.js,src/**/*.vue'
 
 ## CSS Architecture
 The application follows a three-tier styling approach:
-- **Global Styles**: Defined in `src/global.css` for application-wide defaults and basic element styling
+- **Global Styles**: Defined in `src/main.css` for application-wide defaults and basic element styling
 - **Vue SFC Styles**: Used for component-specific layout and structure
 - **Inline Styles**: Applied for element-specific attributes (e.g., table column widths, dynamic positioning)
 

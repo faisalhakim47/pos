@@ -1,3 +1,8 @@
+/**
+ * Main Style Sheet for the Application
+ * - All colors must just css named-colors.
+ */
+
 :root {
   --app-recommended-width: 1440px;
 
@@ -21,12 +26,12 @@
   --app-btnflat-hover-bg-color: lavenderblush;
   --app-btnflat-hover-text-color: indigo;
 
-  --app-btn-danger-bg-color: lightcoral;
-  --app-btn-danger-text-color: brown;
-  --app-btn-danger-hover-bg-color: salmon;
-  --app-btn-danger-hover-text-color: brown;
-  --app-btn-danger-active-bg-color: tomato;
-  --app-btn-danger-active-text-color: brown;
+  --app-btn-danger-bg-color: pink;
+  --app-btn-danger-text-color: darkred;
+  --app-btn-danger-hover-bg-color: lightpink;
+  --app-btn-danger-hover-text-color: darkred;
+  --app-btn-danger-active-bg-color: hotpink;
+  --app-btn-danger-active-text-color: darkred;
   --app-btn-danger-disabled-bg-color: lightcoral;
   --app-btn-danger-disabled-text-color: brown;
 }
@@ -129,7 +134,6 @@ button {
     box-shadow: 0 0 0 3px var(--app-default-focus-outline-color);
   }
 
-  /* Danger/destructive button variant */
   &.btn-danger {
     background-color: var(--app-btn-danger-bg-color);
     color: var(--app-btn-danger-text-color);
@@ -137,9 +141,15 @@ button {
     &:hover:not(:disabled) {
       background-color: var(--app-btn-danger-hover-bg-color);
       color: var(--app-btn-danger-hover-text-color);
+      filter: saturate(30%);
     }
 
     &:active {
+      background-color: var(--app-btn-danger-active-bg-color);
+      color: var(--app-btn-danger-active-text-color);
+    }
+
+    &:focus-visible {
       background-color: var(--app-btn-danger-active-bg-color);
       color: var(--app-btn-danger-active-text-color);
     }

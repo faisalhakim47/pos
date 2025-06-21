@@ -128,7 +128,7 @@ onMounted(journalEntryQuery.run);
     <section v-if="journalEntryQuery.state && journalEntryQuery.state !== 'fetching'">
       <!-- Journal Entry Header -->
       <section aria-labelledby="journal-entry-details-heading">
-        <h2 id="journal-entry-details-heading">{{ t('journalEntryDetailsTitle') }} #{{ journalEntryQuery.state.ref }}</h2>
+        <h2 id="journal-entry-details-heading">{{ t('journalEntryItemTitle') }} #{{ journalEntryQuery.state.ref }}</h2>
         <dl aria-label="Journal entry details">
           <dt>{{ t('literal.date') }}:</dt>
           <dd>{{ formatter.formatDate(new Date(journalEntryQuery.state.transactionTime * 1000)) }}</dd>
@@ -179,7 +179,7 @@ onMounted(journalEntryQuery.run);
 
       <!-- Journal Entry Lines -->
       <section aria-labelledby="journal-entry-lines-heading">
-        <h3 id="journal-entry-lines-heading">{{ t('journalEntryLinesTitle') }}</h3>
+        <h3 id="journal-entry-lines-heading">{{ t('journalEntryCreationLinesTitle') }}</h3>
         <table role="table" aria-label="Journal entry lines">
           <thead>
             <tr role="row">
@@ -227,7 +227,7 @@ onMounted(journalEntryQuery.run);
     </section>
 
     <section v-if="journalEntryQuery.state === null">
-      <p>{{ t('journalEntryNotFound') }}</p>
+      <p>{{ t('journalEntryItemNotFound') }}</p>
     </section>
   </main>
 </template>
