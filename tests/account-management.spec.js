@@ -9,6 +9,7 @@ test.describe('Account Management', function () {
   test.beforeEach(async function ({ page }) {
     // for debugging purposes
     page.addListener('console', function (msg) {
+      if (msg.text().includes('[vite]')) return; // Ignore Vite logs
       console.debug('PageConsole', msg.type(), msg.text());
     });
     page.addListener('pageerror', function (error) {

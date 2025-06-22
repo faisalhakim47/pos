@@ -8,6 +8,7 @@ test.describe('Journal Entry Management', function () {
   test.beforeEach(async function ({ page }) {
     // for debugging purposes
     page.addListener('console', function (msg) {
+      if (msg.text().includes('[vite]')) return; // Ignore Vite logs
       console.debug('PageConsole', msg.type(), msg.text());
     });
     page.addListener('pageerror', function (error) {
@@ -98,15 +99,15 @@ test.describe('Journal Entry Management', function () {
 
     // Save the journal entry
     // Wait for the form to be valid (button enabled)
-    await expect(page.getByText('Save Journal Entry')).toBeEnabled();
-    await page.getByText('Save Journal Entry').click();
+    await expect(page.getByText(en.journalEntryCreationCtaDraftLabel)).toBeEnabled();
+    await page.getByText(en.journalEntryCreationCtaDraftLabel).click();
 
     // Should navigate to the journal entry details page
     await expect(page.getByText(en.journalEntryItemTitle, { exact: true })).toBeVisible();
     await expect(page.getByText('Test Journal Entry')).toBeVisible();
 
     // Check that the journal entry shows as unposted
-    await expect(page.getByText('Unposted')).toBeVisible();
+    await expect(page.getByText(en.literal.unposted)).toBeVisible();
   });
 
   test('should validate balanced journal entries', async function ({ page }) {
@@ -140,11 +141,11 @@ test.describe('Journal Entry Management', function () {
     await secondCreditInput.fill('500');
 
     // Save button should remain enabled (only disabled when loading)
-    const saveButton = page.getByText('Save Journal Entry');
+    const saveButton = page.getByText(en.journalEntryCreationCtaPostLabel);
     await expect(saveButton).toBeEnabled();
 
     // Should show validation error
-    await expect(page.getByText('Debits must equal credits')).toBeVisible();
+    await expect(page.getByText(en.journalEntryCreationUnbalancedError)).toBeVisible();
 
     // Clicking the save button should not proceed due to validation logic
     await saveButton.click();

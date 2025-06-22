@@ -2,10 +2,10 @@
 import { useCssModule } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 
-import { MaterialSymbolAccountBalanceWalletUrl, MaterialSymbolDashboardUrl, MaterialSymbolUniversalCurrencyAltUrl, MaterialSymbolTwoPagerUrl } from '@/src/assets/material-symbols.js';
+import { MaterialSymbolAccountBalanceWalletUrl, MaterialSymbolDashboardUrl, MaterialSymbolSettingsUrl, MaterialSymbolTwoPagerUrl, MaterialSymbolUniversalCurrencyAltUrl } from '@/src/assets/material-symbols.js';
 import SvgIcon from '@/src/components/svg-icon.vue';
 import { useI18n } from '@/src/i18n/i18n.js';
-import { AppPanelAccountListRoute, AppPanelCurrencyListRoute, AppPanelDashboardRoute, AppPanelJournalEntryListRoute } from '@/src/router/router.js';
+import { AppPanelAccountListRoute, AppPanelCurrencyListRoute, AppPanelDashboardRoute, AppPanelFinanceStatementConfigItemRoute, AppPanelJournalEntryListRoute } from '@/src/router/router.js';
 
 const { t } = useI18n();
 const style = useCssModule();
@@ -34,6 +34,11 @@ const style = useCssModule();
           <li :class="style.sidebarMenuItem">
             <router-link :to="{ name: AppPanelJournalEntryListRoute }" replace>
               <svg-icon :src="MaterialSymbolTwoPagerUrl" :alt="t('menuItemJournalEntryLabel')" />
+            </router-link>
+          </li>
+          <li :class="style.sidebarMenuItem">
+            <router-link :to="{ name: AppPanelFinanceStatementConfigItemRoute }" replace>
+              <svg-icon :src="MaterialSymbolSettingsUrl" :alt="t('menuItemFinanceConfigLabel')" />
             </router-link>
           </li>
         </ul>

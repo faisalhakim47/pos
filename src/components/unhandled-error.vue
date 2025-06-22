@@ -1,16 +1,8 @@
 <script setup>
-import { watchEffect } from 'vue';
-
 import { unknownErrorToString } from '@/src/tools/error.js';
 
 const props = defineProps({
   error: { type: Object, required: false },
-});
-
-watchEffect(function () {
-  if (props.error) {
-    console.error('UnhandledError:', props.error);
-  }
 });
 </script>
 

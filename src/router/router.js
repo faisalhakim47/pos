@@ -16,6 +16,8 @@ import AppPanelCurrencyEdit from '@/src/views/app-panel-currency-edit.vue';
 import AppPanelCurrencyItem from '@/src/views/app-panel-currency-item.vue';
 import AppPanelCurrencyList from '@/src/views/app-panel-currency-list.vue';
 import AppPanelDashboard from '@/src/views/app-panel-dashboard.vue';
+import AppPanelFinanceStatementConfigEdit from '@/src/views/app-panel-finance-statement-config-edit.vue';
+import AppPanelFinanceStatementConfigItem from '@/src/views/app-panel-finance-statement-config-item.vue';
 import AppPanelJournalEntryCreation from '@/src/views/app-panel-journal-entry-creation.vue';
 import AppPanelJournalEntryItem from '@/src/views/app-panel-journal-entry-item.vue';
 import AppPanelJournalEntryList from '@/src/views/app-panel-journal-entry-list.vue';
@@ -36,6 +38,8 @@ export const AppPanelCurrencyEditRoute = Symbol('AppPanelCurrencyEdit');
 export const AppPanelCurrencyItemRoute = Symbol('AppPanelCurrencyItem');
 export const AppPanelCurrencyListRoute = Symbol('AppPanelCurrencyList');
 export const AppPanelDashboardRoute = Symbol('AppPanelDashboard');
+export const AppPanelFinanceStatementConfigEditRoute = Symbol('AppPanelFinanceStatementConfigEdit');
+export const AppPanelFinanceStatementConfigItemRoute = Symbol('AppPanelFinanceStatementConfigItem');
 export const AppPanelJournalEntryCreationRoute = Symbol('AppPanelJournalEntryCreation');
 export const AppPanelJournalEntryItemRoute = Symbol('AppPanelJournalEntryItem');
 export const AppPanelJournalEntryListRoute = Symbol('AppPanelJournalEntryList');
@@ -74,6 +78,8 @@ function createRoutes() {
             { name: AppPanelCurrencyItemRoute, component: AppPanelCurrencyItem, path: 'currencies/:currencyCode' },
             { name: AppPanelCurrencyListRoute, component: AppPanelCurrencyList, path: 'currencies' },
             { name: AppPanelDashboardRoute, component: AppPanelDashboard, path: 'dashboard' },
+            { name: AppPanelFinanceStatementConfigEditRoute, component: AppPanelFinanceStatementConfigEdit, path: 'finance-statement-config/edit' },
+            { name: AppPanelFinanceStatementConfigItemRoute, component: AppPanelFinanceStatementConfigItem, path: 'finance-statement-config' },
             { name: AppPanelJournalEntryCreationRoute, component: AppPanelJournalEntryCreation, path: 'journal-entries/create' },
             { name: AppPanelJournalEntryItemRoute, component: AppPanelJournalEntryItem, path: 'journal-entries/:journalEntryRef' },
             { name: AppPanelJournalEntryListRoute, component: AppPanelJournalEntryList, path: 'journal-entries' },
