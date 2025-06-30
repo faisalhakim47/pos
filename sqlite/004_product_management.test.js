@@ -56,7 +56,7 @@ class TestFixture {
   }
 }
 
-await test('Product Management Schema', async function (t) {
+test('Product Management Schema', async function (t) {
   await t.test('Schema tables are created properly', async function (t) {
     const fixture = new TestFixture('Schema tables are created properly');
     const db = await fixture.setup();

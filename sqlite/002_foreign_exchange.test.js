@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { ForeignExchangeTestFixture } from './test-utils/foreign-exchange-test-fixture.js';
 
-await test('Currency and Exchange Rate Management', async function (t) {
+test('Currency and Exchange Rate Management', async function (t) {
   await t.test('Currency Configuration', async function (t) {
     const fixture = new ForeignExchangeTestFixture('currency_configuration');
     await fixture.setup();
@@ -180,7 +180,7 @@ await test('Currency and Exchange Rate Management', async function (t) {
   });
 });
 
-await test('Multi-Currency Accounts and Transactions', async function (t) {
+test('Multi-Currency Accounts and Transactions', async function (t) {
   await t.test('Multi-Currency Account Management', async function (t) {
     const fixture = new ForeignExchangeTestFixture('multicurrency_account_management');
     await fixture.setup();
@@ -285,7 +285,7 @@ await test('Multi-Currency Accounts and Transactions', async function (t) {
   });
 });
 
-await test('FX Revaluation and Rate Management', async function (t) {
+test('FX Revaluation and Rate Management', async function (t) {
   await t.test('FX Revaluation Candidates', async function (t) {
     const fixture = new ForeignExchangeTestFixture('fx_revaluation_candidates');
     await fixture.setupWithInitialCapital();
@@ -416,7 +416,7 @@ await test('FX Revaluation and Rate Management', async function (t) {
   });
 });
 
-await test('Rate Import Validation and Data Integrity', async function (t) {
+test('Rate Import Validation and Data Integrity', async function (t) {
   await t.test('Exchange Rate Validation', async function (t) {
     const fixture = new ForeignExchangeTestFixture('exchange_rate_validation');
     await fixture.setup();
@@ -620,7 +620,7 @@ await test('Rate Import Validation and Data Integrity', async function (t) {
   });
 });
 
-await test('FX Revaluation Automation', async function (t) {
+test('FX Revaluation Automation', async function (t) {
   await t.test('Automatic Journal Entry Creation', async function (t) {
     const fixture = new ForeignExchangeTestFixture('fx_revaluation_automation');
     await fixture.setup();

@@ -64,7 +64,7 @@ class TestFixture {
   }
 }
 
-await test('Inventory Accounting Schema', async function (t) {
+test('Inventory Accounting Schema', async function (t) {
   await t.test('Schema tables are created properly', async function (t) {
     const fixture = new TestFixture('Schema tables are created properly');
     const db = await fixture.setup();
@@ -170,7 +170,7 @@ await test('Inventory Accounting Schema', async function (t) {
 
     // Verify cost layer was created
     const costLayers = db.prepare(`
-      SELECT * FROM inventory_cost_layer 
+      SELECT * FROM inventory_cost_layer
       WHERE product_id = ? AND warehouse_location_id = ?
     `).all(productId, warehouseLocation.id);
 
@@ -198,7 +198,7 @@ await test('Inventory Accounting Schema', async function (t) {
 
     // Verify second cost layer was created
     const allCostLayers = db.prepare(`
-      SELECT * FROM inventory_cost_layer 
+      SELECT * FROM inventory_cost_layer
       WHERE product_id = ? AND warehouse_location_id = ?
       ORDER BY received_date
     `).all(productId, warehouseLocation.id);
@@ -384,14 +384,14 @@ await test('Inventory Accounting Schema', async function (t) {
 
     // Create old cost layer (simulating old inventory)
     const oldDate = Math.floor(Date.now() / 1000) - (200 * 24 * 3600); // 200 days ago
-    
+
     // Create a dummy transaction first
     const dummyTransactionId = db.prepare(`
       INSERT INTO inventory_transaction (
         transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run('PURCHASE_RECEIPT', 'AGING-DUMMY-001', oldDate, 'Dummy transaction for aging test', 'test_user', oldDate).lastInsertRowid;
-    
+
     db.prepare(`
       INSERT INTO inventory_cost_layer (
         product_id, warehouse_location_id, received_date, quantity_received,
@@ -472,20 +472,20 @@ await test('Inventory Accounting Schema', async function (t) {
 
     // Create multiple cost layers
     const currentTime = Math.floor(Date.now() / 1000);
-    
+
     // Create dummy transactions first
     const transaction1Id = db.prepare(`
       INSERT INTO inventory_transaction (
         transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run('PURCHASE_RECEIPT', 'COST-LAYER-001', currentTime - 86400, 'First cost layer transaction', 'test_user', currentTime - 86400).lastInsertRowid;
-    
+
     const transaction2Id = db.prepare(`
       INSERT INTO inventory_transaction (
         transaction_type_code, reference_number, transaction_date, notes, created_by_user, created_time
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run('PURCHASE_RECEIPT', 'COST-LAYER-002', currentTime, 'Second cost layer transaction', 'test_user', currentTime).lastInsertRowid;
-    
+
     db.prepare(`
       INSERT INTO inventory_cost_layer (
         product_id, warehouse_location_id, received_date, quantity_received,

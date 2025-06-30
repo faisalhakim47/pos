@@ -67,7 +67,7 @@ class TestFixture {
   }
 }
 
-await test('Inventory Control Schema', async function (t) {
+test('Inventory Control Schema', async function (t) {
   await t.test('Schema tables are created properly', async function (t) {
     const fixture = new TestFixture('Schema tables are created properly');
     const db = await fixture.setup();
@@ -151,14 +151,14 @@ await test('Inventory Control Schema', async function (t) {
 
     // Trigger adjustment by setting adjusted_time
     db.prepare(`
-      UPDATE physical_inventory_count 
+      UPDATE physical_inventory_count
       SET adjusted_time = ?, verified_by_user = ?
       WHERE id = ?
     `).run(Math.floor(Date.now() / 1000), 'verifier_user', countId);
 
     // Verify that inventory transaction was created automatically
     const adjustmentTransaction = db.prepare(`
-      SELECT * FROM inventory_transaction 
+      SELECT * FROM inventory_transaction
       WHERE reference_number LIKE 'PI-ADJ-%'
       ORDER BY created_time DESC
       LIMIT 1
@@ -170,7 +170,7 @@ await test('Inventory Control Schema', async function (t) {
 
     // Verify transaction line was created
     const transactionLine = db.prepare(`
-      SELECT * FROM inventory_transaction_line 
+      SELECT * FROM inventory_transaction_line
       WHERE inventory_transaction_id = ?
     `)?.get(adjustmentTransaction.id) ?? {};
 
@@ -182,7 +182,7 @@ await test('Inventory Control Schema', async function (t) {
     t.assert.equal(Boolean(adjustmentTransaction.journal_entry_ref), true, 'Journal entry should be linked');
 
     const journalEntry = db.prepare(`
-      SELECT * FROM journal_entry 
+      SELECT * FROM journal_entry
       WHERE ref = ?
     `)?.get(adjustmentTransaction.journal_entry_ref) ?? {};
 

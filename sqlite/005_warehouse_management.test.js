@@ -55,7 +55,7 @@ class TestFixture {
   }
 }
 
-await test('Warehouse Management Schema', async function (t) {
+test('Warehouse Management Schema', async function (t) {
   await t.test('Schema tables are created properly', async function (t) {
     const fixture = new TestFixture('Schema tables are created properly');
     const db = await fixture.setup();
@@ -211,7 +211,7 @@ await test('Warehouse Management Schema', async function (t) {
     // Create physical inventory with different status timestamps
     const physicalInventoryId = db.prepare(`
       INSERT INTO physical_inventory (
-        count_number, count_date, warehouse_id, count_type, 
+        count_number, count_date, warehouse_id, count_type,
         planned_time, planned_by_user
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run('PI-STATUS-001', currentTime, warehouse.id, 'CYCLE', currentTime, 'test_user').lastInsertRowid;
@@ -223,7 +223,7 @@ await test('Warehouse Management Schema', async function (t) {
 
     // Start the inventory
     db.prepare(`
-      UPDATE physical_inventory 
+      UPDATE physical_inventory
       SET started_time = ?, started_by_user = ?
       WHERE id = ?
     `).run(currentTime + 100, 'start_user', physicalInventoryId);
@@ -235,7 +235,7 @@ await test('Warehouse Management Schema', async function (t) {
 
     // Complete the inventory
     db.prepare(`
-      UPDATE physical_inventory 
+      UPDATE physical_inventory
       SET completed_time = ?, completed_by_user = ?
       WHERE id = ?
     `).run(currentTime + 200, 'complete_user', physicalInventoryId);
@@ -316,7 +316,7 @@ await test('Warehouse Management Schema', async function (t) {
     // Test that default locations have proper hierarchy
     const locations = db.prepare(`
       SELECT code, name, zone, aisle, shelf, bin
-      FROM warehouse_location 
+      FROM warehouse_location
       WHERE warehouse_id = ?
       ORDER BY code
     `).all(warehouse.id);

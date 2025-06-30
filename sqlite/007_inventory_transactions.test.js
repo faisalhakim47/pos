@@ -61,7 +61,7 @@ class TestFixture {
   }
 }
 
-await test('Inventory Transactions Schema', async function (t) {
+test('Inventory Transactions Schema', async function (t) {
   await t.test('Schema tables are created properly', async function (t) {
     const fixture = new TestFixture('Schema tables are created properly');
     const db = await fixture.setup();
@@ -181,7 +181,7 @@ await test('Inventory Transactions Schema', async function (t) {
 
     // Verify stock was created/updated
     const stock = db.prepare(`
-      SELECT * FROM inventory_stock 
+      SELECT * FROM inventory_stock
       WHERE product_id = ? AND warehouse_location_id = ?
     `)?.get(productId, warehouseLocation.id) ?? {};
 
@@ -208,7 +208,7 @@ await test('Inventory Transactions Schema', async function (t) {
 
     // Verify stock was updated
     const updatedStock = db.prepare(`
-      SELECT * FROM inventory_stock 
+      SELECT * FROM inventory_stock
       WHERE product_id = ? AND warehouse_location_id = ?
     `)?.get(productId, warehouseLocation.id) ?? {};
 
@@ -420,7 +420,7 @@ await test('Inventory Transactions Schema', async function (t) {
 
     // Approve the transaction
     db.prepare(`
-      UPDATE inventory_transaction 
+      UPDATE inventory_transaction
       SET approved_time = ?, approved_by_user = ?
       WHERE id = ?
     `).run(currentTime + 100, 'approver_user', transactionId);
@@ -433,7 +433,7 @@ await test('Inventory Transactions Schema', async function (t) {
 
     // Post the transaction
     db.prepare(`
-      UPDATE inventory_transaction 
+      UPDATE inventory_transaction
       SET posted_time = ?
       WHERE id = ?
     `).run(currentTime + 200, transactionId);
@@ -508,7 +508,7 @@ await test('Inventory Transactions Schema', async function (t) {
 
     // Verify lines were created correctly
     const lines = db.prepare(`
-      SELECT * FROM inventory_transaction_line 
+      SELECT * FROM inventory_transaction_line
       WHERE inventory_transaction_id = ?
       ORDER BY line_number
     `).all(transactionId);

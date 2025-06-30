@@ -58,7 +58,7 @@ class TestFixture {
   }
 }
 
-await test('Inventory Tracking Schema', async function (t) {
+test('Inventory Tracking Schema', async function (t) {
   await t.test('Schema tables are created properly', async function (t) {
     const fixture = new TestFixture('Schema tables are created properly');
     const db = await fixture.setup();
@@ -448,7 +448,7 @@ await test('Inventory Tracking Schema', async function (t) {
 
     // Verify both records exist
     const stockRecords = db.prepare(`
-      SELECT COUNT(*) as count FROM inventory_stock 
+      SELECT COUNT(*) as count FROM inventory_stock
       WHERE product_id = ? AND warehouse_location_id = ?
     `)?.get(productId, warehouseLocation.id) ?? {};
 

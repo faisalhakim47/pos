@@ -8,7 +8,7 @@ import { CoreAccountingTestFixture } from './test-utils/core-accounting-test-fix
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
-await test('Core Accounting Schema Structure', async function (t) {
+test('Core Accounting Schema Structure', async function (t) {
   const fixture = new CoreAccountingTestFixture('schema_structure');
 
   await t.test('Schema initialization', async function (t) {
@@ -194,7 +194,7 @@ await test('Core Accounting Schema Structure', async function (t) {
   fixture.cleanup();
 });
 
-await test('Journal Entry Management', async function (t) {
+test('Journal Entry Management', async function (t) {
 
   await t.test('Journal entry creation and validation', async function (t) {
     const fixture = new CoreAccountingTestFixture('journal_entry_creation');
@@ -329,7 +329,7 @@ await test('Journal Entry Management', async function (t) {
   });
 });
 
-await test('Journal Entry Reversal and Correction', async function (t) {
+test('Journal Entry Reversal and Correction', async function (t) {
 
   await t.test('Journal entry reversal functionality', async function (t) {
     const fixture = new CoreAccountingTestFixture('journal_entry_reversal');
@@ -605,7 +605,7 @@ await test('Journal Entry Reversal and Correction', async function (t) {
   });
 });
 
-await test('Accounting Principles Validation', async function (t) {
+test('Accounting Principles Validation', async function (t) {
 
   await t.test('Accounting equation: Assets = Liabilities + Equity', async function (t) {
     const fixture = new CoreAccountingTestFixture('accounting_equation');
@@ -819,7 +819,7 @@ await test('Accounting Principles Validation', async function (t) {
   });
 });
 
-await test('Advanced Schema Features', async function (t) {
+test('Advanced Schema Features', async function (t) {
   await t.test('Advanced schema migration creates all required tables', async function (t) {
     const fixture = new CoreAccountingTestFixture('advanced_schema_migration');
     const additionalSchemas = [
@@ -934,7 +934,7 @@ await test('Advanced Schema Features', async function (t) {
   });
 });
 
-await test('Multi-Currency Operations', async function (t) {
+test('Multi-Currency Operations', async function (t) {
 
   await t.test('Foreign currency journal entry validation', async function (t) {
     const fixture = new CoreAccountingTestFixture('foreign_currency_validation');
@@ -1183,7 +1183,7 @@ await test('Multi-Currency Operations', async function (t) {
   });
 });
 
-await test('Revenue Recognition and Budget Management', async function (t) {
+test('Revenue Recognition and Budget Management', async function (t) {
   await t.test('Revenue contract creation and management', async function (t) {
     const fixture = new CoreAccountingTestFixture('revenue_contract_creation');
     const additionalSchemas = [

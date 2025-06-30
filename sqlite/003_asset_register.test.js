@@ -147,7 +147,7 @@ class TestFixture {
   }
 }
 
-await test('Asset Register Schema Validation', async function (t) {
+test('Asset Register Schema Validation', async function (t) {
   await t.test('schema creates all required tables and indexes', async function (t) {
     const fixture = new TestFixture('schema_validation');
     const db = await fixture.setup();
@@ -229,7 +229,7 @@ await test('Asset Register Schema Validation', async function (t) {
   });
 });
 
-await test('Fixed Asset CRUD Operations', async function (t) {
+test('Fixed Asset CRUD Operations', async function (t) {
   await t.test('creates asset with valid data and proper defaults', async function (t) {
     const fixture = new TestFixture('asset_creation');
     const db = await fixture.setup();
@@ -382,7 +382,7 @@ await test('Fixed Asset CRUD Operations', async function (t) {
     t.assert.equal(dbAsset.changes, 1, 'Valid declining balance asset should be created');
   });
 });
-await test('Asset Depreciation Calculations', async function (t) {
+test('Asset Depreciation Calculations', async function (t) {
   await t.test('calculates straight-line depreciation correctly', async function (t) {
     const fixture = new TestFixture('straight_line_calculation');
     const db = await fixture.setup();
@@ -544,7 +544,7 @@ await test('Asset Depreciation Calculations', async function (t) {
   });
 });
 
-await test('Asset Lifecycle Management', async function (t) {
+test('Asset Lifecycle Management', async function (t) {
   await t.test('manages depreciation periods correctly', async function (t) {
     const fixture = new TestFixture('depreciation_periods');
     const db = await fixture.setup();
@@ -770,7 +770,7 @@ await test('Asset Lifecycle Management', async function (t) {
   });
 });
 
-await test('Asset Register Views and Reporting', async function (t) {
+test('Asset Register Views and Reporting', async function (t) {
   await t.test('asset register summary view calculates all values correctly', async function (t) {
     const fixture = new TestFixture('asset_register_summary');
     const db = await fixture.setup();
@@ -1010,7 +1010,7 @@ await test('Asset Register Views and Reporting', async function (t) {
     }
   });
 });
-await test('Asset Register Business Logic and Constraints', async function (t) {
+test('Asset Register Business Logic and Constraints', async function (t) {
   await t.test('enforces accounting principles for asset categories', async function (t) {
     const fixture = new TestFixture('accounting_principles');
     const db = await fixture.setup();

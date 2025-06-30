@@ -321,7 +321,7 @@ class TestFixture {
   }
 }
 
-await test('Finance Reporting Schema', async function (t) {
+test('Finance Reporting Schema', async function (t) {
   await t.test('Migration', async function (t) {
     const fixture = new TestFixture('Migration');
     t.assert.doesNotThrow(

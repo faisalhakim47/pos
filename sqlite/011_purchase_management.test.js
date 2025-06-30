@@ -147,7 +147,7 @@ class TestFixture {
   }
 }
 
-await test('Purchase Management Schema', async function (t) {
+test('Purchase Management Schema', async function (t) {
   await t.test('Vendor table is properly created', async function (t) {
     const fixture = new TestFixture('Vendor table is properly created');
     const db = await fixture.setup();
