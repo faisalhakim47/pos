@@ -26,14 +26,14 @@
   --app-btnflat-hover-bg-color: lavenderblush;
   --app-btnflat-hover-text-color: indigo;
 
-  --app-btn-danger-bg-color: pink;
-  --app-btn-danger-text-color: darkred;
-  --app-btn-danger-hover-bg-color: lightpink;
-  --app-btn-danger-hover-text-color: darkred;
-  --app-btn-danger-active-bg-color: hotpink;
-  --app-btn-danger-active-text-color: darkred;
-  --app-btn-danger-disabled-bg-color: lightcoral;
-  --app-btn-danger-disabled-text-color: brown;
+  --app-button-danger-bg-color: pink;
+  --app-button-danger-text-color: darkred;
+  --app-button-danger-hover-bg-color: lightpink;
+  --app-button-danger-hover-text-color: darkred;
+  --app-button-danger-active-bg-color: hotpink;
+  --app-button-danger-active-text-color: darkred;
+  --app-button-danger-disabled-bg-color: lightcoral;
+  --app-button-danger-disabled-text-color: brown;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -101,7 +101,8 @@ a {
   }
 }
 
-button {
+button,
+[role="button"] {
   display: inline-block;
   height: 30px;
   line-height: 30px;
@@ -134,29 +135,29 @@ button {
     box-shadow: 0 0 0 3px var(--app-default-focus-outline-color);
   }
 
-  &.btn-danger {
-    background-color: var(--app-btn-danger-bg-color);
-    color: var(--app-btn-danger-text-color);
+  &.danger {
+    background-color: var(--app-button-danger-bg-color);
+    color: var(--app-button-danger-text-color);
 
     &:hover:not(:disabled) {
-      background-color: var(--app-btn-danger-hover-bg-color);
-      color: var(--app-btn-danger-hover-text-color);
+      background-color: var(--app-button-danger-hover-bg-color);
+      color: var(--app-button-danger-hover-text-color);
       filter: saturate(30%);
     }
 
     &:active {
-      background-color: var(--app-btn-danger-active-bg-color);
-      color: var(--app-btn-danger-active-text-color);
+      background-color: var(--app-button-danger-active-bg-color);
+      color: var(--app-button-danger-active-text-color);
     }
 
     &:focus-visible {
-      background-color: var(--app-btn-danger-active-bg-color);
-      color: var(--app-btn-danger-active-text-color);
+      background-color: var(--app-button-danger-active-bg-color);
+      color: var(--app-button-danger-active-text-color);
     }
 
     &:disabled {
-      background-color: var(--app-btn-danger-disabled-bg-color);
-      color: var(--app-btn-danger-disabled-text-color);
+      background-color: var(--app-button-danger-disabled-bg-color);
+      color: var(--app-button-danger-disabled-text-color);
       opacity: 0.5;
     }
   }
@@ -171,7 +172,7 @@ main.page {
     scrollbar-color: lavender transparent;
   }
 
-  header {
+  &> header {
     display: grid;
     grid-template-columns: 44px 1fr auto;
     grid-template-rows: 44px;
@@ -221,9 +222,6 @@ main.page {
       }
     }
   }
-
-
-
 
   table {
     position: relative;
@@ -336,11 +334,7 @@ main.page {
     div:has(button[type="submit"]) {
       display: flex;
       justify-content: flex-end;
-      margin-top: 8px;
-
-      button {
-        margin-left: 8px;
-      }
+      gap: 8px;
     }
   }
 
@@ -379,5 +373,65 @@ main.page {
     font-size: 0.92rem;
     line-height: 1.1;
     box-sizing: border-box;
+  }
+
+  div:has(> dialog) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    justify-content: center;
+    align-items: center;
+    animation-name: dialog-cover-fade;
+    animation-duration: 200ms;
+    animation-timing-function: ease-in-out;
+    animation-fill-mode: both;
+
+    &> dialog {
+      background-color: white;
+      border-radius: 8px;
+      padding: 0px;
+
+      &> header {
+        &> h2 {
+          font-size: 1.125rem;
+          margin: 0px;
+          padding: 8px 12px;
+        }
+      }
+
+      &> form {
+        padding: 0px;
+        gap: 0px;
+
+        &> dl {
+          padding: 8px 12px;
+        }
+
+        &> div:has(button[type="submit"]) {
+          padding: 8px 12px;
+        }
+      }
+    }
+  }
+
+  div:has(> dialog[open]) {
+    animation-direction: normal;
+  }
+
+  div:has(> dialog:not([open])) {
+    animation-direction: reverse;
+  }
+}
+
+@keyframes dialog-cover-fade {
+  from {
+    display: none;
+    background-color: rgba(0, 0, 0, 0);
+  }
+  to {
+    display: flex;
+    background-color: rgba(0, 0, 0, 0.5);
   }
 }

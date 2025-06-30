@@ -3,12 +3,12 @@ applyTo: 'src/**/*.js,src/**/*.vue'
 ---
 
 # Project Structure
-- `sqlite/`: Contains main SQLite schemas where all business logic must be implemented
-- `src/`: Contains frontend code for the SQLite application
-- `tests/`: Contains end-to-end tests for the frontend
+- `sqlite/`: The main SQLite schemas where all business logic implemented
+- `src/`: The frontend code for the SQLite application
+- `tests/`: The end-to-end tests for the frontend
 
 # Frontend Specifications
-- This frontend serves as the user interface for the SQLite application. All UI business logic must follow the SQLite schemas while adhering to proper accounting principles. When conflicts arise, prioritize correct accounting practices over blind schema compliance.
+- The frontend serves as the user interface for the SQLite application. All UI business logic must follow the SQLite schemas while adhering to proper accounting principles. When conflicts arise, prioritize correct accounting practices over blind schema compliance.
 - The application is designed as a single-user, offline-first desktop application, allowing direct SQLite queries without restrictions.
 
 # End-to-End Test Guidelines

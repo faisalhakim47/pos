@@ -6,9 +6,9 @@ import en from '../src/i18n/langs/en.js';
 
 test.describe('Currency Management', function () {
   test.beforeEach(async function ({ page }) {
-    // for debugging purposes
+    // Attach listeners for debugging Playwright test runs
     page.addListener('console', function (msg) {
-      if (msg.text().includes('[vite]')) return; // Ignore Vite logs
+      if (msg.text().includes('[vite]')) return;
       console.debug('PageConsole', msg.type(), msg.text());
     });
     page.addListener('pageerror', function (error) {
@@ -142,7 +142,7 @@ test.describe('Currency Management', function () {
   });
 
   test('should prevent creating duplicate currency codes', async function ({ page }) {
-    // Remove page error listener for this test since we expect database errors
+    // This test expects a database error for duplicate code
     page.removeAllListeners('pageerror');
 
     await page.getByRole('link', { name: en.currencyCreationNavLabel }).click();

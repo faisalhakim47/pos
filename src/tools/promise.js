@@ -3,6 +3,7 @@
 /**
  * @param {number} duration
  * @param {AbortSignal} [signal]
+ * @returns {Promise<void>}
  */
 export async function sleep(duration, signal) {
   return new Promise(function (resolve, reject) {

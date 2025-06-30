@@ -352,7 +352,7 @@ onMounted(function () {
               <td style="text-align: center;">
                 <button
                   type="button"
-                  class="btn-danger"
+                  class="danger"
                   @click="removeLine(index)"
                   :disabled="journalEntryForm.lines.length <= 2"
                   :aria-label="`${t('journalEntryCreationLineCtaRemoveLabel')} ${index + 1}`"

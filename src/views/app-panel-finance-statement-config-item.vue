@@ -11,11 +11,9 @@ import { AppPanelDashboardRoute, AppPanelFinanceStatementConfigEditRoute } from 
 const { t } = useI18n();
 const db = useDb();
 
-// Fetch configuration with related data
 const configQuery = useAsyncIterator(async function* () {
   yield 'fetching';
 
-  // Get the configuration with currency details and account details
   const configResult = await db.sql`
     select
       fsc.reporting_currency_code,

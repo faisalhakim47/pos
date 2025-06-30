@@ -11,6 +11,10 @@ import AppPanelAccountCreation from '@/src/views/app-panel-account-creation.vue'
 import AppPanelAccountEdit from '@/src/views/app-panel-account-edit.vue';
 import AppPanelAccountItem from '@/src/views/app-panel-account-item.vue';
 import AppPanelAccountList from '@/src/views/app-panel-account-list.vue';
+import AppPanelAccountTagCreation from '@/src/views/app-panel-account-tag-creation.vue';
+import AppPanelAccountTagEdit from '@/src/views/app-panel-account-tag-edit.vue';
+import AppPanelAccountTagItem from '@/src/views/app-panel-account-tag-item.vue';
+import AppPanelAccountTagList from '@/src/views/app-panel-account-tag-list.vue';
 import AppPanelCurrencyCreation from '@/src/views/app-panel-currency-creation.vue';
 import AppPanelCurrencyEdit from '@/src/views/app-panel-currency-edit.vue';
 import AppPanelCurrencyItem from '@/src/views/app-panel-currency-item.vue';
@@ -33,6 +37,10 @@ export const AppPanelAccountCreationRoute = Symbol('AppPanelAccountCreation');
 export const AppPanelAccountEditRoute = Symbol('AppPanelAccountEdit');
 export const AppPanelAccountItemRoute = Symbol('AppPanelAccountItem');
 export const AppPanelAccountListRoute = Symbol('AppPanelAccountList');
+export const AppPanelAccountTagCreationRoute = Symbol('AppPanelAccountTagCreation');
+export const AppPanelAccountTagEditRoute = Symbol('AppPanelAccountTagEdit');
+export const AppPanelAccountTagItemRoute = Symbol('AppPanelAccountTagItem');
+export const AppPanelAccountTagListRoute = Symbol('AppPanelAccountTagList');
 export const AppPanelCurrencyCreationRoute = Symbol('AppPanelCurrencyCreation');
 export const AppPanelCurrencyEditRoute = Symbol('AppPanelCurrencyEdit');
 export const AppPanelCurrencyItemRoute = Symbol('AppPanelCurrencyItem');
@@ -73,6 +81,10 @@ function createRoutes() {
             { name: AppPanelAccountEditRoute, component: AppPanelAccountEdit, path: 'accounts/:accountCode/edit' },
             { name: AppPanelAccountItemRoute, component: AppPanelAccountItem, path: 'accounts/:accountCode' },
             { name: AppPanelAccountListRoute, component: AppPanelAccountList, path: 'accounts' },
+            { name: AppPanelAccountTagCreationRoute, component: AppPanelAccountTagCreation, path: 'account-tags/create' },
+            { name: AppPanelAccountTagEditRoute, component: AppPanelAccountTagEdit, path: 'account-tags/:accountCode/:tag/edit' },
+            { name: AppPanelAccountTagItemRoute, component: AppPanelAccountTagItem, path: 'account-tags/:accountCode/:tag' },
+            { name: AppPanelAccountTagListRoute, component: AppPanelAccountTagList, path: 'account-tags' },
             { name: AppPanelCurrencyCreationRoute, component: AppPanelCurrencyCreation, path: 'currencies/create' },
             { name: AppPanelCurrencyEditRoute, component: AppPanelCurrencyEdit, path: 'currencies/:currencyCode/edit' },
             { name: AppPanelCurrencyItemRoute, component: AppPanelCurrencyItem, path: 'currencies/:currencyCode' },
