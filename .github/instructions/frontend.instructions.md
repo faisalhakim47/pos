@@ -1,5 +1,5 @@
 ---
-applyTo: 'src/**/*.js,src/**/*.vue'
+applyTo: 'src/**/*.vue'
 ---
 
 # Project Structure

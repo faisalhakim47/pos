@@ -73,6 +73,35 @@ class TestFixture {
   }
 
   /**
+   * Setup with initial data for enhanced tests that need account structure
+   */
+  async setupWithInitialData() {
+    await this.setup();
+
+    // Add standard account structure if not exists
+    this.db.prepare(`
+      INSERT OR IGNORE INTO account (code, name, account_type_name, currency_code)
+      VALUES
+        (10100, 'Cash', 'asset', 'USD'),
+        (12200, 'Buildings', 'asset', 'USD'),
+        (12210, 'Accumulated Depreciation - Buildings', 'asset', 'USD'),
+        (12300, 'Vehicles', 'asset', 'USD'),
+        (12310, 'Accumulated Depreciation - Vehicles', 'asset', 'USD'),
+        (12400, 'Office Equipment', 'asset', 'USD'),
+        (12410, 'Accumulated Depreciation - Office Equipment', 'asset', 'USD'),
+        (12500, 'Computer Equipment', 'asset', 'USD'),
+        (12510, 'Accumulated Depreciation - Computer Equipment', 'asset', 'USD'),
+        (12600, 'Manufacturing Equipment', 'asset', 'USD'),
+        (12610, 'Accumulated Depreciation - Manufacturing Equipment', 'asset', 'USD'),
+        (61100, 'Depreciation Expense', 'expense', 'USD'),
+        (40400, 'Gain on Disposal of Assets', 'revenue', 'USD'),
+        (51500, 'Loss on Disposal of Assets', 'expense', 'USD')
+    `).run();
+
+    return this.db;
+  }
+
+  /**
    * Create a test asset with standard parameters
    * @param {object} options - Asset creation options
    * @returns {object} Asset creation result with id
@@ -1380,5 +1409,157 @@ await test('Asset Register Business Logic and Constraints', async function (t) {
     `).all();
 
     t.assert.equal(orphanedMods.length, 0, 'No orphaned asset modifications should exist');
+  });
+
+  await t.test('Enhanced asset disposal with gain/loss calculation and journal entries', async function (t) {
+    const fixture = new TestFixture('Enhanced asset disposal with gain/loss calculation and journal entries');
+    const db = await fixture.setupWithInitialData();
+
+    // Create an asset
+    db.prepare(`
+      insert into fixed_asset (
+        asset_number, name, asset_category_id, purchase_cost,
+        purchase_date, useful_life_years, depreciation_method, active_time
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('EQUIP-001', 'Test Equipment', 3, 50000, 1704067200, 5, 'straight_line', 1704067200);
+
+    // Add some depreciation periods
+    db.prepare(`
+      insert into depreciation_period (
+        fixed_asset_id, period_start_date, period_end_date,
+        depreciation_amount, accumulated_depreciation, book_value, calculation_method
+      ) values (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, 1704067200, 1735689600, 10000, 10000, 40000, 'straight_line'); // $100 depreciation
+
+    // Dispose asset with gain
+    db.prepare(`
+      update fixed_asset
+      set disposal_date = ?, disposal_proceeds = ?
+      where id = ?
+    `).run(1735689600, 45000, 1); // Sold for $450, book value $400, gain $50
+
+    // Verify disposal calculations
+    const asset = db.prepare(`
+      select * from fixed_asset where id = 1
+    `)?.get() ?? {};
+
+    t.assert.equal(asset.accumulated_depreciation_at_disposal, 10000, 'Should track accumulated depreciation at disposal');
+    t.assert.equal(asset.gain_loss_on_disposal, 5000, 'Should calculate gain of $50');
+
+    // Verify disposal journal entry was created
+    const disposalEntry = db.prepare(`
+      select * from journal_entry
+      where note like '%Asset Disposal%' and note like '%EQUIP-001%'
+    `)?.get() ?? {};
+    t.assert.equal(!!disposalEntry, true, 'Asset disposal journal entry should be created');
+    t.assert.equal(!!disposalEntry.post_time, true, 'Disposal entry should be posted');
+
+    // Verify journal entry lines
+    const disposalLines = db.prepare(`
+      select * from journal_entry_line
+      where journal_entry_ref = ?
+      order by line_order
+    `).all(disposalEntry.ref);
+
+    t.assert.equal(disposalLines.length, 4, 'Should have 4 journal entry lines');
+
+    // DR Cash
+    const cashLine = disposalLines.find(line => line.account_code === 10100);
+    t.assert.equal(!!cashLine, true, 'Should debit cash');
+    t.assert.equal(cashLine?.db, 45000, 'Should debit cash for disposal proceeds');
+
+    // DR Accumulated Depreciation
+    const accumDepLine = disposalLines.find(line => line.account_code === 12310);
+    t.assert.equal(!!accumDepLine, true, 'Should debit accumulated depreciation');
+    t.assert.equal(accumDepLine?.db, 10000, 'Should debit accumulated depreciation');
+
+    // CR Asset Cost
+    const assetLine = disposalLines.find(line => line.account_code === 12300);
+    t.assert.equal(!!assetLine, true, 'Should credit asset account');
+    t.assert.equal(assetLine?.cr, 50000, 'Should credit asset for original cost');
+
+    // CR Gain on Disposal
+    const gainLine = disposalLines.find(line => line.account_code === 40400);
+    t.assert.equal(!!gainLine, true, 'Should credit gain on disposal');
+    t.assert.equal(gainLine?.cr, 5000, 'Should recognize gain of $50');
+  });
+
+  await t.test('Asset disposal with loss calculation', async function (t) {
+    const fixture = new TestFixture('Asset disposal with loss calculation');
+    const db = await fixture.setupWithInitialData();
+
+    // Create an asset
+    const assetResult = db.prepare(`
+      insert into fixed_asset (
+        asset_number, name, asset_category_id, purchase_cost,
+        purchase_date, useful_life_years, depreciation_method, active_time
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('EQUIP-002', 'Test Equipment 2', 1, 60000, 1704067200, 5, 'straight_line', 1704067200);
+
+    const assetId = assetResult.lastInsertRowid;
+
+    // Add depreciation
+    db.prepare(`
+      insert into depreciation_period (
+        fixed_asset_id, period_start_date, period_end_date,
+        depreciation_amount, accumulated_depreciation, book_value, calculation_method
+      ) values (?, ?, ?, ?, ?, ?, ?)
+    `).run(assetId, 1704067200, 1735689600, 15000, 15000, 45000, 'STRAIGHT_LINE'); // $150 depreciation
+
+    // Dispose asset with loss
+    db.prepare(`
+      update fixed_asset
+      set disposal_date = ?, disposal_proceeds = ?
+      where id = ?
+    `).run(1735689600, 40000, assetId); // Sold for $400, book value $450, loss $50
+
+    // Verify loss calculation
+    const asset = db.prepare(`
+      select * from fixed_asset where id = ?
+    `)?.get(assetId) ?? {};
+
+    t.assert.equal(asset.gain_loss_on_disposal, -5000, 'Should calculate loss of $50');
+
+    // Verify disposal journal entry
+    const disposalEntry = db.prepare(`
+      select * from journal_entry
+      where note like '%Asset Disposal%' and note like '%EQUIP-002%'
+    `)?.get() ?? {};
+    t.assert.equal(!!disposalEntry, true, 'Asset disposal journal entry should be created');
+
+    // Verify loss on disposal line
+    const lossLine = db.prepare(`
+      select * from journal_entry_line
+      where journal_entry_ref = ? and account_code = 51500
+    `)?.get(disposalEntry.ref) ?? {};
+    t.assert.equal(!!lossLine, true, 'Should have loss on disposal line');
+    t.assert.equal(lossLine.db, 5000, 'Should debit loss on disposal for $50');
+  });
+
+  await t.test('Asset disposal without proceeds does not create journal entry', async function (t) {
+    const fixture = new TestFixture('Asset disposal without proceeds does not create journal entry');
+    const db = await fixture.setupWithInitialData();
+
+    // Create an asset
+    db.prepare(`
+      insert into fixed_asset (
+        asset_number, name, asset_category_id, purchase_cost,
+        purchase_date, useful_life_years, depreciation_method, active_time
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('EQUIP-003', 'Test Equipment 3', 1, 30000, 1704067200, 5, 'straight_line', 1704067200);
+
+    // Dispose asset without proceeds (scrapped)
+    db.prepare(`
+      update fixed_asset
+      set disposal_date = ?, disposal_proceeds = ?
+      where id = ?
+    `).run(1735689600, 0, 3); // No proceeds
+
+    // Verify no journal entry was created
+    const disposalEntry = db.prepare(`
+      select * from journal_entry
+      where note like '%Asset Disposal%' and note like '%EQUIP-003%'
+    `)?.get();
+    t.assert.equal(disposalEntry, undefined, 'No journal entry should be created for disposal without proceeds');
   });
 });

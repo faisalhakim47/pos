@@ -102,6 +102,10 @@ create table if not exists fixed_asset (
   disposal_proceeds integer check (disposal_proceeds >= 0),
   disposal_journal_entry_ref integer,
 
+  -- Add depreciation recapture tracking columns
+  accumulated_depreciation_at_disposal integer default 0,
+  gain_loss_on_disposal integer default 0,
+
   foreign key (asset_category_id) references asset_category (id) on update restrict on delete restrict,
   foreign key (purchase_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict,
   foreign key (disposal_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
@@ -427,6 +431,128 @@ left join (
 where fa.status = 'active';
   -- Note: time-based filtering removed to avoid unixepoch dependency
   -- Use contextual time filtering in application layer instead
+
+-- Enhanced disposal trigger with gain/loss calculation
+drop trigger if exists fixed_asset_disposal_enhanced_trigger;
+create trigger fixed_asset_disposal_enhanced_trigger
+after update on fixed_asset for each row
+when old.disposal_date is null and new.disposal_date is not null
+begin
+  -- Calculate accumulated depreciation at disposal
+  update fixed_asset
+  set accumulated_depreciation_at_disposal = (
+    select coalesce(sum(depreciation_amount), 0)
+    from depreciation_period
+    where fixed_asset_id = new.id
+      and period_start_date <= new.disposal_date
+  ),
+  gain_loss_on_disposal = coalesce(new.disposal_proceeds, 0) - (new.purchase_cost - (
+    select coalesce(sum(depreciation_amount), 0)
+    from depreciation_period
+    where fixed_asset_id = new.id
+      and period_start_date <= new.disposal_date
+  ))
+  where id = new.id;
+  
+  -- Create journal entry for asset disposal (always create if disposal_date is set)
+  insert into journal_entry (
+    transaction_time,
+    note
+  ) values (
+    new.disposal_date,
+    'Asset Disposal - ' || new.name || ' (#' || new.asset_number || ')'
+  );
+  
+  -- DR Cash (disposal proceeds) - only if proceeds > 0
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    last_insert_rowid(),
+    10100, -- Cash
+    new.disposal_proceeds,
+    0,
+    new.disposal_proceeds,
+    0
+  where coalesce(new.disposal_proceeds, 0) > 0;
+  
+  -- DR Accumulated Depreciation (always if there's accumulated depreciation)
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    last_insert_rowid(),
+    ac.accumulated_depreciation_account_code,
+    calc.accumulated_dep,
+    0,
+    calc.accumulated_dep,
+    0
+  from asset_category ac,
+       (select coalesce(sum(depreciation_amount), 0) as accumulated_dep
+        from depreciation_period
+        where fixed_asset_id = new.id
+          and period_start_date <= new.disposal_date) calc
+  where ac.id = new.asset_category_id
+    and calc.accumulated_dep > 0;
+  
+  -- CR Asset Cost (always)
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    last_insert_rowid(),
+    ac.asset_account_code,
+    0,
+    new.purchase_cost,
+    0,
+    new.purchase_cost
+  from asset_category ac
+  where ac.id = new.asset_category_id;
+  
+  -- Handle gain/loss on disposal (if any)
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    last_insert_rowid(),
+    case when calc.gain_loss > 0 then 40400 else 51500 end, -- Gain/Loss on Asset Disposal
+    case when calc.gain_loss < 0 then abs(calc.gain_loss) else 0 end,
+    case when calc.gain_loss > 0 then calc.gain_loss else 0 end,
+    case when calc.gain_loss < 0 then abs(calc.gain_loss) else 0 end,
+    case when calc.gain_loss > 0 then calc.gain_loss else 0 end
+  from (select coalesce(new.disposal_proceeds, 0) - (new.purchase_cost - (
+                 select coalesce(sum(depreciation_amount), 0)
+                 from depreciation_period
+                 where fixed_asset_id = new.id
+                   and period_start_date <= new.disposal_date
+               )) as gain_loss) calc
+  where calc.gain_loss != 0;
+  
+  -- Post the journal entry immediately
+  update journal_entry
+  set post_time = new.disposal_date
+  where ref = last_insert_rowid();
+end;
 
 -- Commit the transaction to finalize all schema changes
 commit transaction;

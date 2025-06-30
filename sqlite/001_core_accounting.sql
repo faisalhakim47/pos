@@ -1,16 +1,23 @@
 /*
-MIGRATION 001: CORE ACCOUNTING FOUNDATION
-=========================================
+MIGRATION 001: CORE ACCOUNTING FOUNDATION WITH ADVANCED FEATURES
+================================================================
 
-Double-entry bookkeeping system with multi-currency support.
+Double-entry bookkeeping system with multi-currency support and advanced accounting capabilities.
 
-FEATURES:
+CORE FEATURES:
 • Chart of accounts with 5-digit codes (10000-99999)
 • Account types: asset, liability, equity, revenue, expense, contra accounts
 • Journal entries with immutable posted entries (reversals only)
 • Multi-currency support with functional currency (USD default)
 • Real-time balance updates via triggers
 • Exchange rate management with historical tracking
+
+ADVANCED FEATURES:
+• Enhanced revenue recognition (ASC 606 support)
+• Entity management for intercompany transactions
+• Budget vs actual reporting with variance analysis
+• Cash flow statement generation
+• Foreign exchange revaluation automation
 
 DATA DESIGN:
 • Integer amounts in smallest currency units (cents) to avoid rounding
@@ -24,8 +31,9 @@ COMPLIANCE:
 • SOX compliant immutable audit trail
 • Accounting equation enforced: Assets = Liabilities + Equity
 • Account tags for financial statement generation
+• ASC 606 revenue recognition compliance
 
-Includes default chart of accounts and 30 major world currencies.
+Includes default chart of accounts, 30 major world currencies, and advanced accounting features.
 */
 
 pragma journal_mode = wal;
@@ -77,6 +85,23 @@ begin
   update currency set is_functional_currency = 0 where is_functional_currency = 1;
 end;
 
+--- ENTITY MANAGEMENT FOR INTERCOMPANY TRANSACTIONS ---
+
+create table if not exists entity (
+  id integer primary key,
+  entity_code text not null unique,
+  entity_name text not null,
+  is_consolidated integer not null default 1 check (is_consolidated in (0, 1)),
+  parent_entity_id integer,
+  functional_currency_code text not null default 'USD',
+  created_time integer not null,
+  foreign key (parent_entity_id) references entity (id) on update restrict on delete restrict,
+  foreign key (functional_currency_code) references currency (code) on update restrict on delete restrict
+) strict;
+
+create index if not exists entity_entity_code_index on entity (entity_code);
+create index if not exists entity_parent_entity_id_index on entity (parent_entity_id);
+
 --- CHART OF ACCOUNTS ---
 
 create table if not exists account_type (
@@ -107,7 +132,85 @@ create table if not exists account_tag (
 
 create index if not exists account_tag_tag_index on account_tag (tag);
 
+--- ENHANCED REVENUE RECOGNITION (ASC 606 SUPPORT) ---
 
+create table if not exists revenue_contract (
+  id integer primary key,
+  contract_number text not null unique,
+  customer_name text not null,
+  contract_date integer not null,
+  total_contract_value integer not null check (total_contract_value >= 0),
+  currency_code text not null default 'USD',
+  contract_status text not null check (contract_status in ('DRAFT', 'ACTIVE', 'COMPLETED', 'TERMINATED')),
+  created_time integer not null,
+  foreign key (currency_code) references currency (code) on update restrict on delete restrict
+) strict;
+
+create index if not exists revenue_contract_contract_number_index on revenue_contract (contract_number);
+create index if not exists revenue_contract_contract_date_index on revenue_contract (contract_date);
+create index if not exists revenue_contract_contract_status_index on revenue_contract (contract_status);
+
+create table if not exists revenue_performance_obligation (
+  id integer primary key,
+  revenue_contract_id integer not null,
+  obligation_description text not null,
+  standalone_selling_price integer not null check (standalone_selling_price >= 0),
+  allocated_contract_price integer not null check (allocated_contract_price >= 0),
+  satisfaction_method text not null check (satisfaction_method in ('POINT_IN_TIME', 'OVER_TIME')),
+  percent_complete real not null default 0 check (percent_complete >= 0 and percent_complete <= 100),
+  revenue_recognized integer not null default 0 check (revenue_recognized >= 0),
+  created_time integer not null,
+  foreign key (revenue_contract_id) references revenue_contract (id) on update restrict on delete restrict
+) strict;
+
+create index if not exists revenue_performance_obligation_contract_id_index on revenue_performance_obligation (revenue_contract_id);
+create index if not exists revenue_performance_obligation_satisfaction_method_index on revenue_performance_obligation (satisfaction_method);
+
+--- BUDGET MANAGEMENT AND VARIANCE ANALYSIS ---
+
+create table if not exists budget (
+  id integer primary key,
+  budget_name text not null,
+  budget_year integer not null,
+  budget_period_type text not null check (budget_period_type in ('MONTHLY', 'QUARTERLY', 'ANNUALLY')),
+  created_time integer not null,
+  approved_time integer,
+  unique (budget_name, budget_year)
+) strict;
+
+create index if not exists budget_budget_year_index on budget (budget_year);
+create index if not exists budget_budget_name_index on budget (budget_name);
+
+create table if not exists budget_line (
+  budget_id integer not null,
+  account_code integer not null,
+  period_number integer not null check (period_number >= 1 and period_number <= 12),
+  budgeted_amount integer not null default 0,
+  foreign key (budget_id) references budget (id) on update restrict on delete restrict,
+  foreign key (account_code) references account (code) on update restrict on delete restrict,
+  primary key (budget_id, account_code, period_number)
+) strict, without rowid;
+
+create index if not exists budget_line_budget_id_index on budget_line (budget_id);
+create index if not exists budget_line_account_code_index on budget_line (account_code);
+create index if not exists budget_line_period_number_index on budget_line (period_number);
+
+--- FOREIGN EXCHANGE REVALUATION ---
+
+create table if not exists fx_revaluation_run (
+  id integer primary key,
+  revaluation_date integer not null,
+  functional_currency_code text not null,
+  total_unrealized_gain_loss integer not null default 0,
+  journal_entry_ref integer,
+  created_time integer not null,
+  notes text,
+  foreign key (functional_currency_code) references currency (code) on update restrict on delete restrict,
+  foreign key (journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
+) strict;
+
+create index if not exists fx_revaluation_run_revaluation_date_index on fx_revaluation_run (revaluation_date);
+create index if not exists fx_revaluation_run_journal_entry_ref_index on fx_revaluation_run (journal_entry_ref);
 
 --- JOURNAL ENTRIES ---
 
@@ -120,13 +223,19 @@ create table if not exists journal_entry (
   reversed_by_journal_entry_ref integer,
   corrected_by_journal_entry_ref integer,
   post_time integer,
+  entity_id integer,
+  intercompany_entity_id integer,
   foreign key (transaction_currency_code) references currency (code) on update restrict on delete restrict,
   foreign key (reversed_by_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict,
-  foreign key (corrected_by_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict
+  foreign key (corrected_by_journal_entry_ref) references journal_entry (ref) on update restrict on delete restrict,
+  foreign key (entity_id) references entity (id) on update restrict on delete restrict,
+  foreign key (intercompany_entity_id) references entity (id) on update restrict on delete restrict
 ) strict;
 
 create index if not exists journal_entry_transaction_time_index on journal_entry (transaction_time);
 create index if not exists journal_entry_post_time_index on journal_entry (post_time);
+create index if not exists journal_entry_entity_id_index on journal_entry (entity_id);
+create index if not exists journal_entry_intercompany_entity_id_index on journal_entry (intercompany_entity_id);
 
 drop trigger if exists journal_entry_insert_validation_trigger;
 create trigger journal_entry_insert_validation_trigger
@@ -301,6 +410,10 @@ select
   journal_entry.note,
   journal_entry.transaction_currency_code,
   journal_entry.exchange_rate_to_functional,
+  journal_entry.entity_id,
+  journal_entry.intercompany_entity_id,
+  e1.entity_code as entity_code,
+  e2.entity_code as intercompany_entity_code,
   journal_entry_line.line_order,
   journal_entry_line.account_code,
   account.name as account_name,
@@ -315,6 +428,8 @@ select
 from journal_entry_line
 join journal_entry on journal_entry.ref = journal_entry_line.journal_entry_ref
 join account on account.code = journal_entry_line.account_code
+left join entity e1 on e1.id = journal_entry.entity_id
+left join entity e2 on e2.id = journal_entry.intercompany_entity_id
 where journal_entry.post_time is not null
 order by journal_entry.ref asc, journal_entry_line.line_order asc;
 
@@ -379,9 +494,11 @@ insert into account (code, name, account_type_name) values
   -- Assets
   (10100, 'Cash', 'asset'),
   (10200, 'Accounts Receivable', 'asset'),
+  (10250, 'Contract Assets', 'asset'),
   (10300, 'Inventory', 'asset'),
   (10400, 'Prepaid Expenses', 'asset'),
   (10600, 'Merchandise Inventory', 'asset'),
+  (11500, 'Foreign Exchange Translation Assets', 'asset'),
   (13100, 'Raw Materials Inventory', 'asset'),
   (13200, 'Work in Process Inventory', 'asset'),
   (13300, 'Finished Goods Inventory', 'asset'),
@@ -401,6 +518,7 @@ insert into account (code, name, account_type_name) values
   -- Liabilities
   (20100, 'Accounts Payable', 'liability'),
   (20200, 'Accrued Expenses', 'liability'),
+  (20250, 'Contract Liabilities', 'liability'),
   (20300, 'Short-term Debt', 'liability'),
   (21000, 'Long-term Debt', 'liability'),
 
@@ -433,7 +551,9 @@ insert into account (code, name, account_type_name) values
   (60700, 'Professional Fees', 'expense'),
   (60800, 'Travel Expense', 'expense'),
   (61000, 'Other Operating Expenses', 'expense'),
-  (61100, 'Depreciation Expense', 'expense')
+  (61100, 'Depreciation Expense', 'expense'),
+  (40400, 'Gain on Asset Disposal', 'revenue'),
+  (51500, 'Loss on Asset Disposal', 'expense')
 on conflict (code) do update set
   name = excluded.name,
   account_type_name = excluded.account_type_name;
@@ -443,9 +563,11 @@ insert into account_tag (account_code, tag) values
   -- Balance Sheet - Current Assets
   (10100, 'balance_sheet_current_asset'), -- Cash
   (10200, 'balance_sheet_current_asset'), -- Accounts Receivable
+  (10250, 'balance_sheet_current_asset'), -- Contract Assets
   (10300, 'balance_sheet_current_asset'), -- Inventory
   (10400, 'balance_sheet_current_asset'), -- Prepaid Expenses
   (10600, 'balance_sheet_current_asset'), -- Merchandise Inventory
+  (11500, 'balance_sheet_current_asset'), -- Foreign Exchange Translation Assets
   (13100, 'balance_sheet_current_asset'), -- Raw Materials Inventory
   (13200, 'balance_sheet_current_asset'), -- Work in Process Inventory
   (13300, 'balance_sheet_current_asset'), -- Finished Goods Inventory
@@ -467,6 +589,7 @@ insert into account_tag (account_code, tag) values
   -- Balance Sheet - Current Liabilities
   (20100, 'balance_sheet_current_liability'), -- Accounts Payable
   (20200, 'balance_sheet_current_liability'), -- Accrued Expenses
+  (20250, 'balance_sheet_current_liability'), -- Contract Liabilities
   (20300, 'balance_sheet_current_liability'), -- Short-term Debt
 
   -- Balance Sheet - Non-Current Liabilities
@@ -501,6 +624,8 @@ insert into account_tag (account_code, tag) values
   (60800, 'income_statement_expense'), -- Travel Expense
   (61000, 'income_statement_other_expense'), -- Other Operating Expenses
   (61100, 'income_statement_expense'), -- Depreciation Expense
+  (40400, 'income_statement_other_revenue'), -- Gain on Asset Disposal
+  (51500, 'income_statement_expense'), -- Loss on Asset Disposal
 
   -- Fiscal Year Closing
   (40100, 'fiscal_year_closing_revenue'), -- Sales Revenue
@@ -523,8 +648,50 @@ insert into account_tag (account_code, tag) values
   (60800, 'fiscal_year_closing_expense'), -- Travel Expense
   (61000, 'fiscal_year_closing_expense'), -- Other Operating Expenses
   (61100, 'fiscal_year_closing_expense'), -- Depreciation Expense
+  (40400, 'fiscal_year_closing_revenue'), -- Gain on Asset Disposal
+  (51500, 'fiscal_year_closing_expense'), -- Loss on Asset Disposal
   (30300, 'fiscal_year_closing_dividend'), -- Dividends
   (30600, 'fiscal_year_closing_dividend') -- Dividends/Withdrawals
+on conflict (account_code, tag) do nothing;
+
+-- Cash Flow Statement Tags
+insert into account_tag (account_code, tag) values
+  (10100, 'cash_flow_operating'), -- Cash
+  (10200, 'cash_flow_operating'), -- Accounts Receivable
+  (10250, 'cash_flow_operating'), -- Contract Assets
+  (10300, 'cash_flow_operating'), -- Inventory
+  (10400, 'cash_flow_operating'), -- Prepaid Expenses
+  (11500, 'cash_flow_operating'), -- Foreign Exchange Translation Assets
+  (20100, 'cash_flow_operating'), -- Accounts Payable
+  (20200, 'cash_flow_operating'), -- Accrued Expenses
+  (20250, 'cash_flow_operating'), -- Contract Liabilities
+  (40100, 'cash_flow_operating'), -- Sales Revenue
+  (40200, 'cash_flow_operating'), -- Service Revenue
+  (50100, 'cash_flow_operating'), -- Cost of Goods Sold
+  (60100, 'cash_flow_operating'), -- Salaries and Wages
+  (60200, 'cash_flow_operating'), -- Rent Expense
+  (60300, 'cash_flow_operating'), -- Utilities Expense
+  (60400, 'cash_flow_operating'), -- Insurance Expense
+  (60500, 'cash_flow_operating'), -- Office Supplies Expense
+  (60600, 'cash_flow_operating'), -- Marketing Expense
+  (60700, 'cash_flow_operating'), -- Professional Fees
+  (60800, 'cash_flow_operating'), -- Travel Expense
+  (61000, 'cash_flow_operating'), -- Other Operating Expenses
+  (40400, 'cash_flow_operating'), -- Gain on Asset Disposal
+  (51500, 'cash_flow_operating'), -- Loss on Asset Disposal
+  
+  -- Investing Activities
+  (12100, 'cash_flow_investing'), -- Land
+  (12200, 'cash_flow_investing'), -- Buildings
+  (12300, 'cash_flow_investing'), -- Machinery & Equipment
+  (12400, 'cash_flow_investing'), -- Office Equipment
+  (12500, 'cash_flow_investing'), -- Vehicles
+  (12600, 'cash_flow_investing'), -- Other Fixed Assets
+  
+  -- Financing Activities
+  (21000, 'cash_flow_financing'), -- Long-term Debt
+  (30100, 'cash_flow_financing'), -- Common Stock
+  (30600, 'cash_flow_financing') -- Dividends/Withdrawals
 on conflict (account_code, tag) do nothing;
 
 --- FOREIGN EXCHANGE MANAGEMENT ---
@@ -621,6 +788,239 @@ from account_balance_multicurrency abmc
 join account_type at on at.name = abmc.account_type_name
 where abmc.balance_functional_currency != 0
 order by abmc.code;
+
+--- ADVANCED ACCOUNTING AUTOMATION ---
+
+-- Trigger to automatically recognize revenue for completed performance obligations
+drop trigger if exists revenue_recognition_trigger;
+create trigger revenue_recognition_trigger
+after update on revenue_performance_obligation for each row
+when old.percent_complete < 100 and new.percent_complete = 100 
+     and new.satisfaction_method = 'POINT_IN_TIME'
+     and new.revenue_recognized < new.allocated_contract_price
+begin
+  -- Create journal entry for revenue recognition
+  insert into journal_entry (
+    transaction_time,
+    note
+  ) values (
+    unixepoch(),
+    'Revenue Recognition - Contract: ' || (select contract_number from revenue_contract where id = new.revenue_contract_id) ||
+    ' - Obligation: ' || new.obligation_description
+  );
+
+  -- DR Contract Asset or Cash, CR Revenue
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  ) values (
+    last_insert_rowid(),
+    10250, -- Contract Assets
+    new.allocated_contract_price - new.revenue_recognized,
+    0,
+    new.allocated_contract_price - new.revenue_recognized,
+    0
+  );
+
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  ) values (
+    last_insert_rowid(),
+    40100, -- Sales Revenue
+    0,
+    new.allocated_contract_price - new.revenue_recognized,
+    0,
+    new.allocated_contract_price - new.revenue_recognized
+  );
+
+  -- Post the journal entry immediately
+  update journal_entry
+  set post_time = unixepoch()
+  where ref = last_insert_rowid();
+
+  -- Update revenue recognized
+  update revenue_performance_obligation
+  set revenue_recognized = new.allocated_contract_price
+  where id = new.id;
+end;
+
+--- ADVANCED REPORTING VIEWS ---
+
+-- Intercompany transactions view
+drop view if exists intercompany_transactions;
+create view intercompany_transactions as
+select
+  je.ref as journal_entry_ref,
+  je.transaction_time,
+  je.note,
+  je.post_time,
+  e1.entity_code as entity_code,
+  e2.entity_code as intercompany_entity_code,
+  sum(jel.db_functional) as total_debit,
+  sum(jel.cr_functional) as total_credit
+from journal_entry je
+join entity e1 on e1.id = coalesce(je.entity_id, 1) -- Default to main entity
+left join entity e2 on e2.id = je.intercompany_entity_id
+join journal_entry_line jel on jel.journal_entry_ref = je.ref
+where je.post_time is not null
+  and je.intercompany_entity_id is not null
+group by je.ref, e1.entity_code, e2.entity_code
+having total_debit = total_credit;
+
+-- Budget variance analysis view
+drop view if exists budget_variance_analysis;
+create view budget_variance_analysis as
+select
+  b.budget_name,
+  b.budget_year,
+  a.code as account_code,
+  a.name as account_name,
+  bl.period_number,
+  bl.budgeted_amount,
+  coalesce(actual.actual_amount, 0) as actual_amount,
+  coalesce(actual.actual_amount, 0) - bl.budgeted_amount as variance_amount,
+  case 
+    when bl.budgeted_amount != 0 
+    then round(((coalesce(actual.actual_amount, 0) - bl.budgeted_amount) * 100.0) / abs(bl.budgeted_amount), 2)
+    else null 
+  end as variance_percentage,
+  case
+    when bl.budgeted_amount = 0 then 'UNDEFINED'
+    when abs(coalesce(actual.actual_amount, 0) - bl.budgeted_amount) * 1.0 / abs(bl.budgeted_amount) > 0.10 then 'SIGNIFICANT'
+    when abs(coalesce(actual.actual_amount, 0) - bl.budgeted_amount) * 1.0 / abs(bl.budgeted_amount) > 0.05 then 'MODERATE'
+    else 'MINIMAL'
+  end as variance_significance
+from budget b
+join budget_line bl on bl.budget_id = b.id
+join account a on a.code = bl.account_code
+left join (
+  select
+    jel.account_code,
+    cast(strftime('%m', datetime(je.transaction_time, 'unixepoch')) as integer) as period_number,
+    sum(case 
+      when at.normal_balance = 'db' then jel.db_functional - jel.cr_functional
+      else jel.cr_functional - jel.db_functional
+    end) as actual_amount
+  from journal_entry_line jel
+  join journal_entry je on je.ref = jel.journal_entry_ref
+  join account acc on acc.code = jel.account_code
+  join account_type at on at.name = acc.account_type_name
+  where je.post_time is not null
+  group by jel.account_code, cast(strftime('%m', datetime(je.transaction_time, 'unixepoch')) as integer)
+) actual on actual.account_code = a.code and actual.period_number = bl.period_number
+order by b.budget_year, bl.period_number, a.code;
+
+-- Cash flow statement view (basic indirect method)
+drop view if exists cash_flow_statement;
+create view cash_flow_statement as
+with operating_activities as (
+  select
+    'Operating Activities' as category,
+    a.code,
+    a.name,
+    sum(case 
+      when at.normal_balance = 'db' then jel.db_functional - jel.cr_functional
+      else jel.cr_functional - jel.db_functional
+    end) as amount,
+    1 as sort_order
+  from journal_entry_line jel
+  join journal_entry je on je.ref = jel.journal_entry_ref
+  join account a on a.code = jel.account_code
+  join account_type at on at.name = a.account_type_name
+  join account_tag atag on atag.account_code = a.code
+  where je.post_time is not null
+    and atag.tag = 'cash_flow_operating'
+  group by a.code, a.name, at.normal_balance
+  having amount != 0
+),
+investing_activities as (
+  select
+    'Investing Activities' as category,
+    a.code,
+    a.name,
+    sum(case 
+      when at.normal_balance = 'db' then jel.db_functional - jel.cr_functional
+      else jel.cr_functional - jel.db_functional
+    end) as amount,
+    2 as sort_order
+  from journal_entry_line jel
+  join journal_entry je on je.ref = jel.journal_entry_ref
+  join account a on a.code = jel.account_code
+  join account_type at on at.name = a.account_type_name
+  join account_tag atag on atag.account_code = a.code
+  where je.post_time is not null
+    and atag.tag = 'cash_flow_investing'
+  group by a.code, a.name, at.normal_balance
+  having amount != 0
+),
+financing_activities as (
+  select
+    'Financing Activities' as category,
+    a.code,
+    a.name,
+    sum(case 
+      when at.normal_balance = 'db' then jel.db_functional - jel.cr_functional
+      else jel.cr_functional - jel.db_functional
+    end) as amount,
+    3 as sort_order
+  from journal_entry_line jel
+  join journal_entry je on je.ref = jel.journal_entry_ref
+  join account a on a.code = jel.account_code
+  join account_type at on at.name = a.account_type_name
+  join account_tag atag on atag.account_code = a.code
+  where je.post_time is not null
+    and atag.tag = 'cash_flow_financing'
+  group by a.code, a.name, at.normal_balance
+  having amount != 0
+)
+select * from operating_activities
+union all
+select * from investing_activities
+union all
+select * from financing_activities
+order by sort_order, code;
+
+-- Revenue contract performance summary
+drop view if exists revenue_contract_summary;
+create view revenue_contract_summary as
+select
+  rc.contract_number,
+  rc.customer_name,
+  rc.contract_date,
+  rc.total_contract_value,
+  rc.contract_status,
+  count(rpo.id) as performance_obligations_count,
+  sum(rpo.allocated_contract_price) as total_allocated_price,
+  sum(rpo.revenue_recognized) as total_revenue_recognized,
+  sum(rpo.allocated_contract_price) - sum(rpo.revenue_recognized) as remaining_revenue,
+  case 
+    when sum(rpo.allocated_contract_price) > 0 
+    then round(sum(rpo.percent_complete * rpo.allocated_contract_price) / sum(rpo.allocated_contract_price), 2)
+    else 0 
+  end as completion_percentage
+from revenue_contract rc
+left join revenue_performance_obligation rpo on rpo.revenue_contract_id = rc.id
+group by rc.id, rc.contract_number, rc.customer_name, rc.contract_date, rc.total_contract_value, rc.contract_status
+order by rc.contract_date desc;
+
+--- DEFAULT DATA ---
+
+-- Insert default entity (main company)
+insert into entity (entity_code, entity_name, is_consolidated, functional_currency_code, created_time) values
+  ('MAIN', 'Main Company', 1, 'USD', unixepoch())
+on conflict (entity_code) do update set
+  entity_name = excluded.entity_name,
+  is_consolidated = excluded.is_consolidated,
+  functional_currency_code = excluded.functional_currency_code;
 
 --- REVERSAL AND CORRECTION HELPERS ---
 

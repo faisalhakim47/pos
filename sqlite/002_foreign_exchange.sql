@@ -115,7 +115,9 @@ insert into account (code, name, account_type_name, currency_code) values
   (71000, 'Realized FX Gain', 'revenue', 'USD'),
   (71100, 'Realized FX Loss', 'expense', 'USD'),
   (71200, 'Unrealized FX Gain', 'revenue', 'USD'),
-  (71300, 'Unrealized FX Loss', 'expense', 'USD')
+  (71300, 'Unrealized FX Loss', 'expense', 'USD'),
+  (71400, 'Gain on Asset Disposal', 'revenue', 'USD'),
+  (71500, 'Loss on Asset Disposal', 'expense', 'USD')
 on conflict (code) do update set
   name = excluded.name,
   account_type_name = excluded.account_type_name,
@@ -342,5 +344,87 @@ join account_type at on a.account_type_name = at.name
 cross join (select code from currency where is_functional_currency = 1) fc
 left join latest_exchange_rate er on er.from_currency_code = a.currency_code and er.to_currency_code = fc.code
 where a.balance != 0;
+
+--- AUTOMATIC FX REVALUATION JOURNAL ENTRIES ---
+
+-- Trigger to automatically create journal entries for FX revaluation
+drop trigger if exists fx_revaluation_automatic_journal_trigger;
+create trigger fx_revaluation_automatic_journal_trigger
+after insert on fx_revaluation_run for each row
+when new.total_unrealized_gain_loss != 0
+begin
+  -- Create journal entry for FX revaluation
+  insert into journal_entry (
+    transaction_time,
+    note,
+    transaction_currency_code
+  ) values (
+    new.revaluation_date,
+    'Foreign Exchange Revaluation - Run ID: ' || new.id,
+    (select code from currency where is_functional_currency = 1)
+  );
+
+  -- For unrealized gain/loss - first line
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    last_insert_rowid(),
+    case when new.total_unrealized_gain_loss > 0 then 11500 else 71300 end, -- Asset FX Account or FX Loss
+    case when new.total_unrealized_gain_loss > 0 then new.total_unrealized_gain_loss 
+         when new.total_unrealized_gain_loss < 0 then abs(new.total_unrealized_gain_loss) 
+         else 0 end,
+    case when new.total_unrealized_gain_loss > 0 then 0 
+         when new.total_unrealized_gain_loss < 0 then 0 
+         else 0 end,
+    case when new.total_unrealized_gain_loss > 0 then new.total_unrealized_gain_loss 
+         when new.total_unrealized_gain_loss < 0 then abs(new.total_unrealized_gain_loss) 
+         else 0 end,
+    case when new.total_unrealized_gain_loss > 0 then 0 
+         when new.total_unrealized_gain_loss < 0 then 0 
+         else 0 end
+  where new.total_unrealized_gain_loss != 0;
+
+  -- For unrealized gain/loss - offsetting line
+  insert into journal_entry_line_auto_number (
+    journal_entry_ref,
+    account_code,
+    db,
+    cr,
+    db_functional,
+    cr_functional
+  )
+  select
+    last_insert_rowid(),
+    case when new.total_unrealized_gain_loss > 0 then 71200 else 21500 end, -- FX Gain or Liability FX Account
+    case when new.total_unrealized_gain_loss < 0 then 0 
+         when new.total_unrealized_gain_loss > 0 then 0 
+         else 0 end,
+    case when new.total_unrealized_gain_loss > 0 then new.total_unrealized_gain_loss 
+         when new.total_unrealized_gain_loss < 0 then abs(new.total_unrealized_gain_loss) 
+         else 0 end,
+    case when new.total_unrealized_gain_loss < 0 then 0 
+         when new.total_unrealized_gain_loss > 0 then 0 
+         else 0 end,
+    case when new.total_unrealized_gain_loss > 0 then new.total_unrealized_gain_loss 
+         when new.total_unrealized_gain_loss < 0 then abs(new.total_unrealized_gain_loss) 
+         else 0 end
+  where new.total_unrealized_gain_loss != 0;
+
+  -- Post the journal entry immediately
+  update journal_entry
+  set post_time = new.revaluation_date
+  where ref = last_insert_rowid();
+
+  -- Link back to revaluation run
+  update fx_revaluation_run
+  set journal_entry_ref = last_insert_rowid()
+  where id = new.id;
+end;
 
 commit transaction;
