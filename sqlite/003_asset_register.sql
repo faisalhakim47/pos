@@ -454,14 +454,15 @@ begin
   ))
   where id = new.id;
   
-  -- Create journal entry for asset disposal (always create if disposal_date is set)
+  -- Create journal entry for asset disposal - only if there are disposal proceeds
   insert into journal_entry (
     transaction_time,
     note
-  ) values (
+  )
+  select
     new.disposal_date,
     'Asset Disposal - ' || new.name || ' (#' || new.asset_number || ')'
-  );
+  where coalesce(new.disposal_proceeds, 0) > 0;
   
   -- DR Cash (disposal proceeds) - only if proceeds > 0
   insert into journal_entry_line_auto_number (
@@ -481,7 +482,7 @@ begin
     0
   where coalesce(new.disposal_proceeds, 0) > 0;
   
-  -- DR Accumulated Depreciation (always if there's accumulated depreciation)
+  -- DR Accumulated Depreciation (only if there are disposal proceeds and accumulated depreciation)
   insert into journal_entry_line_auto_number (
     journal_entry_ref,
     account_code,
@@ -503,9 +504,10 @@ begin
         where fixed_asset_id = new.id
           and period_start_date <= new.disposal_date) calc
   where ac.id = new.asset_category_id
-    and calc.accumulated_dep > 0;
+    and calc.accumulated_dep > 0
+    and coalesce(new.disposal_proceeds, 0) > 0;
   
-  -- CR Asset Cost (always)
+  -- CR Asset Cost (only if there are disposal proceeds)
   insert into journal_entry_line_auto_number (
     journal_entry_ref,
     account_code,
@@ -522,9 +524,10 @@ begin
     0,
     new.purchase_cost
   from asset_category ac
-  where ac.id = new.asset_category_id;
+  where ac.id = new.asset_category_id
+    and coalesce(new.disposal_proceeds, 0) > 0;
   
-  -- Handle gain/loss on disposal (if any)
+  -- Handle gain/loss on disposal (only if there are disposal proceeds and gain/loss is not zero)
   insert into journal_entry_line_auto_number (
     journal_entry_ref,
     account_code,
@@ -546,12 +549,18 @@ begin
                  where fixed_asset_id = new.id
                    and period_start_date <= new.disposal_date
                )) as gain_loss) calc
-  where calc.gain_loss != 0;
+  where calc.gain_loss != 0
+    and coalesce(new.disposal_proceeds, 0) > 0;
   
-  -- Post the journal entry immediately
+  -- Post the journal entry immediately (only if it was created)
   update journal_entry
   set post_time = new.disposal_date
-  where ref = last_insert_rowid();
+  where ref = last_insert_rowid()
+    and exists (
+      select 1 from journal_entry 
+      where ref = last_insert_rowid() 
+        and note like 'Asset Disposal - %'
+    );
 end;
 
 -- Commit the transaction to finalize all schema changes

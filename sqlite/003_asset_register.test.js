@@ -1,156 +1,13 @@
 // @ts-check
 
-import { mkdir, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
-const __dirname = new URL('.', import.meta.url).pathname;
-
-// Generate a unique test run ID for this process
-const testRunId = Date.now().toString(36).toLowerCase();
-
-// Test fixtures and helpers
-class TestFixture {
-  /**
-   * @param {string} label - Label for the test case (should be unique per test case)
-   */
-  constructor(label) {
-    this.label = label.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
-    this.testRunId = testRunId;
-    this.uniqueId = Math.random().toString(36).substring(2, 8);
-    this.coreSchemaFilePath = join(__dirname, '001_core_accounting.sql');
-    this.assetSchemaFilePath = join(__dirname, '003_asset_register.sql');
-    this.coreSchemaFileContent = null;
-    this.assetSchemaFileContent = null;
-    this.setupDb = null;
-    this.dbPath = null;
-  }
-
-  get db() {
-    if (this.setupDb instanceof DatabaseSync) {
-      return this.setupDb;
-    }
-    throw new Error('Database not initialized. Call setup() first.');
-  }
-
-  async setup() {
-    // Load both core accounting and asset register schemas
-    this.coreSchemaFileContent = await readFile(this.coreSchemaFilePath, { encoding: 'utf8' });
-    this.assetSchemaFileContent = await readFile(this.assetSchemaFilePath, { encoding: 'utf8' });
-
-    const tempDir = join(tmpdir(), 'pos-sql-tests');
-    await mkdir(tempDir, { recursive: true });
-    this.dbPath = join(
-      tempDir,
-      `${this.testRunId}_${this.uniqueId}_asset_register_${this.label}.db`,
-    );
-    this.setupDb = new DatabaseSync(this.dbPath);
-
-    // Execute schemas in order: core accounting first, then asset register
-    try {
-      this.db.exec(this.coreSchemaFileContent);
-      this.db.exec(this.assetSchemaFileContent);
-
-      // Verify that required tables were created
-      const requiredTables = ['fixed_asset', 'asset_category', 'depreciation_period', 'asset_modification'];
-      for (const tableName of requiredTables) {
-        const tableExists = this.db.prepare(`
-          SELECT name FROM sqlite_master WHERE type='table' AND name=?
-        `)?.get(tableName) ?? {};
-
-        if (!tableExists) {
-          throw new Error(`${tableName} table was not created for test: ${this.label}`);
-        }
-      }
-    }
-    catch (error) {
-      throw new Error(`Schema execution failed for ${this.label}: ${error.message}`);
-    }
-
-    return this.db;
-  }
-
-  /**
-   * Setup with initial data for enhanced tests that need account structure
-   */
-  async setupWithInitialData() {
-    await this.setup();
-
-    // Add standard account structure if not exists
-    this.db.prepare(`
-      INSERT OR IGNORE INTO account (code, name, account_type_name, currency_code)
-      VALUES
-        (10100, 'Cash', 'asset', 'USD'),
-        (12200, 'Buildings', 'asset', 'USD'),
-        (12210, 'Accumulated Depreciation - Buildings', 'asset', 'USD'),
-        (12300, 'Vehicles', 'asset', 'USD'),
-        (12310, 'Accumulated Depreciation - Vehicles', 'asset', 'USD'),
-        (12400, 'Office Equipment', 'asset', 'USD'),
-        (12410, 'Accumulated Depreciation - Office Equipment', 'asset', 'USD'),
-        (12500, 'Computer Equipment', 'asset', 'USD'),
-        (12510, 'Accumulated Depreciation - Computer Equipment', 'asset', 'USD'),
-        (12600, 'Manufacturing Equipment', 'asset', 'USD'),
-        (12610, 'Accumulated Depreciation - Manufacturing Equipment', 'asset', 'USD'),
-        (61100, 'Depreciation Expense', 'expense', 'USD'),
-        (40400, 'Gain on Disposal of Assets', 'revenue', 'USD'),
-        (51500, 'Loss on Disposal of Assets', 'expense', 'USD')
-    `).run();
-
-    return this.db;
-  }
-
-  /**
-   * Create a test asset with standard parameters
-   * @param {object} options - Asset creation options
-   * @returns {object} Asset creation result with id
-   */
-  createTestAsset(options = {}) {
-    const defaults = {
-      asset_number: `TEST-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-      name: 'Test Asset',
-      description: 'Asset created for testing',
-      asset_category_id: 1, // Buildings category
-      purchase_date: 1672531200, // 2023-01-01
-      purchase_cost: 100000, // $1,000 in cents
-      salvage_value: 10000,   // $100 in cents
-      useful_life_years: 10,
-      depreciation_method: 'straight_line',
-      active_time: 1672531200, // Same as purchase_date by default
-    };
-
-    const assetData = { ...defaults, ...options };
-
-    const result = this.db.prepare(`
-      insert into fixed_asset (
-        asset_number, name, description, asset_category_id, purchase_date,
-        purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      assetData.asset_number,
-      assetData.name,
-      assetData.description,
-      assetData.asset_category_id,
-      assetData.purchase_date,
-      assetData.purchase_cost,
-      assetData.salvage_value,
-      assetData.useful_life_years,
-      assetData.depreciation_method,
-      assetData.active_time,
-    );
-
-    return {
-      id: result.lastInsertRowid,
-      ...assetData,
-    };
-  }
-}
+import { AssetRegisterTestFixture } from './test-utils/asset-register-test-fixture.js';
 
 test('Asset Register Schema Validation', async function (t) {
   await t.test('schema creates all required tables and indexes', async function (t) {
-    const fixture = new TestFixture('schema_validation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('schema_validation');
+    await fixture.setup();
 
     // Verify all expected tables exist
     const expectedTables = [
@@ -159,9 +16,9 @@ test('Asset Register Schema Validation', async function (t) {
     ];
 
     for (const tableName of expectedTables) {
-      const table = db.prepare(`
+      const table = fixture.db.prepare(`
         SELECT name FROM sqlite_master WHERE type='table' AND name=?
-      `)?.get(tableName) ?? {};
+      `).get(tableName);
       t.assert.equal(!!table, true, `Table ${tableName} should exist`);
     }
 
@@ -175,19 +32,21 @@ test('Asset Register Schema Validation', async function (t) {
     ];
 
     for (const indexName of expectedIndexes) {
-      const index = db.prepare(`
+      const index = fixture.db.prepare(`
         SELECT name FROM sqlite_master WHERE type='index' AND name=?
-      `)?.get(indexName) ?? {};
+      `).get(indexName);
       t.assert.equal(!!index, true, `Index ${indexName} should exist`);
     }
+
+    fixture.cleanup();
   });
 
   await t.test('asset categories are properly seeded with correct account mappings', async function (t) {
-    const fixture = new TestFixture('asset_categories_seeded');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('asset_categories_seeded');
+    await fixture.setup();
 
     // Verify expected categories exist
-    const categories = db.prepare('SELECT * FROM asset_category ORDER BY name').all();
+    const categories = fixture.getAssetCategories();
     t.assert.equal(categories.length >= 5, true, 'Should have at least 5 asset categories');
 
     const categoryNames = categories.map(c => c.name);
@@ -204,35 +63,37 @@ test('Asset Register Schema Validation', async function (t) {
       t.assert.equal(typeof category.depreciation_expense_account_code, 'number', `${category.name} should have depreciation expense account code`);
 
       // Verify accounts exist in chart of accounts
-      const assetAccount = db.prepare('SELECT * FROM account WHERE code = ?')?.get(category.asset_account_code) ?? {};
-      const accumDepAccount = db.prepare('SELECT * FROM account WHERE code = ?')?.get(category.accumulated_depreciation_account_code) ?? {};
-      const depExpAccount = db.prepare('SELECT * FROM account WHERE code = ?')?.get(category.depreciation_expense_account_code) ?? {};
+      const assetAccount = fixture.db.prepare('SELECT * FROM account WHERE code = ?').get(category.asset_account_code);
+      const accumDepAccount = fixture.db.prepare('SELECT * FROM account WHERE code = ?').get(category.accumulated_depreciation_account_code);
+      const depExpAccount = fixture.db.prepare('SELECT * FROM account WHERE code = ?').get(category.depreciation_expense_account_code);
 
       t.assert.equal(!!assetAccount, true, `Asset account ${category.asset_account_code} for ${category.name} should exist`);
       t.assert.equal(!!accumDepAccount, true, `Accumulated depreciation account ${category.accumulated_depreciation_account_code} for ${category.name} should exist`);
       t.assert.equal(!!depExpAccount, true, `Depreciation expense account ${category.depreciation_expense_account_code} for ${category.name} should exist`);
 
       // Verify account types are correct
-      t.assert.equal(assetAccount.account_type_name, 'asset', `Asset account for ${category.name} should be asset type`);
-      t.assert.equal(accumDepAccount.account_type_name, 'contra_asset', `Accumulated depreciation for ${category.name} should be contra_asset type`);
-      t.assert.equal(depExpAccount.account_type_name, 'expense', `Depreciation expense for ${category.name} should be expense type`);
+      t.assert.equal(assetAccount?.account_type_name, 'asset', `Asset account for ${category.name} should be asset type`);
+      t.assert.equal(accumDepAccount?.account_type_name, 'contra_asset', `Accumulated depreciation for ${category.name} should be contra_asset type`);
+      t.assert.equal(depExpAccount?.account_type_name, 'expense', `Depreciation expense for ${category.name} should be expense type`);
     }
 
     // Test specific category configurations
-    const buildings = categories.find(c => c.name === 'Buildings') ?? {};
-    t.assert.equal(buildings.default_depreciation_method, 'straight_line', 'Buildings should use straight-line depreciation');
-    t.assert.equal(buildings.useful_life_years, 25, 'Buildings should have 25-year useful life');
+    const buildings = categories.find(c => c.name === 'Buildings');
+    t.assert.equal(buildings?.default_depreciation_method, 'straight_line', 'Buildings should use straight-line depreciation');
+    t.assert.equal(buildings?.useful_life_years, 25, 'Buildings should have 25-year useful life');
 
-    const officeEquip = categories.find(c => c.name === 'Office Equipment') ?? {};
-    t.assert.equal(officeEquip.default_depreciation_method, 'declining_balance', 'Office Equipment should use declining balance');
-    t.assert.equal(officeEquip.default_declining_balance_rate, 0.4, 'Office Equipment should have 40% declining balance rate');
+    const officeEquip = categories.find(c => c.name === 'Office Equipment');
+    t.assert.equal(officeEquip?.default_depreciation_method, 'declining_balance', 'Office Equipment should use declining balance');
+    t.assert.equal(officeEquip?.default_declining_balance_rate, 0.4, 'Office Equipment should have 40% declining balance rate');
+
+    fixture.cleanup();
   });
 });
 
 test('Fixed Asset CRUD Operations', async function (t) {
   await t.test('creates asset with valid data and proper defaults', async function (t) {
-    const fixture = new TestFixture('asset_creation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('asset_creation');
+    await fixture.setup();
 
     const assetData = fixture.createTestAsset({
       asset_number: 'TEST-ASSET-001',
@@ -245,26 +106,27 @@ test('Fixed Asset CRUD Operations', async function (t) {
     });
 
     // Verify asset was created correctly
-    const asset = db.prepare('SELECT * FROM fixed_asset WHERE id = ?')?.get(assetData.id) ?? {};
+    const asset = fixture.getAssetWithStatus(assetData.id);
 
-    t.assert.equal(asset.asset_number, 'TEST-ASSET-001', 'Asset number should match');
-    t.assert.equal(asset.name, 'Test Building', 'Asset name should match');
-    t.assert.equal(asset.purchase_cost, 500000, 'Purchase cost should match');
-    t.assert.equal(asset.salvage_value, 50000, 'Salvage value should match');
-    t.assert.equal(asset.useful_life_years, 25, 'Useful life should match');
-    t.assert.equal(asset.depreciation_method, 'straight_line', 'Depreciation method should match');
+    t.assert.equal(asset?.asset_number, 'TEST-ASSET-001', 'Asset number should match');
+    t.assert.equal(asset?.name, 'Test Building', 'Asset name should match');
+    t.assert.equal(asset?.purchase_cost, 500000, 'Purchase cost should match');
+    t.assert.equal(asset?.salvage_value, 50000, 'Salvage value should match');
+    t.assert.equal(asset?.useful_life_years, 25, 'Useful life should match');
+    t.assert.equal(asset?.depreciation_method, 'straight_line', 'Depreciation method should match');
 
     // Verify timestamp-based status
-    t.assert.notEqual(asset.active_time, null, 'Asset should have active_time set');
-    t.assert.equal(asset.disposed_time, null, 'Asset should not have disposed_time set');
+    t.assert.notEqual(asset?.active_time, null, 'Asset should have active_time set');
+    t.assert.equal(asset?.disposed_time, null, 'Asset should not have disposed_time set');
 
     // Verify computed status through view
-    const assetWithStatus = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?')?.get(assetData.id) ?? {};
-    t.assert.equal(assetWithStatus.status, 'active', 'Asset status should be computed as active');
+    t.assert.equal(asset?.status, 'active', 'Asset status should be computed as active');
+
+    fixture.cleanup();
   });
 
   await t.test('enforces asset number uniqueness constraint', async function (t) {
-    const fixture = new TestFixture('asset_uniqueness');
+    const fixture = new AssetRegisterTestFixture('asset_uniqueness');
     await fixture.setup();
 
     const assetNumber = 'UNIQUE-TEST-001';
@@ -276,10 +138,12 @@ test('Fixed Asset CRUD Operations', async function (t) {
     t.assert.throws(() => {
       fixture.createTestAsset({ asset_number: assetNumber });
     }, /UNIQUE constraint failed/, 'Should reject duplicate asset numbers');
+
+    fixture.cleanup();
   });
 
   await t.test('validates asset cost constraints', async function (t) {
-    const fixture = new TestFixture('asset_cost_validation');
+    const fixture = new AssetRegisterTestFixture('asset_cost_validation');
     await fixture.setup();
 
     // Test salvage value >= purchase cost (should fail)
@@ -298,8 +162,6 @@ test('Fixed Asset CRUD Operations', async function (t) {
     }, /salvage_value must be less than purchase_cost/, 'Should reject salvage value greater than purchase cost');
 
     // Test negative or zero purchase cost (should fail)
-    // Note: salvage_value must be set to a valid value less than purchase_cost
-    // to avoid trigger validation firing first
     t.assert.throws(() => {
       fixture.createTestAsset({
         purchase_cost: 0,
@@ -313,15 +175,17 @@ test('Fixed Asset CRUD Operations', async function (t) {
         salvage_value: -2000, // Set lower to be less than purchase_cost
       });
     }, /CHECK constraint failed/, 'Should reject negative purchase cost');
+
+    fixture.cleanup();
   });
 
   await t.test('validates depreciation method parameters', async function (t) {
-    const fixture = new TestFixture('depreciation_method_validation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('depreciation_method_validation');
+    await fixture.setup();
 
     // Test declining balance without rate (should fail)
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         insert into fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
           purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
@@ -341,7 +205,7 @@ test('Fixed Asset CRUD Operations', async function (t) {
 
     // Test units of production without units (should fail)
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         insert into fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
           purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
@@ -360,32 +224,21 @@ test('Fixed Asset CRUD Operations', async function (t) {
     }, /useful_life_units is required/, 'Should require units for units of production method');
 
     // Test valid declining balance asset
-    const dbAsset = db.prepare(`
-      insert into fixed_asset (
-        asset_number, name, asset_category_id, purchase_date,
-        purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        declining_balance_rate, active_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      'DB-VALID',
-      'Valid Declining Balance Asset',
-      1,
-      1672531200,
-      100000,
-      10000,
-      10,
-      'declining_balance',
-      0.3,
-      1672531200,
-    );
+    const dbAsset = fixture.createDecliningBalanceAsset({
+      asset_number: 'DB-VALID',
+      name: 'Valid Declining Balance Asset',
+    });
 
-    t.assert.equal(dbAsset.changes, 1, 'Valid declining balance asset should be created');
+    t.assert.equal(!!dbAsset.id, true, 'Valid declining balance asset should be created');
+
+    fixture.cleanup();
   });
 });
+
 test('Asset Depreciation Calculations', async function (t) {
   await t.test('calculates straight-line depreciation correctly', async function (t) {
-    const fixture = new TestFixture('straight_line_calculation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('straight_line_calculation');
+    await fixture.setup();
 
     // Create asset with known values for calculation testing
     const assetData = fixture.createTestAsset({
@@ -398,156 +251,109 @@ test('Asset Depreciation Calculations', async function (t) {
     });
 
     // Test the calculation view
-    const calculation = db.prepare(`
-      SELECT * FROM calculate_straight_line_depreciation
-      WHERE fixed_asset_id = ?
-    `)?.get(assetData.id) ?? {};
+    const calculation = fixture.getStraightLineCalculation(assetData.id);
 
     t.assert.equal(!!calculation, true, 'Should find calculation record');
 
     // Annual depreciation = (Cost - Salvage) / Useful Life = (120000 - 20000) / 10 = 10000
-    t.assert.equal(calculation.annual_depreciation, 10000, 'Annual depreciation should be 10000');
+    t.assert.equal(calculation?.annual_depreciation, 10000, 'Annual depreciation should be 10000');
 
     // Monthly depreciation = Annual / 12 = 10000 / 12 = 833 (rounded)
-    t.assert.equal(calculation.monthly_depreciation, 833, 'Monthly depreciation should be 833');
+    t.assert.equal(calculation?.monthly_depreciation, 833, 'Monthly depreciation should be 833');
+
+    fixture.cleanup();
   });
 
   await t.test('calculates declining balance depreciation correctly', async function (t) {
-    const fixture = new TestFixture('declining_balance_calculation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('declining_balance_calculation');
+    await fixture.setup();
 
     // Create declining balance asset
-    const assetResult = db.prepare(`
-      insert into fixed_asset (
-        asset_number, name, asset_category_id, purchase_date,
-        purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        declining_balance_rate, active_time
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      'DB-TEST-001',
-      'Declining Balance Test Asset',
-      3, // Office Equipment category (has declining balance as default)
-      1672531200,
-      100000,  // $1,000
-      10000,   // $100 salvage
-      5,       // 5 years
-      'declining_balance',
-      0.4,      // 40% rate
-      1672531200,
-    );
-
-    const assetId = assetResult.lastInsertRowid;
+    const assetData = fixture.createDecliningBalanceAsset({
+      asset_number: 'DB-TEST-001',
+      name: 'Declining Balance Test Asset',
+      purchase_cost: 100000,  // $1,000
+      salvage_value: 10000,   // $100 salvage
+      useful_life_years: 5,   // 5 years
+      declining_balance_rate: 0.4, // 40% rate
+    });
 
     // Test initial calculation (no prior depreciation)
-    const calculation = db.prepare(`
-      SELECT * FROM calculate_declining_balance_depreciation
-      WHERE fixed_asset_id = ?
-    `)?.get(assetId) ?? {};
+    const calculation = fixture.getDecliningBalanceCalculation(assetData.id);
 
     t.assert.equal(!!calculation, true, 'Should find declining balance calculation');
-    t.assert.equal(calculation.declining_balance_rate, 0.4, 'Rate should be 0.4');
-    t.assert.equal(calculation.current_book_value, 100000, 'Initial book value should equal purchase cost');
-    t.assert.equal(calculation.next_year_depreciation, 40000, 'First year depreciation should be 100000 * 0.4 = 40000');
-    t.assert.equal(calculation.next_month_depreciation, 3333, 'Monthly depreciation should be approximately 3333');
+    t.assert.equal(calculation?.declining_balance_rate, 0.4, 'Rate should be 0.4');
+    t.assert.equal(calculation?.current_book_value, 100000, 'Initial book value should equal purchase cost');
+    t.assert.equal(calculation?.next_year_depreciation, 40000, 'First year depreciation should be 100000 * 0.4 = 40000');
+    t.assert.equal(calculation?.next_month_depreciation, 3333, 'Monthly depreciation should be approximately 3333');
 
     // Add a depreciation period and test recalculation
-    db.prepare(`
-      INSERT INTO depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value,
-        calculation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      assetId,
-      1672531200, // 2023-01-01
-      1704067200, // 2024-01-01
-      40000,      // First year depreciation
-      40000,      // Accumulated
-      60000,      // Remaining book value
-      'declining_balance',
-    );
+    fixture.addDepreciationPeriod(assetData.id, {
+      period_start_date: 1672531200, // 2023-01-01
+      period_end_date: 1704067200,   // 2024-01-01
+      depreciation_amount: 40000,    // First year depreciation
+      accumulated_depreciation: 40000, // Accumulated
+      book_value: 60000,             // Remaining book value
+      calculation_method: 'declining_balance',
+    });
 
     // Test calculation after first year
-    const recalculation = db.prepare(`
-      SELECT * FROM calculate_declining_balance_depreciation
-      WHERE fixed_asset_id = ?
-    `)?.get(assetId) ?? {};
+    const recalculation = fixture.getDecliningBalanceCalculation(assetData.id);
 
-    t.assert.equal(recalculation.current_accumulated_depreciation, 40000, 'Should reflect accumulated depreciation');
-    t.assert.equal(recalculation.current_book_value, 60000, 'Book value should be reduced');
-    t.assert.equal(recalculation.next_year_depreciation, 24000, 'Second year depreciation should be 60000 * 0.4 = 24000');
+    t.assert.equal(recalculation?.current_accumulated_depreciation, 40000, 'Should reflect accumulated depreciation');
+    t.assert.equal(recalculation?.current_book_value, 60000, 'Book value should be reduced');
+    t.assert.equal(recalculation?.next_year_depreciation, 24000, 'Second year depreciation should be 60000 * 0.4 = 24000');
+
+    fixture.cleanup();
   });
 
   await t.test('calculates units of production depreciation correctly', async function (t) {
-    const fixture = new TestFixture('units_of_production_calculation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('units_of_production_calculation');
+    await fixture.setup();
 
     // Create units of production asset
-    const assetResult = db.prepare(`
-      INSERT INTO fixed_asset (
-        asset_number, name, asset_category_id, purchase_date,
-        purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        useful_life_units, active_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      'UOP-TEST-001',
-      'Units Production Test Asset',
-      5, // Manufacturing Equipment category
-      1672531200,
-      200000,    // $2,000
-      20000,     // $200 salvage
-      10,        // 10 years
-      'units_of_production',
-      100000,     // 100,000 units total capacity
-      1672531200,
-    );
-
-    const assetId = assetResult.lastInsertRowid;
+    const assetData = fixture.createUnitsOfProductionAsset({
+      asset_number: 'UOP-TEST-001',
+      name: 'Units Production Test Asset',
+      purchase_cost: 200000,    // $2,000
+      salvage_value: 20000,     // $200 salvage
+      useful_life_years: 10,    // 10 years
+      useful_life_units: 100000, // 100,000 units total capacity
+    });
 
     // Test calculation view
-    const calculation = db.prepare(`
-      SELECT * FROM calculate_units_of_production_depreciation
-      WHERE fixed_asset_id = ?
-    `)?.get(assetId) ?? {};
+    const calculation = fixture.getUnitsOfProductionCalculation(assetData.id);
 
     t.assert.equal(!!calculation, true, 'Should find units of production calculation');
-    t.assert.equal(calculation.useful_life_units, 100000, 'Should have correct useful life units');
+    t.assert.equal(calculation?.useful_life_units, 100000, 'Should have correct useful life units');
 
     // Depreciation per unit = (Cost - Salvage) / Total Units = (200000 - 20000) / 100000 = 1.8
-    t.assert.equal(calculation.depreciation_per_unit, 1.8, 'Depreciation per unit should be 1.8');
-    t.assert.equal(calculation.total_units_used, 0, 'Should start with zero units used');
-    t.assert.equal(calculation.current_accumulated_depreciation, 0, 'Should start with zero accumulated depreciation');
+    t.assert.equal(calculation?.depreciation_per_unit, 1.8, 'Depreciation per unit should be 1.8');
+    t.assert.equal(calculation?.total_units_used, 0, 'Should start with zero units used');
+    t.assert.equal(calculation?.current_accumulated_depreciation, 0, 'Should start with zero accumulated depreciation');
 
     // Add usage and test
-    db.prepare(`
-      INSERT INTO asset_usage (
-        fixed_asset_id, period_start_date, period_end_date,
-        units_used, cumulative_units
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(
-      assetId,
-      1672531200, // 2023-01-01
-      1675209600, // 2023-02-01
-      5000,       // 5,000 units used
-      5000,        // 5,000 cumulative
-    );
+    fixture.addAssetUsage(assetData.id, {
+      period_start_date: 1672531200, // 2023-01-01
+      period_end_date: 1675209600,   // 2023-02-01
+      units_used: 5000,       // 5,000 units used
+      cumulative_units: 5000, // 5,000 cumulative
+    });
 
     // Recalculate after usage
-    const updatedCalculation = db.prepare(`
-      SELECT * FROM calculate_units_of_production_depreciation
-      WHERE fixed_asset_id = ?
-    `)?.get(assetId) ?? {};
+    const updatedCalculation = fixture.getUnitsOfProductionCalculation(assetData.id);
 
-    t.assert.equal(updatedCalculation.total_units_used, 5000, 'Should reflect units used');
+    t.assert.equal(updatedCalculation?.total_units_used, 5000, 'Should reflect units used');
     // Expected depreciation = 5000 units * 1.8 per unit = 9000
-    // We need to add a depreciation period to see accumulated depreciation
+
+    fixture.cleanup();
   });
 });
 
 test('Asset Lifecycle Management', async function (t) {
   await t.test('manages depreciation periods correctly', async function (t) {
-    const fixture = new TestFixture('depreciation_periods');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('depreciation_periods');
+    await fixture.setup();
 
     // Create test asset
     const assetData = fixture.createTestAsset({
@@ -572,50 +378,45 @@ test('Asset Lifecycle Management', async function (t) {
       const accumulatedDep = annualDepreciation * period.year;
       const bookValue = assetData.purchase_cost - accumulatedDep;
 
-      const result = db.prepare(`
-        INSERT INTO depreciation_period (
-          fixed_asset_id, period_start_date, period_end_date,
-          depreciation_amount, accumulated_depreciation, book_value,
-          calculation_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        assetData.id,
-        startDate,
-        period.endDate,
-        annualDepreciation,
-        accumulatedDep,
-        bookValue,
-        'straight_line',
-      );
+      const periodId = fixture.addDepreciationPeriod(assetData.id, {
+        period_start_date: startDate,
+        period_end_date: period.endDate,
+        depreciation_amount: annualDepreciation,
+        accumulated_depreciation: accumulatedDep,
+        book_value: bookValue,
+        calculation_method: 'straight_line',
+      });
 
-      t.assert.equal(result.changes, 1, `Should create depreciation period for year ${period.year}`);
+      t.assert.equal(!!periodId, true, `Should create depreciation period for year ${period.year}`);
     }
 
     // Verify depreciation schedule
-    const schedule = db.prepare(`
+    const schedule = fixture.db.prepare(`
       SELECT * FROM depreciation_period
       WHERE fixed_asset_id = ?
       ORDER BY period_end_date
     `).all(assetData.id);
 
     t.assert.equal(schedule.length, 3, 'Should have 3 depreciation periods');
-    t.assert.equal(schedule[0].depreciation_amount, 9000, 'Each period should have consistent depreciation amount');
-    t.assert.equal(schedule[2].accumulated_depreciation, 27000, 'Third year accumulated should be 27000');
-    t.assert.equal(schedule[2].book_value, 33000, 'Third year book value should be 33000');
+    t.assert.equal(schedule[0]?.depreciation_amount, 9000, 'Each period should have consistent depreciation amount');
+    t.assert.equal(schedule[2]?.accumulated_depreciation, 27000, 'Third year accumulated should be 27000');
+    t.assert.equal(schedule[2]?.book_value, 33000, 'Third year book value should be 33000');
 
     // Verify periods are properly sequenced
     for (let i = 1; i < schedule.length; i++) {
       t.assert.equal(
-        (schedule[i-1]?.period_end_date ?? NaN) <= (schedule[i]?.period_start_date ?? NaN),
+        Number(schedule[i-1]?.period_end_date) <= Number(schedule[i]?.period_start_date),
         true,
         'Periods should be properly sequenced',
       );
     }
+
+    fixture.cleanup();
   });
 
   await t.test('tracks asset disposal properly', async function (t) {
-    const fixture = new TestFixture('asset_disposal');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('asset_disposal');
+    await fixture.setup();
 
     // Create asset
     const assetData = fixture.createTestAsset({
@@ -626,49 +427,40 @@ test('Asset Lifecycle Management', async function (t) {
     });
 
     // Add some depreciation history
-    db.prepare(`
-      INSERT INTO depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value,
-        calculation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      assetData.id,
-      1609459200, // 2021-01-01
-      1640995200, // 2022-01-01
-      9000,       // Annual depreciation
-      9000,       // Accumulated
-      141000,     // Book value after first year
-      'straight_line',
-    );
+    fixture.addDepreciationPeriod(assetData.id, {
+      period_start_date: 1609459200, // 2021-01-01
+      period_end_date: 1640995200,   // 2022-01-01
+      depreciation_amount: 9000,     // Annual depreciation
+      accumulated_depreciation: 9000, // Accumulated
+      book_value: 141000,            // Book value after first year
+      calculation_method: 'straight_line',
+    });
 
     // Test disposal with valid date
     const disposalDate = 1672531200; // 2023-01-01
     const disposalProceeds = 130000; // $1,300
 
-    const disposalResult = db.prepare(`
-      UPDATE fixed_asset SET
-        disposed_time = ?,
-        disposal_date = ?,
-        disposal_proceeds = ?
-      WHERE id = ?
-    `).run(disposalDate, disposalDate, disposalProceeds, assetData.id);
+    const success = fixture.disposeAsset(Number(assetData.id), {
+      disposal_date: disposalDate,
+      disposed_time: disposalDate,
+      disposal_proceeds: disposalProceeds,
+    });
 
-    t.assert.equal(disposalResult.changes, 1, 'Should successfully update asset for disposal');
+    t.assert.equal(success, true, 'Should successfully dispose asset');
 
     // Verify disposal information
-    const disposedAsset = db.prepare(`
-      SELECT * FROM fixed_asset_with_status WHERE id = ?
-    `)?.get(assetData.id) ?? {};
+    const disposedAsset = fixture.getAssetWithStatus(assetData.id);
 
-    t.assert.equal(disposedAsset.status, 'disposed', 'Asset status should be disposed');
-    t.assert.equal(disposedAsset.disposal_date, disposalDate, 'Disposal date should match');
-    t.assert.equal(disposedAsset.disposal_proceeds, disposalProceeds, 'Disposal proceeds should match');
+    t.assert.equal(disposedAsset?.status, 'disposed', 'Asset status should be disposed');
+    t.assert.equal(disposedAsset?.disposal_date, disposalDate, 'Disposal date should match');
+    t.assert.equal(disposedAsset?.disposal_proceeds, disposalProceeds, 'Disposal proceeds should match');
+
+    fixture.cleanup();
   });
 
   await t.test('prevents invalid disposal dates', async function (t) {
-    const fixture = new TestFixture('invalid_disposal_dates');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('invalid_disposal_dates');
+    await fixture.setup();
 
     const assetData = fixture.createTestAsset({
       purchase_date: 1672531200, // 2023-01-01
@@ -676,7 +468,7 @@ test('Asset Lifecycle Management', async function (t) {
 
     // Try to dispose with date before purchase (should fail)
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         UPDATE fixed_asset SET
           disposed_time = ?,
           disposal_date = ?
@@ -686,16 +478,18 @@ test('Asset Lifecycle Management', async function (t) {
 
     // Try to set disposed_time without disposal_date (should fail)
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         UPDATE fixed_asset SET disposed_time = ?
         WHERE id = ?
       `).run(1672531200, assetData.id);
     }, /disposal_date is required/, 'Should require disposal date when disposed_time is set');
+
+    fixture.cleanup();
   });
 
   await t.test('tracks asset modifications and improvements', async function (t) {
-    const fixture = new TestFixture('asset_modifications');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('asset_modifications');
+    await fixture.setup();
 
     const assetData = fixture.createTestAsset({
       asset_number: 'MOD-TEST-001',
@@ -728,25 +522,19 @@ test('Asset Lifecycle Management', async function (t) {
     ];
 
     for (const mod of modifications) {
-      const result = db.prepare(`
-        INSERT INTO asset_modification (
-          fixed_asset_id, modification_date, modification_type,
-          description, cost, capitalizable
-        ) VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        assetData.id,
-        mod.date,
-        mod.type,
-        mod.description,
-        mod.cost,
-        mod.capitalizable,
-      );
+      const modId = fixture.addAssetModification(assetData.id, {
+        modification_date: mod.date,
+        modification_type: mod.type,
+        description: mod.description,
+        cost: mod.cost,
+        capitalizable: mod.capitalizable,
+      });
 
-      t.assert.equal(result.changes, 1, `Should insert ${mod.type} modification`);
+      t.assert.equal(!!modId, true, `Should insert ${mod.type} modification`);
     }
 
     // Verify modifications were recorded
-    const allMods = db.prepare(`
+    const allMods = fixture.db.prepare(`
       SELECT * FROM asset_modification
       WHERE fixed_asset_id = ?
       ORDER BY modification_date
@@ -755,25 +543,27 @@ test('Asset Lifecycle Management', async function (t) {
     t.assert.equal(allMods.length, 3, 'Should have 3 modifications');
 
     // Test capitalization logic
-    const maintenanceMod = allMods.find(m => m.modification_type === 'maintenance') ?? {};
-    const improvementMod = allMods.find(m => m.modification_type === 'improvement') ?? {};
-    const repairMod = allMods.find(m => m.modification_type === 'major_repair') ?? {};
+    const maintenanceMod = allMods.find(m => m.modification_type === 'maintenance');
+    const improvementMod = allMods.find(m => m.modification_type === 'improvement');
+    const repairMod = allMods.find(m => m.modification_type === 'major_repair');
 
-    t.assert.equal(maintenanceMod.capitalizable, 0, 'Maintenance should not be capitalizable');
-    t.assert.equal(improvementMod.capitalizable, 1, 'Improvement should be capitalizable');
-    t.assert.equal(repairMod.capitalizable, 1, 'Major repair should be capitalizable');
+    t.assert.equal(maintenanceMod?.capitalizable, 0, 'Maintenance should not be capitalizable');
+    t.assert.equal(improvementMod?.capitalizable, 1, 'Improvement should be capitalizable');
+    t.assert.equal(repairMod?.capitalizable, 1, 'Major repair should be capitalizable');
 
     // Verify cost tracking
-    t.assert.equal(maintenanceMod.cost, 5000, 'Maintenance cost should match');
-    t.assert.equal(improvementMod.cost, 25000, 'Improvement cost should match');
-    t.assert.equal(repairMod.cost, 15000, 'Repair cost should match');
+    t.assert.equal(maintenanceMod?.cost, 5000, 'Maintenance cost should match');
+    t.assert.equal(improvementMod?.cost, 25000, 'Improvement cost should match');
+    t.assert.equal(repairMod?.cost, 15000, 'Repair cost should match');
+
+    fixture.cleanup();
   });
 });
 
 test('Asset Register Views and Reporting', async function (t) {
   await t.test('asset register summary view calculates all values correctly', async function (t) {
-    const fixture = new TestFixture('asset_register_summary');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('asset_register_summary');
+    await fixture.setup();
 
     // Create test asset
     const assetData = fixture.createTestAsset({
@@ -784,70 +574,50 @@ test('Asset Register Views and Reporting', async function (t) {
     });
 
     // Add depreciation
-    db.prepare(`
-      INSERT INTO depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value,
-        calculation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      assetData.id,
-      1672531200, // 2023-01-01
-      1704067200, // 2024-01-01
-      18000,      // Annual depreciation: (200000 - 20000) / 10
-      18000,      // Accumulated
-      182000,     // Book value
-      'straight_line',
-    );
+    fixture.addDepreciationPeriod(assetData.id, {
+      period_start_date: 1672531200, // 2023-01-01
+      period_end_date: 1704067200,   // 2024-01-01
+      depreciation_amount: 18000,    // Annual depreciation: (200000 - 20000) / 10
+      accumulated_depreciation: 18000, // Accumulated
+      book_value: 182000,            // Book value
+      calculation_method: 'straight_line',
+    });
 
     // Add capitalizable and non-capitalizable modifications
-    db.prepare(`
-      INSERT INTO asset_modification (
-        fixed_asset_id, modification_date, modification_type,
-        description, cost, capitalizable
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      assetData.id,
-      1675209600, // 2023-02-01
-      'improvement',
-      'Capitalizable improvement',
-      30000, // $300
-      1,      // Capitalizable
-    );
+    fixture.addAssetModification(assetData.id, {
+      modification_date: 1675209600, // 2023-02-01
+      modification_type: 'improvement',
+      description: 'Capitalizable improvement',
+      cost: 30000, // $300
+      capitalizable: 1,
+    });
 
-    db.prepare(`
-      INSERT INTO asset_modification (
-        fixed_asset_id, modification_date, modification_type,
-        description, cost, capitalizable
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      assetData.id,
-      1677801600, // 2023-03-02
-      'maintenance',
-      'Non-capitalizable maintenance',
-      5000,  // $50
-      0,      // Not capitalizable
-    );
+    fixture.addAssetModification(assetData.id, {
+      modification_date: 1677801600, // 2023-03-02
+      modification_type: 'maintenance',
+      description: 'Non-capitalizable maintenance',
+      cost: 5000,  // $50
+      capitalizable: 0,
+    });
 
     // Test summary view
-    const summary = db.prepare(`
-      SELECT * FROM asset_register_summary
-      WHERE id = ?
-    `)?.get(assetData.id) ?? {};
+    const summary = fixture.getAssetSummary(assetData.id);
 
     t.assert.equal(!!summary, true, 'Should find asset in summary view');
-    t.assert.equal(summary.asset_number, 'SUMMARY-001', 'Asset number should match');
-    t.assert.equal(summary.purchase_cost, 200000, 'Purchase cost should match');
-    t.assert.equal(summary.capitalized_modifications, 30000, 'Should include only capitalizable modifications');
-    t.assert.equal(summary.total_cost_basis, 230000, 'Total cost basis should be purchase + capitalized modifications');
-    t.assert.equal(summary.accumulated_depreciation, 18000, 'Accumulated depreciation should match');
-    t.assert.equal(summary.book_value, 182000, 'Book value should be purchase cost - accumulated depreciation');
-    t.assert.equal(summary.category_name, 'Buildings', 'Should include category name');
+    t.assert.equal(summary?.asset_number, 'SUMMARY-001', 'Asset number should match');
+    t.assert.equal(summary?.purchase_cost, 200000, 'Purchase cost should match');
+    t.assert.equal(summary?.capitalized_modifications, 30000, 'Should include only capitalizable modifications');
+    t.assert.equal(summary?.total_cost_basis, 230000, 'Total cost basis should be purchase + capitalized modifications');
+    t.assert.equal(summary?.accumulated_depreciation, 18000, 'Accumulated depreciation should match');
+    t.assert.equal(summary?.book_value, 182000, 'Book value should be purchase cost - accumulated depreciation');
+    t.assert.equal(summary?.category_name, 'Buildings', 'Should include category name');
+
+    fixture.cleanup();
   });
 
   await t.test('assets pending depreciation view identifies correct assets', async function (t) {
-    const fixture = new TestFixture('assets_pending_depreciation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('assets_pending_depreciation');
+    await fixture.setup();
 
     // Create asset that needs depreciation (no periods yet)
     const newAssetData = fixture.createTestAsset({
@@ -863,21 +633,14 @@ test('Asset Register Views and Reporting', async function (t) {
     });
 
     // Add old depreciation period
-    db.prepare(`
-      INSERT INTO depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value,
-        calculation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      oldAssetData.id,
-      1609459200, // 2021-01-01
-      1640995200, // 2022-01-01 (over 365 days ago)
-      9000,
-      9000,
-      91000,
-      'straight_line',
-    );
+    fixture.addDepreciationPeriod(oldAssetData.id, {
+      period_start_date: 1609459200, // 2021-01-01
+      period_end_date: 1640995200,   // 2022-01-01 (over 365 days ago)
+      depreciation_amount: 9000,
+      accumulated_depreciation: 9000,
+      book_value: 91000,
+      calculation_method: 'straight_line',
+    });
 
     // Create asset with recent depreciation (should not appear)
     const recentAssetData = fixture.createTestAsset({
@@ -887,28 +650,17 @@ test('Asset Register Views and Reporting', async function (t) {
 
     // Add recent depreciation
     const recentDate = 1704067200 - (30 * 24 * 60 * 60); // 30 days before 2024-01-01
-    db.prepare(`
-      INSERT INTO depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value,
-        calculation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      recentAssetData.id,
-      recentDate - (365 * 24 * 60 * 60), // Start date
-      recentDate, // Recent end date
-      9000,
-      9000,
-      91000,
-      'straight_line',
-    );
+    fixture.addDepreciationPeriod(recentAssetData.id, {
+      period_start_date: recentDate - (365 * 24 * 60 * 60), // Start date
+      period_end_date: recentDate, // Recent end date
+      depreciation_amount: 9000,
+      accumulated_depreciation: 9000,
+      book_value: 91000,
+      calculation_method: 'straight_line',
+    });
 
     // Check pending assets
-    const pendingAssets = db.prepare(`
-      SELECT * FROM assets_pending_depreciation
-      ORDER BY asset_number
-    `).all();
-
+    const pendingAssets = fixture.getAssetsPendingDepreciation();
     const pendingNumbers = pendingAssets.map(a => a.asset_number);
 
     // Note: Since time-based filtering was removed to avoid unixepoch dependencies,
@@ -919,21 +671,23 @@ test('Asset Register Views and Reporting', async function (t) {
     t.assert.equal(pendingNumbers.includes('RECENT-001'), true, 'Asset with recent depreciation should also be included (time filtering moved to application layer)');
 
     // Verify calculation fields
-    const newAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-NEW-001') ?? {};
-    t.assert.equal(newAssetPending.current_accumulated_depreciation, 0, 'New asset should have zero accumulated depreciation');
-    t.assert.equal(newAssetPending.current_book_value, newAssetPending.purchase_cost, 'New asset book value should equal purchase cost');
+    const newAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-NEW-001');
+    t.assert.equal(newAssetPending?.current_accumulated_depreciation, 0, 'New asset should have zero accumulated depreciation');
+    t.assert.equal(newAssetPending?.current_book_value, newAssetPending?.purchase_cost, 'New asset book value should equal purchase cost');
 
-    const oldAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-OLD-001') ?? {};
-    t.assert.equal(oldAssetPending.current_accumulated_depreciation, 9000, 'Old asset should show accumulated depreciation');
+    const oldAssetPending = pendingAssets.find(a => a.asset_number === 'PENDING-OLD-001');
+    t.assert.equal(oldAssetPending?.current_accumulated_depreciation, 9000, 'Old asset should show accumulated depreciation');
+
+    fixture.cleanup();
   });
 
   await t.test('depreciation calculation views handle edge cases', async function (t) {
-    const fixture = new TestFixture('depreciation_edge_cases');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('depreciation_edge_cases');
+    await fixture.setup();
 
     // Test straight-line with zero useful life (should not appear in view)
     try {
-      db.prepare(`
+      fixture.db.prepare(`
         INSERT INTO fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
           purchase_cost, salvage_value, useful_life_years, depreciation_method, active_time
@@ -956,36 +710,20 @@ test('Asset Register Views and Reporting', async function (t) {
     }
 
     // Test declining balance with 100% rate
-    const fullRateAsset = db.prepare(`
-      INSERT INTO fixed_asset (
-        asset_number, name, asset_category_id, purchase_date,
-        purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        declining_balance_rate, active_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      'FULL-RATE-001',
-      'Full Rate Asset',
-      1,
-      1672531200,
-      100000,
-      10000,
-      5,
-      'declining_balance',
-      1.0,  // 100% rate
-      1672531200,
-    );
+    const fullRateAsset = fixture.createDecliningBalanceAsset({
+      asset_number: 'FULL-RATE-001',
+      name: 'Full Rate Asset',
+      declining_balance_rate: 1.0,  // 100% rate
+    });
 
-    const fullRateCalc = db.prepare(`
-      SELECT * FROM calculate_declining_balance_depreciation
-      WHERE fixed_asset_id = ?
-    `)?.get(fullRateAsset.lastInsertRowid) ?? {};
+    const fullRateCalc = fixture.getDecliningBalanceCalculation(fullRateAsset.id);
 
-    t.assert.equal(fullRateCalc.declining_balance_rate, 1.0, 'Should accept 100% rate');
-    t.assert.equal(fullRateCalc.next_year_depreciation, 100000, 'Should calculate 100% of book value');
+    t.assert.equal(fullRateCalc?.declining_balance_rate, 1.0, 'Should accept 100% rate');
+    t.assert.equal(fullRateCalc?.next_year_depreciation, 100000, 'Should calculate 100% of book value');
 
     // Test units of production with zero units
     try {
-      db.prepare(`
+      fixture.db.prepare(`
         INSERT INTO fixed_asset (
           asset_number, name, asset_category_id, purchase_date,
           purchase_cost, salvage_value, useful_life_years, depreciation_method,
@@ -1008,15 +746,18 @@ test('Asset Register Views and Reporting', async function (t) {
     catch (error) {
       t.assert.equal(error.message.includes('CHECK constraint failed'), true, 'Should reject zero useful life units');
     }
+
+    fixture.cleanup();
   });
 });
+
 test('Asset Register Business Logic and Constraints', async function (t) {
   await t.test('enforces accounting principles for asset categories', async function (t) {
-    const fixture = new TestFixture('accounting_principles');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('accounting_principles');
+    await fixture.setup();
 
     // Test that all asset categories have proper account type mappings
-    const categories = db.prepare(`
+    const categories = fixture.db.prepare(`
       SELECT ac.*,
              aa.account_type_name as asset_account_type,
              ada.account_type_name as accum_dep_account_type,
@@ -1054,28 +795,29 @@ test('Asset Register Business Logic and Constraints', async function (t) {
           `${category.name} declining balance rate should be between 0 and 1`);
       }
     }
+
+    fixture.cleanup();
   });
 
   await t.test('prevents modification of disposed assets', async function (t) {
-    const fixture = new TestFixture('disposed_asset_modification');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('disposed_asset_modification');
+    await fixture.setup();
 
     // Create and dispose an asset
     const assetData = fixture.createTestAsset({
       asset_number: 'DISPOSED-TEST-001',
-      status: 'active',
     });
 
     // Dispose the asset
-    db.prepare(`
-      UPDATE fixed_asset
-      SET disposed_time = ?, disposal_date = ?, disposal_proceeds = ?
-      WHERE id = ?
-    `).run(1704067200, 1704067200, 50000, assetData.id); // 2024-01-01, $500
+    fixture.disposeAsset(Number(assetData.id), {
+      disposal_date: 1704067200,
+      disposed_time: 1704067200,
+      disposal_proceeds: 50000, // $500
+    });
 
     // Try to modify key attributes (should fail)
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         UPDATE fixed_asset
         SET purchase_cost = 150000
         WHERE id = ?
@@ -1083,7 +825,7 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     }, /cannot modify key attributes of disposed assets/, 'Should prevent cost modification');
 
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         UPDATE fixed_asset
         SET useful_life_years = 15
         WHERE id = ?
@@ -1091,7 +833,7 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     }, /cannot modify key attributes of disposed assets/, 'Should prevent useful life modification');
 
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         UPDATE fixed_asset
         SET depreciation_method = 'declining_balance'
         WHERE id = ?
@@ -1099,7 +841,7 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     }, /cannot modify key attributes of disposed assets/, 'Should prevent depreciation method modification');
 
     // Should allow modification of non-key attributes
-    const locationUpdate = db.prepare(`
+    const locationUpdate = fixture.db.prepare(`
       UPDATE fixed_asset
       SET location = 'Storage Facility'
       WHERE id = ?
@@ -1108,13 +850,15 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     t.assert.equal(locationUpdate.changes, 1, 'Should allow location updates');
 
     // Verify location was updated
-    const updatedAsset = db.prepare('SELECT location FROM fixed_asset WHERE id = ?')?.get(assetData.id) ?? {};
-    t.assert.equal(updatedAsset.location, 'Storage Facility', 'Location should be updated');
+    const updatedAsset = fixture.db.prepare('SELECT location FROM fixed_asset WHERE id = ?').get(assetData.id);
+    t.assert.equal(updatedAsset?.location, 'Storage Facility', 'Location should be updated');
+
+    fixture.cleanup();
   });
 
   await t.test('validates foreign key relationships', async function (t) {
-    const fixture = new TestFixture('foreign_key_validation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('foreign_key_validation');
+    await fixture.setup();
 
     // Test invalid asset category (should fail)
     t.assert.throws(() => {
@@ -1125,7 +869,7 @@ test('Asset Register Business Logic and Constraints', async function (t) {
 
     // Test invalid account codes in asset category (if we try to create one)
     t.assert.throws(() => {
-      db.prepare(`
+      fixture.db.prepare(`
         INSERT INTO asset_category (
           name, useful_life_years, default_depreciation_method,
           asset_account_code, accumulated_depreciation_account_code, depreciation_expense_account_code
@@ -1139,11 +883,13 @@ test('Asset Register Business Logic and Constraints', async function (t) {
         61100,
       );
     }, /FOREIGN KEY constraint failed/, 'Should reject invalid asset account code');
+
+    fixture.cleanup();
   });
 
   await t.test('maintains data integrity across tables', async function (t) {
-    const fixture = new TestFixture('data_integrity');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('data_integrity');
+    await fixture.setup();
 
     // Create asset with modifications and depreciation
     const assetData = fixture.createTestAsset({
@@ -1151,122 +897,92 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     });
 
     // Add depreciation periods
-    db.prepare(`
-      INSERT INTO depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value,
-        calculation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      assetData.id, 1672531200, 1704067200, 9000, 9000, 91000, 'straight_line',
-    );
+    fixture.addDepreciationPeriod(assetData.id, {
+      depreciation_amount: 9000,
+      accumulated_depreciation: 9000,
+      book_value: 91000,
+    });
 
     // Add modifications
-    db.prepare(`
-      INSERT INTO asset_modification (
-        fixed_asset_id, modification_date, modification_type,
-        description, cost, capitalizable
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      assetData.id, 1675209600, 'improvement', 'Test improvement', 10000, 1,
-    );
+    fixture.addAssetModification(assetData.id, {
+      modification_type: 'improvement',
+      description: 'Test improvement',
+      cost: 10000,
+      capitalizable: 1,
+    });
 
     // Verify all related records exist
-    const depPeriods = db.prepare('SELECT COUNT(*) as count FROM depreciation_period WHERE fixed_asset_id = ?')?.get(assetData.id) ?? {};
-    const modifications = db.prepare('SELECT COUNT(*) as count FROM asset_modification WHERE fixed_asset_id = ?')?.get(assetData.id) ?? {};
+    const depPeriods = fixture.db.prepare('SELECT COUNT(*) as count FROM depreciation_period WHERE fixed_asset_id = ?').get(assetData.id);
+    const modifications = fixture.db.prepare('SELECT COUNT(*) as count FROM asset_modification WHERE fixed_asset_id = ?').get(assetData.id);
 
-    t.assert.equal(depPeriods.count, 1, 'Should have depreciation period');
-    t.assert.equal(modifications.count, 1, 'Should have modification record');
+    t.assert.equal(depPeriods?.count, 1, 'Should have depreciation period');
+    t.assert.equal(modifications?.count, 1, 'Should have modification record');
 
     // Verify summary view includes all data
-    const summary = db.prepare('SELECT * FROM asset_register_summary WHERE id = ?')?.get(assetData.id) ?? {};
+    const summary = fixture.getAssetSummary(assetData.id);
     t.assert.equal(!!summary, true, 'Asset should appear in summary view');
-    t.assert.equal(summary.accumulated_depreciation, 9000, 'Summary should include depreciation');
-    t.assert.equal(summary.capitalized_modifications, 10000, 'Summary should include modifications');
+    t.assert.equal(summary?.accumulated_depreciation, 9000, 'Summary should include depreciation');
+    t.assert.equal(summary?.capitalized_modifications, 10000, 'Summary should include modifications');
+
+    fixture.cleanup();
   });
 
   await t.test('validates asset usage tracking for units of production', async function (t) {
-    const fixture = new TestFixture('asset_usage_validation');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('asset_usage_validation');
+    await fixture.setup();
 
     // Create units of production asset
-    const assetResult = db.prepare(`
-      INSERT INTO fixed_asset (
-        asset_number, name, asset_category_id, purchase_date,
-        purchase_cost, salvage_value, useful_life_years, depreciation_method,
-        useful_life_units, active_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      'USAGE-001',
-      'Usage Tracking Asset',
-      5, // Manufacturing Equipment
-      1672531200,
-      300000, // $3,000
-      30000,  // $300 salvage
-      10,
-      'units_of_production',
-      150000,  // 150,000 units capacity
-      1672531200,
-    );
-
-    const assetId = assetResult.lastInsertRowid;
+    const assetData = fixture.createUnitsOfProductionAsset({
+      asset_number: 'USAGE-001',
+      name: 'Usage Tracking Asset',
+      purchase_cost: 300000, // $3,000
+      salvage_value: 30000,  // $300 salvage
+      useful_life_units: 150000,  // 150,000 units capacity
+    });
 
     // Test valid usage tracking
-    const usageResult = db.prepare(`
-      INSERT INTO asset_usage (
-        fixed_asset_id, period_start_date, period_end_date,
-        units_used, cumulative_units
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(
-      assetId,
-      1672531200, // 2023-01-01
-      1675209600, // 2023-02-01
-      10000,      // 10,000 units used
-      10000,       // 10,000 cumulative
-    );
+    const usageId = fixture.addAssetUsage(assetData.id, {
+      period_start_date: 1672531200, // 2023-01-01
+      period_end_date: 1675209600,   // 2023-02-01
+      units_used: 10000,      // 10,000 units used
+      cumulative_units: 10000, // 10,000 cumulative
+    });
 
-    t.assert.equal(usageResult.changes, 1, 'Should insert valid usage record');
+    t.assert.equal(!!usageId, true, 'Should insert valid usage record');
 
     // Test that cumulative units increase over time
-    const usage2Result = db.prepare(`
-      INSERT INTO asset_usage (
-        fixed_asset_id, period_start_date, period_end_date,
-        units_used, cumulative_units
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(
-      assetId,
-      1675209600, // 2023-02-01
-      1677801600, // 2023-03-02
-      8000,       // 8,000 units used this period
-      18000,       // 18,000 cumulative (10,000 + 8,000)
-    );
+    const usage2Id = fixture.addAssetUsage(assetData.id, {
+      period_start_date: 1675209600, // 2023-02-01
+      period_end_date: 1677801600,   // 2023-03-02
+      units_used: 8000,       // 8,000 units used this period
+      cumulative_units: 18000, // 18,000 cumulative (10,000 + 8,000)
+    });
 
-    t.assert.equal(usage2Result.changes, 1, 'Should insert second usage record');
+    t.assert.equal(!!usage2Id, true, 'Should insert second usage record');
 
     // Verify usage records
-    const usageRecords = db.prepare(`
+    const usageRecords = fixture.db.prepare(`
       SELECT * FROM asset_usage
       WHERE fixed_asset_id = ?
       ORDER BY period_end_date
-    `).all(assetId);
+    `).all(assetData.id);
 
     t.assert.equal(usageRecords.length, 2, 'Should have 2 usage records');
-    t.assert.equal(usageRecords[0].cumulative_units, 10000, 'First period cumulative should be 10000');
-    t.assert.equal(usageRecords[1].cumulative_units, 18000, 'Second period cumulative should be 18000');
+    t.assert.equal(usageRecords[0]?.cumulative_units, 10000, 'First period cumulative should be 10000');
+    t.assert.equal(usageRecords[1]?.cumulative_units, 18000, 'Second period cumulative should be 18000');
 
     // Test usage appears in calculation view
-    const uopCalc = db.prepare(`
-      SELECT * FROM calculate_units_of_production_depreciation
-      WHERE fixed_asset_id = ?
-    `)?.get(assetId) ?? {};
+    const uopCalc = fixture.getUnitsOfProductionCalculation(assetData.id);
 
-    t.assert.equal(uopCalc.total_units_used, 18000, 'Calculation should show latest cumulative units');
-    t.assert.equal(uopCalc.depreciation_per_unit, 1.8, 'Should calculate correct per-unit depreciation'); // (300000-30000)/150000
+    t.assert.equal(uopCalc?.total_units_used, 18000, 'Calculation should show latest cumulative units');
+    t.assert.equal(uopCalc?.depreciation_per_unit, 1.8, 'Should calculate correct per-unit depreciation'); // (300000-30000)/150000
+
+    fixture.cleanup();
   });
 
   await t.test('validates comprehensive asset lifecycle', async function (t) {
-    const fixture = new TestFixture('asset_lifecycle');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('asset_lifecycle');
+    await fixture.setup();
 
     // Create asset
     const assetData = fixture.createTestAsset({
@@ -1286,15 +1002,14 @@ test('Asset Register Business Logic and Constraints', async function (t) {
       const accumulatedDep = annualDepreciation * year;
       const bookValue = assetData.purchase_cost - accumulatedDep;
 
-      db.prepare(`
-        INSERT INTO depreciation_period (
-          fixed_asset_id, period_start_date, period_end_date,
-          depreciation_amount, accumulated_depreciation, book_value,
-          calculation_method
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        assetData.id, startDate, endDate, annualDepreciation, accumulatedDep, bookValue, 'straight_line',
-      );
+      fixture.addDepreciationPeriod(assetData.id, {
+        period_start_date: startDate,
+        period_end_date: endDate,
+        depreciation_amount: annualDepreciation,
+        accumulated_depreciation: accumulatedDep,
+        book_value: bookValue,
+        calculation_method: 'straight_line',
+      });
     }
 
     // Add modifications over time
@@ -1305,83 +1020,70 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     ];
 
     for (const mod of modifications) {
-      db.prepare(`
-        INSERT INTO asset_modification (
-          fixed_asset_id, modification_date, modification_type,
-          description, cost, capitalizable
-        ) VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        assetData.id, mod.date, mod.type, `${mod.type} work`, mod.cost, mod.capitalizable,
-      );
+      fixture.addAssetModification(assetData.id, {
+        modification_date: mod.date,
+        modification_type: mod.type,
+        description: `${mod.type} work`,
+        cost: mod.cost,
+        capitalizable: mod.capitalizable,
+      });
     }
 
     // Test complete asset summary
-    const summary = db.prepare('SELECT * FROM asset_register_summary WHERE id = ?')?.get(assetData.id) ?? {};
+    const summary = fixture.getAssetSummary(assetData.id);
 
-    t.assert.equal(summary.purchase_cost, 240000, 'Summary should show original cost');
-    t.assert.equal(summary.accumulated_depreciation, 54000, 'Should show 3 years of depreciation');
+    t.assert.equal(summary?.purchase_cost, 240000, 'Summary should show original cost');
+    t.assert.equal(summary?.accumulated_depreciation, 54000, 'Should show 3 years of depreciation');
     // Note: Due to view JOIN logic with multiple depreciation periods, capitalizable modifications are counted multiple times
     // The actual implementation shows 69000 (23000 * 3 periods) instead of expected 23000
-    t.assert.equal(summary.capitalized_modifications, 69000, 'Actual capitalizable modifications from view (affected by JOIN with multiple periods)');
-    t.assert.equal(summary.total_cost_basis, Number(summary.purchase_cost) + Number(summary.capitalized_modifications), 'Should include purchase cost + capitalizable modifications');
-    t.assert.equal(summary.book_value, 186000, 'Book value should be purchase cost - accumulated depreciation');
+    t.assert.equal(summary?.capitalized_modifications, 69000, 'Actual capitalizable modifications from view (affected by JOIN with multiple periods)');
+    t.assert.equal(summary?.total_cost_basis, Number(summary.purchase_cost) + Number(summary.capitalized_modifications), 'Should include purchase cost + capitalizable modifications');
+    t.assert.equal(summary?.book_value, 186000, 'Book value should be purchase cost - accumulated depreciation');
 
     // Test asset disposal
     const disposalDate = 1704067200; // 2024-01-01
     const disposalProceeds = 180000; // $1,800
 
-    const disposalResult = db.prepare(`
-      UPDATE fixed_asset SET
-        disposed_time = ?,
-        disposal_date = ?,
-        disposal_proceeds = ?
-      WHERE id = ?
-    `).run(disposalDate, disposalDate, disposalProceeds, assetData.id);
+    const success = fixture.disposeAsset(Number(assetData.id), {
+      disposal_date: disposalDate,
+      disposed_time: disposalDate,
+      disposal_proceeds: disposalProceeds,
+    });
 
-    t.assert.equal(disposalResult.changes, 1, 'Should successfully dispose asset');
+    t.assert.equal(success, true, 'Should successfully dispose asset');
 
     // Verify disposal
-    const disposedAsset = db.prepare('SELECT * FROM fixed_asset_with_status WHERE id = ?')?.get(assetData.id) ?? {};
-    t.assert.equal(disposedAsset.status, 'disposed', 'Asset should be disposed');
-    t.assert.equal(disposedAsset.disposal_proceeds, disposalProceeds, 'Disposal proceeds should match');
+    const disposedAsset = fixture.getAssetWithStatus(assetData.id);
+    t.assert.equal(disposedAsset?.status, 'disposed', 'Asset should be disposed');
+    t.assert.equal(disposedAsset?.disposal_proceeds, disposalProceeds, 'Disposal proceeds should match');
 
     // Calculate gain/loss on disposal
-    const bookValueAtDisposal = Number(summary.book_value); // 186000
+    const bookValueAtDisposal = Number(summary?.book_value); // 186000
     const gainLoss = disposalProceeds - bookValueAtDisposal; // 180000 - 186000 = -6000 (loss)
 
     t.assert.equal(gainLoss, -6000, 'Should calculate disposal loss correctly');
+
+    fixture.cleanup();
   });
 
   await t.test('maintains referential integrity on cascading operations', async function (t) {
-    const fixture = new TestFixture('referential_integrity');
-    const db = await fixture.setup();
+    const fixture = new AssetRegisterTestFixture('referential_integrity');
+    await fixture.setup();
 
     // Verify all tables are properly linked
     const assetData = fixture.createTestAsset();
 
     // Add related records
-    db.prepare(`
-      INSERT INTO depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value,
-        calculation_method
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(assetData.id, 1672531200, 1704067200, 9000, 9000, 91000, 'straight_line');
-
-    db.prepare(`
-      INSERT INTO asset_modification (
-        fixed_asset_id, modification_date, modification_type,
-        description, cost, capitalizable
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(assetData.id, 1675209600, 'improvement', 'Test', 5000, 1);
+    fixture.addDepreciationPeriod(assetData.id);
+    fixture.addAssetModification(assetData.id);
 
     // Verify constraint prevents deletion of referenced asset category
     t.assert.throws(() => {
-      db.prepare('DELETE FROM asset_category WHERE id = ?').run(assetData.asset_category_id);
+      fixture.db.prepare('DELETE FROM asset_category WHERE id = ?').run(assetData.asset_category_id);
     }, /FOREIGN KEY constraint failed/, 'Should prevent deletion of referenced asset category');
 
     // Verify all asset numbers are unique
-    const duplicateNumbers = db.prepare(`
+    const duplicateNumbers = fixture.db.prepare(`
       SELECT asset_number, COUNT(*) as count
       FROM fixed_asset
       GROUP BY asset_number
@@ -1391,7 +1093,7 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     t.assert.equal(duplicateNumbers.length, 0, 'All asset numbers should be unique');
 
     // Verify all depreciation periods reference valid assets
-    const orphanedPeriods = db.prepare(`
+    const orphanedPeriods = fixture.db.prepare(`
       SELECT dp.id
       FROM depreciation_period dp
       LEFT JOIN fixed_asset fa ON dp.fixed_asset_id = fa.id
@@ -1401,7 +1103,7 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     t.assert.equal(orphanedPeriods.length, 0, 'No orphaned depreciation periods should exist');
 
     // Verify all modifications reference valid assets
-    const orphanedMods = db.prepare(`
+    const orphanedMods = fixture.db.prepare(`
       SELECT am.id
       FROM asset_modification am
       LEFT JOIN fixed_asset fa ON am.fixed_asset_id = fa.id
@@ -1409,57 +1111,60 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     `).all();
 
     t.assert.equal(orphanedMods.length, 0, 'No orphaned asset modifications should exist');
+
+    fixture.cleanup();
   });
 
   await t.test('Enhanced asset disposal with gain/loss calculation and journal entries', async function (t) {
-    const fixture = new TestFixture('Enhanced asset disposal with gain/loss calculation and journal entries');
-    const db = await fixture.setupWithInitialData();
+    const fixture = new AssetRegisterTestFixture('enhanced_asset_disposal');
+    await fixture.setupWithInitialData();
 
     // Create an asset
-    db.prepare(`
-      insert into fixed_asset (
-        asset_number, name, asset_category_id, purchase_cost,
-        purchase_date, useful_life_years, depreciation_method, active_time
-      ) values (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('EQUIP-001', 'Test Equipment', 3, 50000, 1704067200, 5, 'straight_line', 1704067200);
+    const assetData = fixture.createTestAsset({
+      asset_number: 'EQUIP-001',
+      name: 'Test Equipment',
+      asset_category_id: 3,
+      purchase_cost: 50000,
+      purchase_date: 1704067200,
+    });
 
     // Add some depreciation periods
-    db.prepare(`
-      insert into depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value, calculation_method
-      ) values (?, ?, ?, ?, ?, ?, ?)
-    `).run(1, 1704067200, 1735689600, 10000, 10000, 40000, 'straight_line'); // $100 depreciation
+    fixture.addDepreciationPeriod(assetData.id, {
+      period_start_date: 1704067200,
+      period_end_date: 1735689600,
+      depreciation_amount: 10000,
+      accumulated_depreciation: 10000,
+      book_value: 40000,
+      calculation_method: 'straight_line',
+    });
 
     // Dispose asset with gain
-    db.prepare(`
-      update fixed_asset
-      set disposal_date = ?, disposal_proceeds = ?
-      where id = ?
-    `).run(1735689600, 45000, 1); // Sold for $450, book value $400, gain $50
+    fixture.disposeAsset(Number(assetData.id), {
+      disposal_date: 1735689600,
+      disposed_time: 1735689600,
+      disposal_proceeds: 45000, // Sold for $450, book value $400, gain $50
+    });
 
     // Verify disposal calculations
-    const asset = db.prepare(`
-      select * from fixed_asset where id = 1
-    `)?.get() ?? {};
+    const asset = fixture.getAssetWithStatus(assetData.id);
 
-    t.assert.equal(asset.accumulated_depreciation_at_disposal, 10000, 'Should track accumulated depreciation at disposal');
-    t.assert.equal(asset.gain_loss_on_disposal, 5000, 'Should calculate gain of $50');
+    t.assert.equal(asset?.accumulated_depreciation_at_disposal, 10000, 'Should track accumulated depreciation at disposal');
+    t.assert.equal(asset?.gain_loss_on_disposal, 5000, 'Should calculate gain of $50');
 
     // Verify disposal journal entry was created
-    const disposalEntry = db.prepare(`
+    const disposalEntry = fixture.db.prepare(`
       select * from journal_entry
       where note like '%Asset Disposal%' and note like '%EQUIP-001%'
-    `)?.get() ?? {};
+    `).get();
     t.assert.equal(!!disposalEntry, true, 'Asset disposal journal entry should be created');
-    t.assert.equal(!!disposalEntry.post_time, true, 'Disposal entry should be posted');
+    t.assert.equal(!!disposalEntry?.post_time, true, 'Disposal entry should be posted');
 
     // Verify journal entry lines
-    const disposalLines = db.prepare(`
+    const disposalLines = fixture.db.prepare(`
       select * from journal_entry_line
       where journal_entry_ref = ?
       order by line_order
-    `).all(disposalEntry.ref);
+    `).all(disposalEntry?.ref ?? 0);
 
     t.assert.equal(disposalLines.length, 4, 'Should have 4 journal entry lines');
 
@@ -1482,84 +1187,90 @@ test('Asset Register Business Logic and Constraints', async function (t) {
     const gainLine = disposalLines.find(line => line.account_code === 40400);
     t.assert.equal(!!gainLine, true, 'Should credit gain on disposal');
     t.assert.equal(gainLine?.cr, 5000, 'Should recognize gain of $50');
+
+    fixture.cleanup();
   });
 
   await t.test('Asset disposal with loss calculation', async function (t) {
-    const fixture = new TestFixture('Asset disposal with loss calculation');
-    const db = await fixture.setupWithInitialData();
+    const fixture = new AssetRegisterTestFixture('asset_disposal_loss');
+    await fixture.setupWithInitialData();
 
     // Create an asset
-    const assetResult = db.prepare(`
-      insert into fixed_asset (
-        asset_number, name, asset_category_id, purchase_cost,
-        purchase_date, useful_life_years, depreciation_method, active_time
-      ) values (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('EQUIP-002', 'Test Equipment 2', 1, 60000, 1704067200, 5, 'straight_line', 1704067200);
-
-    const assetId = assetResult.lastInsertRowid;
+    const assetData = fixture.createTestAsset({
+      asset_number: 'EQUIP-002',
+      name: 'Test Equipment 2',
+      asset_category_id: 1,
+      purchase_cost: 60000,
+      purchase_date: 1704067200,
+    });
 
     // Add depreciation
-    db.prepare(`
-      insert into depreciation_period (
-        fixed_asset_id, period_start_date, period_end_date,
-        depreciation_amount, accumulated_depreciation, book_value, calculation_method
-      ) values (?, ?, ?, ?, ?, ?, ?)
-    `).run(assetId, 1704067200, 1735689600, 15000, 15000, 45000, 'STRAIGHT_LINE'); // $150 depreciation
+    fixture.addDepreciationPeriod(assetData.id, {
+      period_start_date: 1704067200,
+      period_end_date: 1735689600,
+      depreciation_amount: 15000,
+      accumulated_depreciation: 15000,
+      book_value: 45000,
+      calculation_method: 'straight_line',
+    });
 
     // Dispose asset with loss
-    db.prepare(`
-      update fixed_asset
-      set disposal_date = ?, disposal_proceeds = ?
-      where id = ?
-    `).run(1735689600, 40000, assetId); // Sold for $400, book value $450, loss $50
+    fixture.disposeAsset(Number(assetData.id), {
+      disposal_date: 1735689600,
+      disposed_time: 1735689600,
+      disposal_proceeds: 40000, // Sold for $400, book value $450, loss $50
+    });
 
     // Verify loss calculation
-    const asset = db.prepare(`
-      select * from fixed_asset where id = ?
-    `)?.get(assetId) ?? {};
+    const asset = fixture.getAssetWithStatus(assetData.id);
 
-    t.assert.equal(asset.gain_loss_on_disposal, -5000, 'Should calculate loss of $50');
+    t.assert.equal(asset?.gain_loss_on_disposal, -5000, 'Should calculate loss of $50');
 
     // Verify disposal journal entry
-    const disposalEntry = db.prepare(`
+    const disposalEntry = fixture.db.prepare(`
       select * from journal_entry
       where note like '%Asset Disposal%' and note like '%EQUIP-002%'
-    `)?.get() ?? {};
+    `).get();
     t.assert.equal(!!disposalEntry, true, 'Asset disposal journal entry should be created');
 
     // Verify loss on disposal line
-    const lossLine = db.prepare(`
+    const lossLine = fixture.db.prepare(`
       select * from journal_entry_line
       where journal_entry_ref = ? and account_code = 51500
-    `)?.get(disposalEntry.ref) ?? {};
+    `).get(disposalEntry?.ref ?? 0);
     t.assert.equal(!!lossLine, true, 'Should have loss on disposal line');
-    t.assert.equal(lossLine.db, 5000, 'Should debit loss on disposal for $50');
+    t.assert.equal(lossLine?.db, 5000, 'Should debit loss on disposal for $50');
+
+    fixture.cleanup();
   });
 
   await t.test('Asset disposal without proceeds does not create journal entry', async function (t) {
-    const fixture = new TestFixture('Asset disposal without proceeds does not create journal entry');
-    const db = await fixture.setupWithInitialData();
+    const fixture = new AssetRegisterTestFixture('asset_disposal_no_proceeds');
+    await fixture.setupWithInitialData();
 
     // Create an asset
-    db.prepare(`
-      insert into fixed_asset (
-        asset_number, name, asset_category_id, purchase_cost,
-        purchase_date, useful_life_years, depreciation_method, active_time
-      ) values (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('EQUIP-003', 'Test Equipment 3', 1, 30000, 1704067200, 5, 'straight_line', 1704067200);
+    const assetData = fixture.createTestAsset({
+      asset_number: 'EQUIP-003',
+      name: 'Test Equipment 3',
+      asset_category_id: 1,
+      purchase_cost: 30000,
+      purchase_date: 1704067200,
+    });
 
     // Dispose asset without proceeds (scrapped)
-    db.prepare(`
-      update fixed_asset
-      set disposal_date = ?, disposal_proceeds = ?
-      where id = ?
-    `).run(1735689600, 0, 3); // No proceeds
+    fixture.disposeAsset(Number(assetData.id), {
+      disposal_date: 1735689600,
+      disposed_time: 1735689600,
+      disposal_proceeds: 0, // No proceeds
+    });
 
     // Verify no journal entry was created
-    const disposalEntry = db.prepare(`
+    const disposalEntry = fixture.db.prepare(`
       select * from journal_entry
       where note like '%Asset Disposal%' and note like '%EQUIP-003%'
-    `)?.get();
+    `).get();
     t.assert.equal(disposalEntry, undefined, 'No journal entry should be created for disposal without proceeds');
+
+    fixture.cleanup();
   });
 });
