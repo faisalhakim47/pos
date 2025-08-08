@@ -533,6 +533,7 @@ insert into account (code, name, account_type_name) values
   (40100, 'Sales Revenue', 'revenue'),
   (40200, 'Service Revenue', 'revenue'),
   (40300, 'Other Revenue', 'revenue'),
+  (40400, 'Gain on Asset Disposal', 'revenue'),
   (41000, 'Sales Returns and Allowances', 'contra_revenue'),
   (41200, 'Inventory Adjustment Gain', 'revenue'),
 
@@ -542,6 +543,7 @@ insert into account (code, name, account_type_name) values
   (51200, 'Inventory Adjustment Loss', 'expense'),
   (51300, 'Obsolescence Loss', 'expense'),
   (51400, 'Damage Loss', 'expense'),
+  (51500, 'Loss on Asset Disposal', 'expense')
   (60100, 'Salaries and Wages', 'expense'),
   (60200, 'Rent Expense', 'expense'),
   (60300, 'Utilities Expense', 'expense'),
@@ -552,8 +554,6 @@ insert into account (code, name, account_type_name) values
   (60800, 'Travel Expense', 'expense'),
   (61000, 'Other Operating Expenses', 'expense'),
   (61100, 'Depreciation Expense', 'expense'),
-  (40400, 'Gain on Asset Disposal', 'revenue'),
-  (51500, 'Loss on Asset Disposal', 'expense')
 on conflict (code) do update set
   name = excluded.name,
   account_type_name = excluded.account_type_name;
@@ -652,10 +652,8 @@ insert into account_tag (account_code, tag) values
   (51500, 'fiscal_year_closing_expense'), -- Loss on Asset Disposal
   (30300, 'fiscal_year_closing_dividend'), -- Dividends
   (30600, 'fiscal_year_closing_dividend') -- Dividends/Withdrawals
-on conflict (account_code, tag) do nothing;
 
--- Cash Flow Statement Tags
-insert into account_tag (account_code, tag) values
+  -- Cash Flow Statement Tags
   (10100, 'cash_flow_operating'), -- Cash
   (10200, 'cash_flow_operating'), -- Accounts Receivable
   (10250, 'cash_flow_operating'), -- Contract Assets
